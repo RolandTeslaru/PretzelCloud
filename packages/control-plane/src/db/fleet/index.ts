@@ -30,7 +30,19 @@ export namespace FleetDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => Fleet.Machine.Schema.parse(row);
+        export const toDomain = (row: Row) => Fleet.Machine.Schema.parse({
+            id:          row.id,
+            workspaceId: row.workspace_id,
+            driver:      row.driver,
+            externalId:  row.external_id,
+            role:        row.role,
+            size:        row.size,
+            state:       row.state,
+            lastBootAt:  row.last_boot_at,
+            lastSeenAt:  row.last_seen_at,
+            createdAt:   row.created_at,
+            updatedAt:   row.updated_at,
+        });
     }
 
     export namespace WorkspaceSecrets {
@@ -62,7 +74,13 @@ export namespace FleetDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => Fleet.Hostname.Schema.parse(row);
+        // The seam: snake_case columns in, camelCase domain out.
+        export const toDomain = (row: Row) => Fleet.Hostname.Schema.parse({
+            host:        row.host,
+            workspaceId: row.workspace_id,
+            kind:        row.kind,
+            createdAt:   row.created_at,
+        });
     }
 
     export namespace WorkspaceRuntime {
@@ -73,7 +91,11 @@ export namespace FleetDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => Fleet.WorkspaceRuntime.Schema.parse(row);
+        export const toDomain = (row: Row) => Fleet.WorkspaceRuntime.Schema.parse({
+            workspaceId:     row.workspace_id,
+            hasPublications: row.has_publications,
+            reportedAt:      row.reported_at,
+        });
     }
 
     export interface Tables {

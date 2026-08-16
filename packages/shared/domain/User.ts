@@ -10,12 +10,12 @@ export namespace User {
     export const createId = () => crypto.randomUUID() as Id
 
     export const Schema = z.object({
-        id:           Id,
-        email:        z.email(),
-        display_name: z.string(),
-        avatar_url:   z.string().nullable(),
-        created_at:   z.coerce.date(),
-        updated_at:   z.coerce.date(),
+        id:          Id,
+        email:       z.email(),
+        displayName: z.string(),
+        avatarUrl:   z.string().nullable(),
+        createdAt:   z.coerce.date(),
+        updatedAt:   z.coerce.date(),
     })
 
     // Editable profile fields. Excludes email — the issuer owns it, and changing

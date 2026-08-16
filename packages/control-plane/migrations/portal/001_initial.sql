@@ -30,10 +30,16 @@ begin
 end
 $$;
 --
--- Ownership of a workspace is a `workspace_members` row with role 'owner'.
--- There is no owner column: a second authority source is a second thing to keep
--- in sync, and the two only ever disagree at the worst moment. `created_by` is
--- attribution, nullable, and never read by a policy.
+-- `owner_id` is the account relationship — who pays for this workspace, who may
+-- destroy it, who may transfer it. It is not the same question as what someone
+-- may do *inside* a workspace, which the workspace's own members table answers
+-- and which this column is never consulted for. Keeping the two apart means a
+-- workspace that rewrites its own membership still cannot bill anyone or delete
+-- itself.
+--
+-- Not null, and `on delete restrict`: an ownerless workspace can be neither paid
+-- for nor destroyed, so deleting a user has to transfer or tear down their
+-- workspaces first rather than silently stranding them.
 
 -- One row per subject of the fleet issuer. Identity lives at the issuer; this
 -- is the profile the portal renders.
@@ -49,13 +55,17 @@ create table users (
 -- `status` is the provisioning lifecycle. A workspace that never reaches 'ready'
 -- is torn down and its row deleted, so the user simply retries; 'failed' is set
 -- only when teardown itself failed and the reconciler still has work to do.
+-- `subdomain` is the *custom* hostname label, and only paid plans set one. Every
+-- workspace also answers at a canonical label derived from its id, which is not
+-- stored: deriving it means it cannot drift from the id, cannot be edited, and
+-- survives a custom name changing — so a webhook URL never breaks.
 create table workspaces (
     id           uuid not null,
-    slug         text not null,
+    subdomain    text,
     display_name text not null,
     status       text default 'provisioning' not null,
     plan         text default 'free' not null,
-    created_by   uuid,
+    owner_id     uuid not null,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null,
 
@@ -63,33 +73,20 @@ create table workspaces (
     constraint workspaces_plan_check   check (plan in ('free', 'pro'))
 );
 
--- The user x workspace access index. The workspace's own database holds a
--- `members` table saying the same thing; those are separate databases and can
--- drift, which the invitation flow has to reconcile.
+-- The user x workspace access index, and deliberately nothing more: no role.
+--
+-- Its only job is answering "which workspaces may this user enter", which is
+-- exactly the question a stopped workspace cannot answer for itself. What
+-- someone may *do* once inside is the workspace's own members table, which is
+-- authoritative. A role here would be a second answer that can disagree.
+--
+-- Because it decides nothing, it is allowed to be stale: a leftover row shows a
+-- workspace that then denies entry, a missing one hides a workspace still
+-- reachable by URL. Both are recoverable and both self-heal on reconcile.
 create table workspace_members (
     workspace_id uuid not null,
     user_id      uuid not null,
-    role         text not null,
-    created_at   timestamp with time zone default now() not null,
-    updated_at   timestamp with time zone default now() not null,
-
-    constraint workspace_members_role_check check (role in ('owner', 'admin', 'member'))
-);
-
--- An invitee is by definition not yet a member, so this table's read policy
--- keys off the invited address rather than membership.
-create table invitations (
-    id           uuid default gen_random_uuid() not null,
-    workspace_id uuid not null,
-    email        text not null,
-    role         text not null,
-    token_hash   text not null,
-    invited_by   uuid,
-    expires_at   timestamp with time zone not null,
-    accepted_at  timestamp with time zone,
-    created_at   timestamp with time zone default now() not null,
-
-    constraint invitations_role_check check (role in ('admin', 'member'))
+    created_at   timestamp with time zone default now() not null
 );
 
 
@@ -98,19 +95,17 @@ create table invitations (
 alter table only users             add constraint users_pkey             primary key (id);
 alter table only workspaces        add constraint workspaces_pkey        primary key (id);
 alter table only workspace_members add constraint workspace_members_pkey primary key (workspace_id, user_id);
-alter table only invitations       add constraint invitations_pkey       primary key (id);
 
 create unique index users_email_lower_key on users using btree (lower(email));
-create unique index workspaces_slug_key   on workspaces using btree (slug);
 
--- One live invitation per address per workspace.
-create unique index invitations_pending_key on invitations using btree (workspace_id, lower(email)) where (accepted_at is null);
+-- Postgres treats nulls as distinct here, so every unnamed workspace coexists.
+create unique index workspaces_subdomain_key on workspaces using btree (subdomain);
 
 
 -- ── Foreign keys ─────────────────────────────────────────────────────────────
 
 alter table only workspaces
-    add constraint workspaces_created_by_fkey foreign key (created_by) references users(id) on delete set null;
+    add constraint workspaces_owner_id_fkey foreign key (owner_id) references users(id) on delete restrict;
 
 alter table only workspace_members
     add constraint workspace_members_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade;
@@ -118,19 +113,11 @@ alter table only workspace_members
 alter table only workspace_members
     add constraint workspace_members_user_id_fkey foreign key (user_id) references users(id) on delete cascade;
 
-alter table only invitations
-    add constraint invitations_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade;
-
-alter table only invitations
-    add constraint invitations_invited_by_fkey foreign key (invited_by) references users(id) on delete set null;
-
 
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 
 -- Every policy evaluation walks this.
 create index workspace_members_user_id_idx on workspace_members using btree (user_id);
-
-create index invitations_email_idx on invitations using btree (lower(email));
 
 
 -- ── Request identity ─────────────────────────────────────────────────────────
@@ -141,10 +128,6 @@ create index invitations_email_idx on invitations using btree (lower(email));
 create function public.app_user_id() returns uuid
     language sql stable
     as $$ select current_setting('app.user_id')::uuid $$;
-
-create function public.app_user_email() returns text
-    language sql stable
-    as $$ select current_setting('app.user_email') $$;
 
 -- SECURITY DEFINER: runs as portal_service, which owns these tables and is
 -- therefore not subject to their policies. Without it the workspaces policy
@@ -157,15 +140,6 @@ create function public.my_workspace_ids() returns setof uuid
         select workspace_id
         from public.workspace_members
         where user_id = public.app_user_id()
-    $$;
-
-create function public.my_admin_workspace_ids() returns setof uuid
-    language sql stable security definer set search_path = ''
-    as $$
-        select workspace_id
-        from public.workspace_members
-        where user_id = public.app_user_id()
-          and role in ('owner', 'admin')
     $$;
 
 -- Everyone sharing a workspace with the caller, the caller included.
@@ -195,7 +169,6 @@ create function public.my_peer_ids() returns setof uuid
 alter table users             enable row level security;
 alter table workspaces        enable row level security;
 alter table workspace_members enable row level security;
-alter table invitations       enable row level security;
 
 create policy users_read on users
     for select using (id in (select public.my_peer_ids()));
@@ -207,49 +180,42 @@ create policy users_write_self on users
 create policy workspaces_read on workspaces
     for select using (id in (select public.my_workspace_ids()));
 
+-- Renaming, the subdomain, the plan, destruction: account-level questions, so
+-- the account owner answers them. The workspace's own role has no say here, and
+-- the index carries none to consult.
 create policy workspaces_write on workspaces
-    for update using (id in (select public.my_admin_workspace_ids()))
-             with check (id in (select public.my_admin_workspace_ids()));
+    for update using (owner_id = public.app_user_id())
+             with check (owner_id = public.app_user_id());
+
+-- Deleting the row is the owner's, and the policy says so. Tearing down the
+-- machine and database behind it runs on the fleet credential, which no policy
+-- here can reach — which is why the guard settles ownership before any of it.
+create policy workspaces_delete on workspaces
+    for delete using (owner_id = public.app_user_id());
 
 create policy members_read on workspace_members
     for select using (workspace_id in (select public.my_workspace_ids()));
 
-create policy members_write on workspace_members
-    for all using (workspace_id in (select public.my_admin_workspace_ids()))
-            with check (workspace_id in (select public.my_admin_workspace_ids()));
-
-create policy invitations_read on invitations
-    for select using (
-        workspace_id in (select public.my_admin_workspace_ids())
-        or lower(email) = lower(public.app_user_email())
-    );
-
-create policy invitations_write on invitations
-    for all using (workspace_id in (select public.my_admin_workspace_ids()))
-            with check (workspace_id in (select public.my_admin_workspace_ids()));
+-- No write policy: the index is maintained by provisioning and the reconciler,
+-- both of which run as portal_service.
 
 
 -- ── Grants ───────────────────────────────────────────────────────────────────
 --
 -- RLS decides which rows. Column grants decide which fields — a user may rename
--- themselves but not rewrite the email the issuer gave them, and an admin may
--- rename a workspace but not change its slug, plan or status.
+-- themselves but not rewrite the email the issuer gave them, and an owner may
+-- rename a workspace and set its subdomain, but not change its plan or status.
 
 grant usage on schema public to portal_app;
 
 grant select on users to portal_app;
 grant update (display_name, avatar_url) on users to portal_app;
 
-grant select on workspaces to portal_app;
-grant update (display_name) on workspaces to portal_app;
+grant select, delete on workspaces to portal_app;
+grant update (display_name, subdomain) on workspaces to portal_app;
 
-grant select, delete on workspace_members to portal_app;
-grant insert (workspace_id, user_id, role) on workspace_members to portal_app;
-grant update (role) on workspace_members to portal_app;
-
-grant select, delete on invitations to portal_app;
-grant insert (workspace_id, email, role, token_hash, invited_by, expires_at) on invitations to portal_app;
-grant update (accepted_at) on invitations to portal_app;
+-- Read only: nothing user-facing writes the index.
+grant select on workspace_members to portal_app;
 
 
 -- ── Triggers ─────────────────────────────────────────────────────────────────
@@ -263,6 +229,5 @@ begin
 end;
 $$;
 
-create trigger users_set_updated_at             before update on users             for each row execute function set_updated_at();
-create trigger workspaces_set_updated_at        before update on workspaces        for each row execute function set_updated_at();
-create trigger workspace_members_set_updated_at before update on workspace_members for each row execute function set_updated_at();
+create trigger users_set_updated_at      before update on users      for each row execute function set_updated_at();
+create trigger workspaces_set_updated_at before update on workspaces for each row execute function set_updated_at();

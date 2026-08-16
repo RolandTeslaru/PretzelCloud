@@ -9,12 +9,12 @@ export namespace Hostname {
     export type  Kind = z.infer<typeof Kind>
 
     export const Schema = z.object({
-        host:         z.string(),
-        workspace_id: WorkspaceId,
-        kind:         Kind,
-        created_at:   z.coerce.date(),
+        host:        z.string(),
+        workspaceId: WorkspaceId,
+        kind:        Kind,
+        createdAt:   z.coerce.date(),
     })
 
-    export const build = (slug: string, kind: Kind, domain: string) => `${slug}.${kind}.${domain}`
+    export const build = (subdomain: string, kind: Kind, domain: string) => `${subdomain}.${kind}.${domain}`
 }
 export type Hostname = z.infer<typeof Hostname.Schema>

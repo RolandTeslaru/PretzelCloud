@@ -6,13 +6,13 @@ import { WorkspaceId } from "../Workspace/ids"
 export namespace WorkspaceRuntime {
 
     export const Schema = z.object({
-        workspace_id:     WorkspaceId,
-        has_publications: z.boolean(),
-        reported_at:      z.coerce.date().nullable(),
+        workspaceId:     WorkspaceId,
+        hasPublications: z.boolean(),
+        reportedAt:      z.coerce.date().nullable(),
     })
 
     export const Report = z.object({
-        has_publications: z.boolean(),
+        hasPublications: z.boolean(),
     })
     export type Report = z.infer<typeof Report>
 }

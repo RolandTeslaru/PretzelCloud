@@ -6,14 +6,14 @@ import { WorkspaceId } from "../Workspace/ids"
 export namespace WorkspaceSecrets {
 
     export const Schema = z.object({
-        workspace_id:      WorkspaceId,
-        database_url:      z.string(),
+        workspaceId:     WorkspaceId,
+        databaseUrl:     z.string(),
         // Written into every blob the workspace encrypts, so a rotation can tell
         // which key produced which ciphertext.
-        encryption_key_id: z.string(),
-        encryption_key:    z.string(),
-        created_at:        z.coerce.date(),
-        updated_at:        z.coerce.date(),
+        encryptionKeyId: z.string(),
+        encryptionKey:   z.string(),
+        createdAt:       z.coerce.date(),
+        updatedAt:       z.coerce.date(),
     })
 
     // Exactly what a machine receives as its environment. The only shape these

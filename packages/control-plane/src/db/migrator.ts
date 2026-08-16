@@ -51,4 +51,4 @@ export async function migrateToLatest<T>(name: string, db: Kysely<T>, folder: st
 }
 
 export const migrationsDir = (database: 'portal' | 'fleet') =>
-    path.resolve(import.meta.dirname, '../../migrations', database);
+    path.resolve(__dirname, '../../migrations', database);

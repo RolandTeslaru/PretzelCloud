@@ -88,10 +88,13 @@ alter table only machines          add constraint machines_pkey          primary
 alter table only hostnames         add constraint hostnames_pkey         primary key (host);
 alter table only workspace_runtime add constraint workspace_runtime_pkey primary key (workspace_id);
 
--- A workspace has one machine per role, and one hostname per kind. A re-run
--- collides here instead of creating a second machine nobody is tracking.
-create unique index machines_workspace_role_key  on machines  using btree (workspace_id, role);
-create unique index hostnames_workspace_kind_key on hostnames using btree (workspace_id, kind);
+-- A workspace has one machine per role. A re-run collides here instead of
+-- creating a second machine nobody is tracking.
+create unique index machines_workspace_role_key on machines using btree (workspace_id, role);
+
+-- No uniqueness on (workspace_id, kind): a workspace answers at its canonical
+-- host and, on paid plans, an additional custom one. A host still resolves to
+-- exactly one workspace — that is the primary key.
 
 create unique index machines_driver_external_key on machines using btree (driver, external_id);
 

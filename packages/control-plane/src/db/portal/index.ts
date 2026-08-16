@@ -2,9 +2,8 @@ import { z } from 'zod';
 import { Kysely, PostgresDialect, sql, Transaction as KyselyTransaction } from 'kysely';
 import { Pool } from 'pg';
 import {
-    User        as UserD,
-    Workspace   as WorkspaceD,
-    Invitation  as InvitationD,
+    User      as UserD,
+    Workspace as WorkspaceD,
 } from '@pretzel-cloud/shared/domain';
 import { Table, Stamps, requireEnv } from '../table';
 
@@ -29,61 +28,60 @@ export namespace PortalDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => UserD.Schema.parse(row);
+        export const toDomain = (row: Row) => UserD.Schema.parse({
+            id:          row.id,
+            email:       row.email,
+            displayName: row.display_name,
+            avatarUrl:   row.avatar_url,
+            createdAt:   row.created_at,
+            updatedAt:   row.updated_at,
+        });
     }
 
     export namespace Workspace {
         export const Row = z.object({
             id:           WorkspaceD.Id,
-            slug:         z.string(),
+            subdomain:    z.string().nullable(),
             display_name: z.string(),
             status:       WorkspaceD.Status,
             plan:         WorkspaceD.Plan,
-            created_by:   UserD.Id.nullable(),
+            owner_id:     UserD.Id,
             created_at:   z.coerce.date(),
             updated_at:   z.coerce.date(),
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => WorkspaceD.Schema.parse(row);
+        export const toDomain = (row: Row) => WorkspaceD.Schema.parse({
+            id:          row.id,
+            subdomain:   row.subdomain,
+            displayName: row.display_name,
+            status:      row.status,
+            plan:        row.plan,
+            ownerId:     row.owner_id,
+            createdAt:   row.created_at,
+            updatedAt:   row.updated_at,
+        });
+
+        /** A workspace plus whether the caller owns it. */
+        export const toCard = (row: Row, userId: UserD.Id) =>
+            WorkspaceD.Card.parse({ ...toDomain(row), isOwner: row.owner_id === userId });
     }
 
+    // The access index. No role, and no toDomain — there is no domain entity
+    // here, only a fact about who may enter.
     export namespace Member {
         export const Row = z.object({
             workspace_id: WorkspaceD.Id,
             user_id:      UserD.Id,
-            role:         WorkspaceD.Role,
-            created_at:   z.coerce.date(),
-            updated_at:   z.coerce.date(),
-        });
-        export type Row = z.infer<typeof Row>;
-
-        export const toDomain = (row: Row) => WorkspaceD.Member.Schema.parse(row);
-    }
-
-    export namespace Invitation {
-        export const Row = z.object({
-            id:           InvitationD.Id,
-            workspace_id: WorkspaceD.Id,
-            email:        z.string(),
-            role:         InvitationD.InviteRole,
-            // Never leaves this layer.
-            token_hash:   z.string(),
-            invited_by:   UserD.Id.nullable(),
-            expires_at:   z.coerce.date(),
-            accepted_at:  z.coerce.date().nullable(),
             created_at:   z.coerce.date(),
         });
         export type Row = z.infer<typeof Row>;
-
-        export const toDomain = (row: Row) => InvitationD.Schema.parse(row);
     }
 
     export interface Tables {
         users:             Table<typeof User.Row, Stamps>;
         workspaces:        Table<typeof Workspace.Row, Stamps>;
-        workspace_members: Table<typeof Member.Row, Stamps>;
-        invitations:       Table<typeof Invitation.Row, 'id' | 'created_at'>;
+        workspace_members: Table<typeof Member.Row, 'created_at'>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {
@@ -125,7 +123,7 @@ export namespace PortalDB {
     export const roleOf = (handle: unknown): Role | undefined =>
         (handle as Record<symbol, Role> | null | undefined)?.[ROLE];
 
-    type ActingUser = { userId: UserD.Id, email: string };
+    type ActingUser = { userId: UserD.Id };
 
     /**
      * Runs `fn` as `principal`. Postgres never sees the token, so the identity
@@ -137,8 +135,7 @@ export namespace PortalDB {
         fn: (trx: UserTransaction) => Promise<T>,
     ): Promise<T> {
         return app().transaction().execute(async (trx) => {
-            await sql`select set_config('app.user_id',    ${principal.userId}, true)`.execute(trx);
-            await sql`select set_config('app.user_email', ${principal.email},  true)`.execute(trx);
+            await sql`select set_config('app.user_id', ${principal.userId}, true)`.execute(trx);
 
             return fn(tag(trx, Role.User));
         });

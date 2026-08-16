@@ -20,18 +20,18 @@ export namespace Machine {
     export type  State = z.infer<typeof State>
 
     export const Schema = z.object({
-        id:           Id,
-        workspace_id: WorkspaceId,
-        driver:       Driver,
+        id:          Id,
+        workspaceId: WorkspaceId,
+        driver:      Driver,
         // The driver's own handle: a Fly machine id, or a Docker container id.
-        external_id:  z.string(),
-        role:         Role,
-        size:         z.string(),
-        state:        State,
-        last_boot_at: z.coerce.date().nullable(),
-        last_seen_at: z.coerce.date().nullable(),
-        created_at:   z.coerce.date(),
-        updated_at:   z.coerce.date(),
+        externalId:  z.string(),
+        role:        Role,
+        size:        z.string(),
+        state:       State,
+        lastBootAt:  z.coerce.date().nullable(),
+        lastSeenAt:  z.coerce.date().nullable(),
+        createdAt:   z.coerce.date(),
+        updatedAt:   z.coerce.date(),
     })
 }
 export type Machine = z.infer<typeof Machine.Schema>
