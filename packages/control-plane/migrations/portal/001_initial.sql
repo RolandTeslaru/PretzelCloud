@@ -1,40 +1,42 @@
--- 001_initial — the control-plane schema.
+-- 001_initial — the portal database.
 --
 -- Living document until launch: schema changes are edits to this file, not new
 -- numbered migrations. Append-only discipline begins the day a database exists
 -- that cannot be dropped.
 --
--- Two zones, and the boundary between them is a grant, not a filter:
+-- This database holds desired state — which workspaces should exist, and who
+-- may reach them. What has actually been materialized lives in the fleet
+-- database, on its own credential. Nothing here references it.
 --
---   public  user-facing. One shared database serving every user, so reads are
---           scoped by RLS on membership.  `cloud_app` reaches it.
---   fleet   workspace connection strings, encryption keys, machine internals.
---           `cloud_app` has no USAGE here, so it is unreachable rather than
---           filtered — a stronger guarantee than any policy.
+-- One shared database serving every user, so reads are scoped by RLS on
+-- membership. Two roles, created by the bootstrap script (they carry passwords,
+-- and a migration is not the place for those):
 --
--- Roles are created by the bootstrap script, not by this file: they carry
--- passwords, and a migration is not a place for those.
+--   portal_service  owns every object. RLS does not apply to an object's owner
+--                   unless FORCE is set, and it deliberately is not — this is
+--                   how provisioning writes membership rows, and how the
+--                   SECURITY DEFINER helpers below escape recursion.
+--   portal_app      owns nothing. Every statement it makes passes a policy.
 --
---   cloud_service  owns every object here. RLS does not apply to an object's
---                  owner unless FORCE is set, and it deliberately is not — this
---                  is how provisioning writes membership rows and how the
---                  SECURITY DEFINER helpers below escape recursion.
---   cloud_app      owns nothing. Every read it makes passes through a policy.
+-- Migrations run on the portal_service connection.
 --
--- Migrations run on the cloud_service connection.
+-- Postgres grants CONNECT on every database to PUBLIC, so the first act is to
+-- take it back: without this, any role in the cluster — including fleet_service
+-- — can open a session here and is stopped only by table grants.
+do $$
+begin
+    execute format('revoke connect on database %I from public', current_database());
+    execute format('grant connect on database %I to portal_app', current_database());
+end
+$$;
 --
 -- Ownership of a workspace is a `workspace_members` row with role 'owner'.
 -- There is no owner column: a second authority source is a second thing to keep
 -- in sync, and the two only ever disagree at the worst moment. `created_by` is
 -- attribution, nullable, and never read by a policy.
 
-create schema fleet;
-
-
--- ── public — user-facing ─────────────────────────────────────────────────────
-
--- One row per subject of the fleet issuer. Identity lives at the issuer; this is
--- the profile the portal renders.
+-- One row per subject of the fleet issuer. Identity lives at the issuer; this
+-- is the profile the portal renders.
 create table users (
     id           uuid not null,
     email        text not null,
@@ -44,8 +46,11 @@ create table users (
     updated_at   timestamp with time zone default now() not null
 );
 
+-- `status` is the provisioning lifecycle. A workspace that never reaches 'ready'
+-- is torn down and its row deleted, so the user simply retries; 'failed' is set
+-- only when teardown itself failed and the reconciler still has work to do.
 create table workspaces (
-    id           uuid default gen_random_uuid() not null,
+    id           uuid not null,
     slug         text not null,
     display_name text not null,
     status       text default 'provisioning' not null,
@@ -54,13 +59,13 @@ create table workspaces (
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null,
 
-    constraint workspaces_status_check check (status in ('provisioning', 'ready', 'suspended', 'destroyed')),
+    constraint workspaces_status_check check (status in ('provisioning', 'ready', 'suspended', 'failed')),
     constraint workspaces_plan_check   check (plan in ('free', 'pro'))
 );
 
 -- The user x workspace access index. The workspace's own database holds a
--- `members` table saying the same thing; these two are separate databases and
--- can drift, which the invitation flow has to reconcile.
+-- `members` table saying the same thing; those are separate databases and can
+-- drift, which the invitation flow has to reconcile.
 create table workspace_members (
     workspace_id uuid not null,
     user_id      uuid not null,
@@ -88,65 +93,12 @@ create table invitations (
 );
 
 
--- ── fleet — service-only ─────────────────────────────────────────────────────
-
--- Plaintext today; the key material wants envelope encryption before this holds
--- anything real.
-create table fleet.workspace_secrets (
-    workspace_id       uuid not null,
-    database_url       text not null,
-    encryption_key_id  text not null,
-    encryption_key     text not null,
-    created_at         timestamp with time zone default now() not null,
-    updated_at         timestamp with time zone default now() not null
-);
-
-create table fleet.machines (
-    id            uuid default gen_random_uuid() not null,
-    workspace_id  uuid not null,
-    driver        text not null,
-    external_id   text not null,
-    role          text not null,
-    size          text not null,
-    state         text default 'creating' not null,
-    last_boot_at  timestamp with time zone,
-    last_seen_at  timestamp with time zone,
-    created_at    timestamp with time zone default now() not null,
-    updated_at    timestamp with time zone default now() not null,
-
-    constraint machines_driver_check check (driver in ('docker', 'fly')),
-    constraint machines_role_check   check (role in ('backend', 'worker', 'combined')),
-    constraint machines_state_check  check (state in ('creating', 'started', 'stopped', 'destroyed'))
-);
-
-create table fleet.hostnames (
-    host         text not null,
-    workspace_id uuid not null,
-    kind         text not null,
-    created_at   timestamp with time zone default now() not null,
-
-    constraint hostnames_kind_check check (kind in ('app', 'hooks'))
-);
-
--- What the router needs beyond machine state, reported by the workspace itself.
-create table fleet.workspace_runtime (
-    workspace_id     uuid not null,
-    has_publications boolean default false not null,
-    reported_at      timestamp with time zone
-);
-
-
 -- ── Primary keys and unique constraints ──────────────────────────────────────
 
-alter table only users                  add constraint users_pkey                  primary key (id);
-alter table only workspaces             add constraint workspaces_pkey             primary key (id);
-alter table only workspace_members      add constraint workspace_members_pkey      primary key (workspace_id, user_id);
-alter table only invitations            add constraint invitations_pkey            primary key (id);
-
-alter table only fleet.workspace_secrets add constraint workspace_secrets_pkey     primary key (workspace_id);
-alter table only fleet.machines          add constraint machines_pkey              primary key (id);
-alter table only fleet.hostnames         add constraint hostnames_pkey             primary key (host);
-alter table only fleet.workspace_runtime add constraint workspace_runtime_pkey     primary key (workspace_id);
+alter table only users             add constraint users_pkey             primary key (id);
+alter table only workspaces        add constraint workspaces_pkey        primary key (id);
+alter table only workspace_members add constraint workspace_members_pkey primary key (workspace_id, user_id);
+alter table only invitations       add constraint invitations_pkey       primary key (id);
 
 create unique index users_email_lower_key on users using btree (lower(email));
 create unique index workspaces_slug_key   on workspaces using btree (slug);
@@ -172,18 +124,6 @@ alter table only invitations
 alter table only invitations
     add constraint invitations_invited_by_fkey foreign key (invited_by) references users(id) on delete set null;
 
-alter table only fleet.workspace_secrets
-    add constraint workspace_secrets_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade;
-
-alter table only fleet.machines
-    add constraint machines_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade;
-
-alter table only fleet.hostnames
-    add constraint hostnames_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade;
-
-alter table only fleet.workspace_runtime
-    add constraint workspace_runtime_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade;
-
 
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 
@@ -191,15 +131,13 @@ alter table only fleet.workspace_runtime
 create index workspace_members_user_id_idx on workspace_members using btree (user_id);
 
 create index invitations_email_idx on invitations using btree (lower(email));
-create index machines_workspace_id_idx on fleet.machines using btree (workspace_id);
-create index hostnames_workspace_id_idx on fleet.hostnames using btree (workspace_id);
 
 
 -- ── Request identity ─────────────────────────────────────────────────────────
 
 -- Postgres never sees the token; the transaction sets these before its first
--- statement. Unset raises rather than returning null, so an unscoped query
--- fails instead of leaking.
+-- statement. Unset raises rather than returning null, so an unscoped query fails
+-- instead of leaking.
 create function public.app_user_id() returns uuid
     language sql stable
     as $$ select current_setting('app.user_id')::uuid $$;
@@ -208,8 +146,8 @@ create function public.app_user_email() returns text
     language sql stable
     as $$ select current_setting('app.user_email') $$;
 
--- SECURITY DEFINER: runs as cloud_service, which owns these tables and is
--- therefore not subject to their policies. Without it, the workspaces policy
+-- SECURITY DEFINER: runs as portal_service, which owns these tables and is
+-- therefore not subject to their policies. Without it the workspaces policy
 -- would read workspace_members, whose own policy reads workspaces, forever.
 -- Empty search_path — a definer function that resolves names through the
 -- caller's path is a privilege-escalation hole.
@@ -248,11 +186,11 @@ create function public.my_peer_ids() returns setof uuid
 
 -- ── Row level security ───────────────────────────────────────────────────────
 --
--- Not forced: cloud_service owns these tables and provisioning writes through
--- it. cloud_app owns nothing, so every one of its statements is filtered.
+-- Not forced: portal_service owns these tables and provisioning writes through
+-- it. portal_app owns nothing, so every one of its statements is filtered.
 --
 -- Creating and destroying workspaces is provisioning work and has no policy at
--- all — cloud_app cannot insert into `workspaces` by any route.
+-- all — portal_app cannot insert into `workspaces` by any route.
 
 alter table users             enable row level security;
 alter table workspaces        enable row level security;
@@ -297,24 +235,21 @@ create policy invitations_write on invitations
 -- themselves but not rewrite the email the issuer gave them, and an admin may
 -- rename a workspace but not change its slug, plan or status.
 
-revoke all on schema fleet from public;
-grant usage on schema fleet to cloud_service;
+grant usage on schema public to portal_app;
 
-grant usage on schema public to cloud_app;
+grant select on users to portal_app;
+grant update (display_name, avatar_url) on users to portal_app;
 
-grant select on users to cloud_app;
-grant update (display_name, avatar_url) on users to cloud_app;
+grant select on workspaces to portal_app;
+grant update (display_name) on workspaces to portal_app;
 
-grant select on workspaces to cloud_app;
-grant update (display_name) on workspaces to cloud_app;
+grant select, delete on workspace_members to portal_app;
+grant insert (workspace_id, user_id, role) on workspace_members to portal_app;
+grant update (role) on workspace_members to portal_app;
 
-grant select, delete on workspace_members to cloud_app;
-grant insert (workspace_id, user_id, role) on workspace_members to cloud_app;
-grant update (role) on workspace_members to cloud_app;
-
-grant select, delete on invitations to cloud_app;
-grant insert (workspace_id, email, role, token_hash, invited_by, expires_at) on invitations to cloud_app;
-grant update (accepted_at) on invitations to cloud_app;
+grant select, delete on invitations to portal_app;
+grant insert (workspace_id, email, role, token_hash, invited_by, expires_at) on invitations to portal_app;
+grant update (accepted_at) on invitations to portal_app;
 
 
 -- ── Triggers ─────────────────────────────────────────────────────────────────
@@ -328,8 +263,6 @@ begin
 end;
 $$;
 
-create trigger users_set_updated_at             before update on users                    for each row execute function set_updated_at();
-create trigger workspaces_set_updated_at        before update on workspaces               for each row execute function set_updated_at();
-create trigger workspace_members_set_updated_at before update on workspace_members        for each row execute function set_updated_at();
-create trigger workspace_secrets_set_updated_at before update on fleet.workspace_secrets  for each row execute function set_updated_at();
-create trigger machines_set_updated_at          before update on fleet.machines           for each row execute function set_updated_at();
+create trigger users_set_updated_at             before update on users             for each row execute function set_updated_at();
+create trigger workspaces_set_updated_at        before update on workspaces        for each row execute function set_updated_at();
+create trigger workspace_members_set_updated_at before update on workspace_members for each row execute function set_updated_at();

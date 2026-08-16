@@ -1,0 +1,19 @@
+import { z } from "zod"
+import { WorkspaceId } from "../Workspace/ids"
+
+// Reported upward by the workspace itself. The router reads it to decide
+// whether an inbound webhook is worth waking a stopped machine for.
+export namespace WorkspaceRuntime {
+
+    export const Schema = z.object({
+        workspace_id:     WorkspaceId,
+        has_publications: z.boolean(),
+        reported_at:      z.coerce.date().nullable(),
+    })
+
+    export const Report = z.object({
+        has_publications: z.boolean(),
+    })
+    export type Report = z.infer<typeof Report>
+}
+export type WorkspaceRuntime = z.infer<typeof WorkspaceRuntime.Schema>

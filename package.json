@@ -1,0 +1,18 @@
+{
+    "name": "pretzel-cloud",
+    "version": "0.0.1",
+    "private": true,
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "migrate": "npm run migrate --workspace=packages/control-plane",
+        "typecheck": "tsc -b packages/shared packages/control-plane"
+    },
+    "devDependencies": {
+        "@types/node": "^25.2.0",
+        "concurrently": "^9.2.1",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3"
+    }
+}
