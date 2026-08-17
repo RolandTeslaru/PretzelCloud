@@ -4,7 +4,6 @@ import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { FleetDB } from '@/db/fleet';
 import { MachineDriver } from './drivers/driver';
 import { DockerDriver } from './drivers/docker.driver';
-import { requireEnv } from '@/db/table';
 
 /**
  * The only door to the fleet database and the driver. Nothing else imports
@@ -18,12 +17,8 @@ export class FleetService {
 
     constructor(private readonly driver: MachineDriver) {}
 
-    machineName(workspaceId: Workspace.Id, role: Fleet.Machine.Role): string {
-        return `wspace-${workspaceId}-${role}`;
-    }
-
     /** Idempotent: an existing row keeps its key, so re-runs cannot strand ciphertext. */
-    async ensureSecrets(workspaceId: Workspace.Id, databaseUrl: string): Promise<void> {
+    async ensureSecrets(workspaceId: Workspace.Id, databaseUrl: Fleet.Cluster.Database.ConnectionURL): Promise<void> {
         await FleetDB.asService('write workspace secrets', async (db) => {
             const existing = await db
                 .selectFrom('workspace_secrets')
@@ -74,11 +69,9 @@ export class FleetService {
         role: Fleet.Machine.Role,
         options: { image: string, size: string, env: Record<string, string> },
     ): Promise<void> {
-        const name = this.machineName(workspaceId, role);
-
         const handle = await this.driver.create({
             workspaceId,
-            name,
+            name: Fleet.Machine.Name.create(workspaceId, role),
             role,
             image: options.image,
             size:  options.size,
@@ -107,18 +100,11 @@ export class FleetService {
         );
     }
 
-    private hostsFor(subdomain: Workspace.Subdomain): { host: string, kind: Fleet.Hostname.Kind }[] {
-        const domain = requireEnv('FLEET_DOMAIN');
-
-        return (['app', 'hooks'] as const).map((kind) => ({
-            host: Fleet.Hostname.build(subdomain, kind, domain),
-            kind,
-        }));
-    }
-
     /** The pair every workspace answers at, derived from its id. Never removed. */
     async registerCanonicalHostnames(workspaceId: Workspace.Id): Promise<void> {
-        await this.register(workspaceId, this.hostsFor(Workspace.Subdomain.canonical(workspaceId)));
+        const canonical = Workspace.Subdomain.canonical(workspaceId);
+
+        await this.register(workspaceId, Fleet.Hostname.Host.createAll(canonical));
     }
 
     /**
@@ -128,7 +114,7 @@ export class FleetService {
      */
     async setCustomHostnames(workspaceId: Workspace.Id, subdomain: Workspace.Subdomain | null): Promise<void> {
         const canonical = Workspace.Subdomain.canonical(workspaceId);
-        const keep = this.hostsFor(canonical).map((entry) => entry.host);
+        const keep = Fleet.Hostname.Host.createAll(canonical).map((entry) => entry.host);
 
         await FleetDB.asService('clear custom hostnames', (db) =>
             db
@@ -139,10 +125,10 @@ export class FleetService {
         );
 
         if (subdomain)
-            await this.register(workspaceId, this.hostsFor(subdomain));
+            await this.register(workspaceId, Fleet.Hostname.Host.createAll(subdomain));
     }
 
-    private async register(workspaceId: Workspace.Id, entries: { host: string, kind: Fleet.Hostname.Kind }[]): Promise<void> {
+    private async register(workspaceId: Workspace.Id, entries: { host: Fleet.Hostname.Host, kind: Fleet.Hostname.Kind }[]): Promise<void> {
         await FleetDB.asService('register hostnames', (db) =>
             db
                 .insertInto('hostnames')

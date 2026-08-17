@@ -3,7 +3,7 @@ import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 export type CreateOptions = {
     workspaceId: Workspace.Id;
     /** Deterministic, derived from the workspace id, so a re-run finds this one. */
-    name:        string;
+    name:        Fleet.Machine.Name;
     image:       string;
     role:        Fleet.Machine.Role;
     size:        string;
@@ -11,7 +11,7 @@ export type CreateOptions = {
 };
 
 export type MachineHandle = {
-    externalId: string;
+    externalId: Fleet.Machine.ExternalId;
     state:      Fleet.Machine.State;
 };
 
@@ -26,14 +26,14 @@ export abstract class MachineDriver {
     /** Idempotent: returns the existing machine if `name` already exists. */
     abstract create(options: CreateOptions): Promise<MachineHandle>;
 
-    abstract start(externalId: string): Promise<void>;
+    abstract start(externalId: Fleet.Machine.ExternalId): Promise<void>;
 
-    abstract stop(externalId: string): Promise<void>;
+    abstract stop(externalId: Fleet.Machine.ExternalId): Promise<void>;
 
     /** Idempotent: succeeds when the machine is already gone. */
-    abstract destroy(externalId: string): Promise<void>;
+    abstract destroy(externalId: Fleet.Machine.ExternalId): Promise<void>;
 
-    abstract status(externalId: string): Promise<Fleet.Machine.State>;
+    abstract status(externalId: Fleet.Machine.ExternalId): Promise<Fleet.Machine.State>;
 
     /** Everything this driver holds for a workspace, however it was labelled. */
     abstract findByWorkspace(workspaceId: Workspace.Id): Promise<MachineHandle[]>;

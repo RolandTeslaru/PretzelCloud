@@ -48,6 +48,7 @@ export namespace FleetDB {
     export namespace WorkspaceSecrets {
         export const Row = z.object({
             workspace_id:   WorkspaceD.Id,
+            // text in the column; the brand is applied at the seam below.
             database_url:   z.string(),
             encryption_key: z.string(),
             created_at:     z.coerce.date(),

@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { WorkspaceId } from "../Workspace/ids"
+import { Cluster } from "./cluster"
 
 // Read by one caller — the provisioner, handing these to a machine. Never
 // returned to a controller, never logged, never widened into a DTO.
@@ -7,7 +8,7 @@ export namespace WorkspaceSecrets {
 
     export const Schema = z.object({
         workspaceId:   WorkspaceId,
-        databaseUrl:   z.string(),
+        databaseUrl:   Cluster.Database.ConnectionURL,
         encryptionKey: z.string(),
         createdAt:     z.coerce.date(),
         updatedAt:     z.coerce.date(),
@@ -16,7 +17,7 @@ export namespace WorkspaceSecrets {
     // Exactly what a machine receives as its environment. The only shape these
     // values are allowed to leave the provisioner in.
     export const MachineEnv = z.object({
-        DATABASE_URL:           z.string(),
+        DATABASE_URL:           Cluster.Database.ConnectionURL,
         // The workspace derives the key's id from the key itself.
         PRETZEL_ENCRYPTION_KEY: z.string(),
         WORKSPACE_ID:           WorkspaceId,

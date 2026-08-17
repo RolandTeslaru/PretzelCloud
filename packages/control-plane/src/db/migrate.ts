@@ -1,3 +1,6 @@
+// Must stay first: these modules read env at import time.
+import '../load-env';
+
 import { PortalDB } from './portal';
 import { FleetDB } from './fleet';
 import { migrateToLatest, migrationsDir } from './migrator';

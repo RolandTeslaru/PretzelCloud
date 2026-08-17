@@ -1,27 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Client } from 'pg';
-import { randomBytes } from 'node:crypto';
-import { Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
 
+const Cluster = Fleet.Cluster;
+
+export type DatabaseSpec = {
+    databaseName: Fleet.Cluster.Database.Name;
+    roleName:     Fleet.Cluster.Role.Name;
+};
+
 /**
- * The Postgres cluster workspace databases live in.
+ * A Postgres cluster: creates a database with a single role that may reach it,
+ * and drops them again.
  *
- * Isolation is the connection string: each workspace gets its own database and
- * its own role, and CONNECT is taken back from PUBLIC so no other role in the
- * cluster can open a session against it.
+ * Deliberately ignorant of workspaces — it is handed names and does not ask
+ * where they came from. What isolation *means* is here: CONNECT is taken back
+ * from PUBLIC and granted to one role, so a leaked connection URL opens exactly
+ * one database.
  */
 @Injectable()
 export class ClusterService {
 
     private readonly logger = new Logger(ClusterService.name);
-
-    /** Underscores, not hyphens: a uuid's dashes are not legal in an unquoted identifier. */
-    private names(workspaceId: Workspace.Id) {
-        const suffix = workspaceId.replace(/-/g, '');
-
-        return { databaseName: `wspace_${suffix}`, roleName: `wspace_role_${suffix}` };
-    }
 
     private async admin<T>(fn: (client: Client) => Promise<T>): Promise<T> {
         const client = new Client({
@@ -39,12 +40,11 @@ export class ClusterService {
     }
 
     /**
-     * Idempotent. A re-run against a half-provisioned workspace resets the
-     * password and returns a usable connection string rather than failing.
+     * Idempotent. A re-run against a half-created pair resets the password and
+     * returns a usable connection URL rather than failing.
      */
-    async createDatabase(workspaceId: Workspace.Id): Promise<string> {
-        const { databaseName, roleName } = this.names(workspaceId);
-        const password = randomBytes(24).toString('base64url');
+    async createDatabase({ databaseName, roleName }: DatabaseSpec): Promise<Fleet.Cluster.Database.ConnectionURL> {
+        const password = Cluster.Role.Password.create();
 
         await this.admin(async (client) => {
             const roleExists = await client.query('select 1 from pg_roles where rolname = $1', [roleName]);
@@ -69,15 +69,16 @@ export class ClusterService {
 
         this.logger.log(`Provisioned database ${databaseName}`);
 
-        const admin = new URL(requireEnv('CLUSTER_ADMIN_DATABASE_URL'));
-
-        return `postgres://${roleName}:${password}@${admin.host}/${databaseName}`;
+        return Cluster.Database.createConnectionURL({
+            roleName,
+            password,
+            host: this.clientHost(),
+            databaseName,
+        });
     }
 
     /** Idempotent. Open sessions are closed first — CONNECT is checked at connect time only. */
-    async dropDatabase(workspaceId: Workspace.Id): Promise<void> {
-        const { databaseName, roleName } = this.names(workspaceId);
-
+    async dropDatabase({ databaseName, roleName }: DatabaseSpec): Promise<void> {
         await this.admin(async (client) => {
             await client.query(
                 'select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()',
@@ -89,5 +90,13 @@ export class ClusterService {
         });
 
         this.logger.log(`Dropped database ${databaseName}`);
+    }
+
+    /**
+     * Where clients reach the cluster, which is not where the control plane
+     * reaches it: `localhost` from inside a container is the container.
+     */
+    private clientHost(): string {
+        return process.env.CLUSTER_CLIENT_HOST ?? new URL(requireEnv('CLUSTER_ADMIN_DATABASE_URL')).host;
     }
 }

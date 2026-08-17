@@ -1,6 +1,8 @@
 import { z } from "zod"
 import { User } from "../User"
+import { Cluster } from "../Fleet/cluster"
 import { WorkspaceId, createId as createWorkspaceId } from "./ids"
+import * as SubdomainMod from "./subdomain"
 
 // A workspace as the portal knows it: desired state. What has been materialized
 // for it lives in Fleet, on another credential.
@@ -9,6 +11,8 @@ export namespace Workspace {
     export const Id = WorkspaceId
     export type  Id = WorkspaceId
     export const createId = createWorkspaceId
+
+    export import Subdomain = SubdomainMod.Subdomain
 
     // 'failed' is not a state the user sees. A workspace that cannot be
     // provisioned is torn down and its row deleted, so they simply retry; the
@@ -20,43 +24,22 @@ export namespace Workspace {
     export const Plan = z.enum(["free", "pro"])
     export type  Plan = z.infer<typeof Plan>
 
-    /**
-     * The leftmost label of a workspace's hostnames.
-     *
-     * Every workspace always answers at `canonical(id)`, which is derived rather
-     * than stored — it cannot drift from the id and cannot be edited. Paid plans
-     * may set an additional custom one; the canonical host stays registered
-     * either way, so changing the custom name never breaks a webhook URL a third
-     * party is holding.
-     */
-    export namespace Subdomain {
-
-        export const Schema = z.string().brand("Workspace.Subdomain")
-
-        export const PREFIX = "wspace-"
-
-        /** Names the fleet keeps for itself, plus anything that could impersonate. */
-        export const RESERVED = new Set([
-            "www", "app", "api", "hooks", "admin", "mail", "smtp", "ftp",
-            "status", "docs", "blog", "help", "support", "cdn", "static",
-            "assets", "auth", "login", "account", "billing", "portal", "internal",
-        ])
-
-        export const Custom = z.string().trim().toLowerCase()
-            .regex(/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/, 'Letters, numbers and hyphens; 3-32 characters, not starting or ending with a hyphen')
-            .refine((value) => !value.startsWith(PREFIX), 'That prefix is reserved')
-            .refine((value) => !RESERVED.has(value), 'That name is reserved')
-            .pipe(Schema)
-
-        /** Immutable, because the id is. Never stored. */
-        export const canonical = (id: Id) =>
-            Schema.parse(`${PREFIX}${id.replace(/-/g, '').slice(0, 16)}`)
-    }
-    export type Subdomain = z.infer<typeof Subdomain.Schema>
 
     export const DisplayName = z.string().trim()
         .min(1, 'Workspace name is required')
         .max(64, 'Workspace name must be at most 64 characters')
+
+    // What this workspace's database and role are called in the cluster. Derived
+    // from the id rather than stored, so nothing can drift and a workspace whose
+    // row is lost is still locatable. Underscores because a uuid's dashes are not
+    // legal in an unquoted identifier.
+    const identifier = (id: Id) => id.replace(/-/g, '')
+
+    export const getDatabaseName = (id: Id) =>
+        Cluster.Database.Name.parse(`wspace_${identifier(id)}`)
+
+    export const getRoleName = (id: Id) =>
+        Cluster.Role.Name.parse(`wspace_role_${identifier(id)}`)
 
     export const Schema = z.object({
         id:          Id,

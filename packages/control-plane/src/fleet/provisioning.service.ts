@@ -28,7 +28,14 @@ export class ProvisioningService {
     ) {}
 
     async provision(workspaceId: Workspace.Id): Promise<void> {
-        const databaseUrl = await this.step('database', () => this.cluster.createDatabase(workspaceId));
+        // The workspace decides what its database and role are called; the
+        // cluster service only creates what it is told to.
+        const spec = {
+            databaseName: Workspace.getDatabaseName(workspaceId),
+            roleName:     Workspace.getRoleName(workspaceId),
+        };
+
+        const databaseUrl = await this.step('database', () => this.cluster.createDatabase(spec));
 
         await this.step('secrets', () => this.fleet.ensureSecrets(workspaceId, databaseUrl));
 
@@ -40,7 +47,14 @@ export class ProvisioningService {
         await this.step('machine', () => this.fleet.createMachine(workspaceId, 'combined', {
             image: requireEnv('WORKSPACE_IMAGE'),
             size:  process.env.WORKSPACE_SIZE ?? 'shared-1x-512',
-            env:   { ...env, AUTH_URL: requireEnv('AUTH_URL') },
+            env:   {
+                ...env,
+                // The issuer as reached from inside the container, not the URL a
+                // browser is given.
+                AUTH_URL:        requireEnv('WORKSPACE_AUTH_URL'),
+                // Tokens are verified locally against the fleet issuer's secret.
+                AUTH_JWT_SECRET: requireEnv('AUTH_JWT_SECRET'),
+            },
         }));
 
         await this.step('hostnames', () => this.fleet.registerCanonicalHostnames(workspaceId));
@@ -51,7 +65,11 @@ export class ProvisioningService {
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
         await this.fleet.teardown(workspaceId);
-        await this.cluster.dropDatabase(workspaceId);
+
+        await this.cluster.dropDatabase({
+            databaseName: Workspace.getDatabaseName(workspaceId),
+            roleName:     Workspace.getRoleName(workspaceId),
+        });
     }
 
     private async step<T>(name: string, fn: () => Promise<T>): Promise<T> {

@@ -1,0 +1,77 @@
+# Infrastructure only. The control plane and the portal run on the host —
+# `npm run dev` — because provisioning drives the local Docker daemon and the
+# whole point of the dev fleet is watching it do that.
+#
+#   docker compose up -d
+#
+# Ports are offset from PretzelGraph's stack so both can run at once: the dev
+# fleet provisions PretzelGraph containers, and you may well have its own
+# compose up beside it.
+
+name: pretzel-cloud
+
+services:
+
+  # One cluster, three jobs: the control plane's databases, the issuer's, and
+  # the cluster workspace databases are created in.
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pretzel}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      GOTRUE_DB_NAME: ${GOTRUE_DB_NAME:-gotrue}
+      PORTAL_SERVICE_PASSWORD: ${PORTAL_SERVICE_PASSWORD:-service}
+      PORTAL_APP_PASSWORD: ${PORTAL_APP_PASSWORD:-app}
+      FLEET_SERVICE_PASSWORD: ${FLEET_SERVICE_PASSWORD:-service}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The fleet issuer, shared by every workspace. A workspace never runs its own.
+  gotrue:
+    image: supabase/auth:v2.177.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      PORT: 9999
+      # What a browser is told to use. Containers reach it at http://gotrue:9999.
+      API_EXTERNAL_URL: ${GOTRUE_EXTERNAL_URL:-http://localhost:9998}
+
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-pretzel}@postgres:5432/${GOTRUE_DB_NAME:-gotrue}?sslmode=disable&search_path=auth
+
+      GOTRUE_SITE_URL: ${PORTAL_URL:-http://localhost:5174}
+      GOTRUE_URI_ALLOW_LIST: ${GOTRUE_URI_ALLOW_LIST:-http://localhost:5174}
+      GOTRUE_DISABLE_SIGNUP: "false"
+
+      # Every workspace verifies against this same secret, so it is fleet-wide.
+      GOTRUE_JWT_SECRET: ${AUTH_JWT_SECRET:?set AUTH_JWT_SECRET in .env}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+    ports:
+      - "${GOTRUE_PORT:-9998}:9999"
+
+volumes:
+  postgres-data:
+
+# Named explicitly: provisioned workspace containers are attached to this so they
+# can reach Postgres and the issuer by service name.
+networks:
+  default:
+    name: ${FLEET_INFRA_NETWORK:-pretzel-cloud}

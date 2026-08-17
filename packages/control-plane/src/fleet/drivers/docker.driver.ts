@@ -92,12 +92,12 @@ export class DockerDriver extends MachineDriver {
 
             this.logger.log(`Reusing ${options.name}`);
 
-            return { externalId: id!, state: this.toState(status!) };
+            return { externalId: Fleet.Machine.ExternalId.parse(id), state: this.toState(status!) };
         }
 
         const network = await this.ensureNetwork(options.workspaceId);
 
-        const externalId = await this.withEnvFile(options.env, (envFile) => this.docker([
+        const created = await this.withEnvFile(options.env, (envFile) => this.docker([
             'run', '-d',
             '--name', options.name,
             '--network', network,
@@ -108,24 +108,33 @@ export class DockerDriver extends MachineDriver {
             options.image,
         ]));
 
+        const externalId = Fleet.Machine.ExternalId.parse(created);
+
+        // A second network, so the workspace resolves `postgres` and `gotrue` by
+        // name. `docker run` takes only one, hence the separate attach.
+        const infra = process.env.FLEET_INFRA_NETWORK;
+
+        if (infra)
+            await this.dockerOrNull(['network', 'connect', infra, externalId]);
+
         this.logger.log(`Created ${options.name}`);
 
         return { externalId, state: 'started' };
     }
 
-    async start(externalId: string): Promise<void> {
+    async start(externalId: Fleet.Machine.ExternalId): Promise<void> {
         await this.docker(['start', externalId]);
     }
 
-    async stop(externalId: string): Promise<void> {
+    async stop(externalId: Fleet.Machine.ExternalId): Promise<void> {
         await this.docker(['stop', externalId]);
     }
 
-    async destroy(externalId: string): Promise<void> {
+    async destroy(externalId: Fleet.Machine.ExternalId): Promise<void> {
         await this.dockerOrNull(['rm', '-f', externalId]);
     }
 
-    async status(externalId: string): Promise<Fleet.Machine.State> {
+    async status(externalId: Fleet.Machine.ExternalId): Promise<Fleet.Machine.State> {
         const status = await this.dockerOrNull(['inspect', '-f', '{{.State.Status}}', externalId]);
 
         // Gone from the daemon is the terminal state, not an error.
@@ -144,7 +153,7 @@ export class DockerDriver extends MachineDriver {
 
         return output.split('\n').map((line) => {
             const [id, state] = line.split('|');
-            return { externalId: id!, state: this.toState(state!) };
+            return { externalId: Fleet.Machine.ExternalId.parse(id), state: this.toState(state!) };
         });
     }
 
