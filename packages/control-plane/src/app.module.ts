@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
-import { FleetModule } from './fleet/fleet.module';
-import { WorkspaceModule } from './workspace/workspace.module';
+import { FleetModule } from './services/Fleet/fleet.module';
+import { WorkspaceModule } from './services/Workspace/workspace.module';
 import { ZodExceptionFilter } from './filters/zod-exception.filter';
 
 @Module({

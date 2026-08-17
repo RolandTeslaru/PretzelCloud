@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { ClusterService } from './cluster.service';
-import { FleetService } from './fleet.service';
+import { ClusterService } from '../cluster/cluster.service';
+import { FleetService } from '../fleet.service';
 import { requireEnv } from '@/db/table';
 
 export class ProvisioningError extends Error {

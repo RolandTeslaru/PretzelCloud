@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MachineDriver } from './drivers/driver';
 import { DockerDriver } from './drivers/docker.driver';
-import { ClusterService } from './cluster.service';
+import { ClusterService } from './cluster/cluster.service';
 import { FleetService } from './fleet.service';
-import { ProvisioningService } from './provisioning.service';
+import { ProvisioningService } from './provisioning/provisioning.service';
 
 // MACHINE_DRIVER picks the substrate. Everything else in provisioning is the
 // same either way.

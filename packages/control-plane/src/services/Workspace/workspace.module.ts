@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { FleetModule } from '@/fleet/fleet.module';
+import { FleetModule } from '@/services/Fleet/fleet.module';
 import { WorkspaceController } from './workspace.controller';
 import { WorkspaceService } from './workspace.service';
 

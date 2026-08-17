@@ -1,8 +1,8 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
-import { ProvisioningService } from '@/fleet/provisioning.service';
-import { FleetService } from '@/fleet/fleet.service';
+import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
+import { FleetService } from '@/services/Fleet/fleet.service';
 import { Principal } from '@/auth/principal';
 
 const PROVISION_ATTEMPTS = 3;
