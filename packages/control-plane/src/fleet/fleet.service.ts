@@ -46,8 +46,8 @@ export class FleetService {
                 .values({
                     workspace_id:      workspaceId,
                     database_url:      databaseUrl,
-                    encryption_key_id: randomBytes(4).toString('hex'),
-                    encryption_key:    randomBytes(32).toString('hex'),
+                    // 32 bytes as hex, the shape PRETZEL_ENCRYPTION_KEY requires.
+                    encryption_key: randomBytes(32).toString('hex'),
                 })
                 .execute();
         });

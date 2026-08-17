@@ -47,21 +47,19 @@ export namespace FleetDB {
 
     export namespace WorkspaceSecrets {
         export const Row = z.object({
-            workspace_id:      WorkspaceD.Id,
-            database_url:      z.string(),
-            encryption_key_id: z.string(),
-            encryption_key:    z.string(),
-            created_at:        z.coerce.date(),
-            updated_at:        z.coerce.date(),
+            workspace_id:   WorkspaceD.Id,
+            database_url:   z.string(),
+            encryption_key: z.string(),
+            created_at:     z.coerce.date(),
+            updated_at:     z.coerce.date(),
         });
         export type Row = z.infer<typeof Row>;
 
         /** Everything this row is allowed to become. Nothing else may read it. */
         export const toMachineEnv = (row: Row) => Fleet.WorkspaceSecrets.MachineEnv.parse({
-            DATABASE_URL:              row.database_url,
-            PRETZEL_ENCRYPTION_KEY:    row.encryption_key,
-            PRETZEL_ENCRYPTION_KEY_ID: row.encryption_key_id,
-            WORKSPACE_ID:              row.workspace_id,
+            DATABASE_URL:           row.database_url,
+            PRETZEL_ENCRYPTION_KEY: row.encryption_key,
+            WORKSPACE_ID:           row.workspace_id,
         });
     }
 

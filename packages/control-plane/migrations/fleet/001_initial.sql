@@ -37,13 +37,15 @@ $$;
 
 -- Read by exactly one caller: the provisioner, handing these values to a
 -- machine as secrets. Never returned to a controller, never logged.
+-- No key id column: it is the key's own fingerprint, so the workspace derives it
+-- from the key it already holds. Storing it would be a second copy of a fact the
+-- key already carries, and one that can be edited into disagreeing.
 create table workspace_secrets (
-    workspace_id      uuid not null,
-    database_url      text not null,
-    encryption_key_id text not null,
-    encryption_key    text not null,
-    created_at        timestamp with time zone default now() not null,
-    updated_at        timestamp with time zone default now() not null
+    workspace_id uuid not null,
+    database_url text not null,
+    encryption_key text not null,
+    created_at   timestamp with time zone default now() not null,
+    updated_at   timestamp with time zone default now() not null
 );
 
 create table machines (

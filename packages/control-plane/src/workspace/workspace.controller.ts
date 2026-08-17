@@ -49,7 +49,7 @@ export class WorkspaceController {
     @RequireOwner()
     async rename(
         @AuthenticatedUser() principal: Principal.User,
-        @WorkspaceIdParam() workspaceId: Workspace.Id,
+        @WorkspaceIdParam()  workspaceId: Workspace.Id,
         @ZodBody(API.Rename.Request) body: Workspace.API.Rename.Request,
     ): Promise<Workspace.API.Rename.Response> {
         await this.workspaces.rename(principal, workspaceId, body.displayName);
