@@ -59,6 +59,9 @@ export class ProvisioningService {
             },
         }));
 
+        // Before hostnames: a machine that never serves should not be published.
+        await this.step('health', () => this.fleet.awaitHealthy(workspaceId));
+
         await this.step('hostnames', () => this.fleet.registerCanonicalHostnames(workspaceId));
 
         this.logger.log(`Provisioned ${workspaceId}`);

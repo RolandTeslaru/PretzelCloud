@@ -44,6 +44,9 @@ create table workspace_secrets (
     workspace_id uuid not null,
     database_url text not null,
     encryption_key text not null,
+    -- Signs the tokens a running execution presents back to its own backend.
+    -- Per workspace: a fleet-wide value would let one workspace mint another's.
+    execution_token_signing_key text not null,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null
 );

@@ -20,6 +20,9 @@ export namespace WorkspaceSecrets {
         DATABASE_URL:           Cluster.Database.ConnectionURL,
         // The workspace derives the key's id from the key itself.
         PRETZEL_ENCRYPTION_KEY: z.string(),
+        // Read lazily by the workspace, so a missing value surfaces at the first
+        // execution rather than at boot.
+        EXECUTION_TOKEN_SIGNING_KEY: z.string(),
         WORKSPACE_ID:           WorkspaceId,
     })
     export type MachineEnv = z.infer<typeof MachineEnv>

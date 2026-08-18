@@ -5,12 +5,16 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
-import { MachineDriver, CreateOptions, MachineHandle } from './driver';
+import { MachineDriver } from './driver';
 
 const run = promisify(execFile);
 
 export const WORKSPACE_LABEL = 'pretzel.workspace';
 export const ROLE_LABEL      = 'pretzel.role';
+
+// Containers report "No such object"; networks report "not found".
+const ABSENT           = /no such \w+|not found/i;
+const ALREADY_ATTACHED = /already exists in network/i;
 
 @Injectable()
 export class DockerDriver extends MachineDriver {
@@ -24,13 +28,25 @@ export class DockerDriver extends MachineDriver {
         return stdout.trim();
     }
 
-    /** Docker's own "not found" is an expected answer, not a failure. */
-    private async dockerOrNull(args: string[]): Promise<string | null> {
+    /**
+     * Runs a command whose target may legitimately not be there yet, or already
+     * be gone. Only that is answered with null.
+     *
+     * Anything else — an unreachable daemon, a permission error — propagates.
+     * Swallowing those would report a running machine as destroyed, and would
+     * turn the existence check in `create` into a duplicate container.
+     */
+    private async dockerTolerating(tolerated: RegExp, args: string[]): Promise<string | null> {
         try {
             return await this.docker(args);
         }
-        catch {
-            return null;
+        catch (error) {
+            const detail = error as { stderr?: string; message?: string };
+
+            if (tolerated.test(`${detail?.stderr ?? ''} ${detail?.message ?? ''}`))
+                return null;
+
+            throw error;
         }
     }
 
@@ -41,7 +57,7 @@ export class DockerDriver extends MachineDriver {
     private async ensureNetwork(workspaceId: Workspace.Id): Promise<string> {
         const name = this.networkName(workspaceId);
 
-        const existing = await this.dockerOrNull(['network', 'inspect', '-f', '{{.Id}}', name]);
+        const existing = await this.dockerTolerating(ABSENT, ['network', 'inspect', '-f', '{{.Id}}', name]);
 
         if (existing)
             return name;
@@ -82,10 +98,10 @@ export class DockerDriver extends MachineDriver {
         return 'stopped';
     }
 
-    async create(options: CreateOptions): Promise<MachineHandle> {
+    async create(options: MachineDriver.CreateOptions): Promise<MachineDriver.Handle> {
         // Idempotency: the name is derived from the workspace id, so a re-run
         // finds the container the killed run left behind.
-        const existing = await this.dockerOrNull(['inspect', '-f', '{{.Id}}|{{.State.Status}}', options.name]);
+        const existing = await this.dockerTolerating(ABSENT, ['inspect', '-f', '{{.Id}}|{{.State.Status}}', options.name]);
 
         if (existing) {
             const [id, status] = existing.split('|');
@@ -115,7 +131,7 @@ export class DockerDriver extends MachineDriver {
         const infra = process.env.FLEET_INFRA_NETWORK;
 
         if (infra)
-            await this.dockerOrNull(['network', 'connect', infra, externalId]);
+            await this.dockerTolerating(ALREADY_ATTACHED, ['network', 'connect', infra, externalId]);
 
         this.logger.log(`Created ${options.name}`);
 
@@ -131,17 +147,28 @@ export class DockerDriver extends MachineDriver {
     }
 
     async destroy(externalId: Fleet.Machine.ExternalId): Promise<void> {
-        await this.dockerOrNull(['rm', '-f', externalId]);
+        await this.dockerTolerating(ABSENT, ['rm', '-f', externalId]);
     }
 
     async status(externalId: Fleet.Machine.ExternalId): Promise<Fleet.Machine.State> {
-        const status = await this.dockerOrNull(['inspect', '-f', '{{.State.Status}}', externalId]);
+        const status = await this.dockerTolerating(ABSENT, ['inspect', '-f', '{{.State.Status}}', externalId]);
 
         // Gone from the daemon is the terminal state, not an error.
         return status ? this.toState(status) : 'destroyed';
     }
 
-    async findByWorkspace(workspaceId: Workspace.Id): Promise<MachineHandle[]> {
+    async health(externalId: Fleet.Machine.ExternalId): Promise<MachineDriver.Health> {
+        const status = await this.dockerTolerating(ABSENT, [
+            'inspect', '-f', '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', externalId,
+        ]);
+
+        if (status === 'healthy' || status === 'starting' || status === 'unhealthy')
+            return status;
+
+        return 'unknown';
+    }
+
+    async findByWorkspace(workspaceId: Workspace.Id): Promise<MachineDriver.Handle[]> {
         const output = await this.docker([
             'ps', '-a',
             '--filter', `label=${WORKSPACE_LABEL}=${workspaceId}`,
@@ -159,6 +186,6 @@ export class DockerDriver extends MachineDriver {
 
     /** Removes the per-workspace network once its containers are gone. */
     async destroyNetwork(workspaceId: Workspace.Id): Promise<void> {
-        await this.dockerOrNull(['network', 'rm', this.networkName(workspaceId)]);
+        await this.dockerTolerating(ABSENT, ['network', 'rm', this.networkName(workspaceId)]);
     }
 }

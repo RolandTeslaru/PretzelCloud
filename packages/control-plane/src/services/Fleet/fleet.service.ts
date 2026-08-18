@@ -10,6 +10,10 @@ import { DockerDriver } from './drivers/docker.driver';
  * FleetDB, so "who can read a workspace's connection string" stays a one-file
  * question.
  */
+// Generous: the first boot of a workspace migrates its empty database.
+const HEALTH_TIMEOUT_MS = 120_000;
+const HEALTH_POLL_MS    = 1_000;
+
 @Injectable()
 export class FleetService {
 
@@ -43,6 +47,7 @@ export class FleetService {
                     database_url:      databaseUrl,
                     // 32 bytes as hex, the shape PRETZEL_ENCRYPTION_KEY requires.
                     encryption_key: randomBytes(32).toString('hex'),
+                    execution_token_signing_key: randomBytes(32).toString('hex'),
                 })
                 .execute();
         });
@@ -98,6 +103,32 @@ export class FleetService {
                     .doUpdateSet({ external_id: handle.externalId, state: handle.state }))
                 .execute(),
         );
+    }
+
+    /**
+     * Blocks until every machine reports serving. A machine that only *started*
+     * is not a workspace anyone can open, and a boot that dies would otherwise
+     * be recorded as a successful provision.
+     */
+    async awaitHealthy(workspaceId: Workspace.Id, timeoutMs = HEALTH_TIMEOUT_MS): Promise<void> {
+        const deadline = Date.now() + timeoutMs;
+
+        for (;;) {
+            const handles = await this.driver.findByWorkspace(workspaceId);
+            const states  = await Promise.all(handles.map((handle) => this.driver.health(handle.externalId)));
+
+            if (states.includes('unhealthy'))
+                throw new Error(`A machine for ${workspaceId} failed its health check`);
+
+            // An image declaring no check cannot be waited for; take it as ready.
+            if (states.length > 0 && states.every((state) => state === 'healthy' || state === 'unknown'))
+                return;
+
+            if (Date.now() > deadline)
+                throw new Error(`Machines for ${workspaceId} did not become healthy within ${timeoutMs}ms`);
+
+            await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_MS));
+        }
     }
 
     /** The pair every workspace answers at, derived from its id. Never removed. */
