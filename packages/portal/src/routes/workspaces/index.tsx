@@ -1,10 +1,12 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { createFileRoute, Link, redirect, useRouterState } from '@tanstack/react-router'
+import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { Button } from '@pretzel-graph/standard-ui/foundations/button'
-import { Card } from '@pretzel-graph/standard-ui/foundations/card'
 import { AuthSDK } from '@/SDKs/AuthSDK/sdk'
-import { api } from '@/SDKs/api'
+import { WorkspacesGrid, workspacesQuery } from '@/SDKs/WorkspaceSDK/ui/WorkspacesGrid'
+import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
+import type { ComponentType } from 'react'
+import type { BaseIconProps } from '@pretzel-graph/standard-ui/icons/baseIcon'
+import { SearchInput } from '@pretzel-graph/standard-ui/foundations'
 
 export const Route = createFileRoute('/workspaces/')({
     beforeLoad: ({ context }) => {
@@ -12,59 +14,86 @@ export const Route = createFileRoute('/workspaces/')({
             throw redirect({ to: '/auth' })
         }
     },
+    // Fills the store before the grid renders. A failure is swallowed so the
+    // route still mounts; the grid reports it.
+    loader: async () => {
+        await QuerySDK.client.fetchQuery(workspacesQuery).catch(() => null)
+
+        return null
+    },
     component: Workspaces,
 })
-
-async function listWorkspaces(): Promise<Workspace.Card[]> {
-    const response = await api.get('/api/workspaces')
-
-    return Workspace.API.List.Response.parse(response.data).workspaces
-}
 
 function Workspaces() {
     const user = AuthSDK.useStore(s => s.user)
 
-    const { data, isPending, error } = useQuery({
-        queryKey: ['workspaces'],
-        queryFn: listWorkspaces,
-    })
 
     return (
-        <div className="bg-background text-foreground min-h-screen">
-            <header className="border-border flex items-center justify-between border-b px-8 py-4">
-                <span className="font-chivo text-lg">Pretzel</span>
 
-                <div className="flex items-center gap-4">
-                    <span className="text-muted-foreground text-sm">{user?.displayName}</span>
+        <div className="w-fit relative z-10 flex flex-row bg-background/80 backdrop-blur-lg max-h-screen rounded-tr-2xl min-h-screen mr-auto">
 
-                    <Button variant="ghost" onClick={() => AuthSDK.actions.logout()}>
-                        Sign out
-                    </Button>
-                </div>
-            </header>
+            <Sidebar />
 
-            <main className="mx-auto max-w-5xl px-8 py-10">
-                <h1 className="text-xl font-medium">Workspaces</h1>
+            <div className="flex flex-col">
+                <nav className="min-h-[60px] px-4 flex items-center ">
+                    <h1 className="text-xl font-semibold">
+                        Workspaces
+                    </h1>
+                </nav>
 
-                {isPending && <p className="text-muted-foreground mt-4 text-sm">Loading…</p>}
 
-                {error && <p className="text-destructive mt-4 text-sm">{error.message}</p>}
-
-                {data && data.length === 0 && (
-                    <p className="text-muted-foreground mt-4 text-sm">Nothing here yet.</p>
-                )}
-
-                <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4">
-                    {data?.map((workspace) => (
-                        <Card.Root key={workspace.id}>
-                            <Card.Header>
-                                <Card.Title>{workspace.displayName}</Card.Title>
-                                <Card.Description>{workspace.status}</Card.Description>
-                            </Card.Header>
-                        </Card.Root>
-                    ))}
-                </div>
-            </main>
+                <main className=" pl-3 w-6xl pr-10 pt-6">
+                    <WorkspacesGrid />
+                </main>
+            </div>
         </div>
+    )
+
+}
+
+type NavEntry = {
+    id: string
+    label: string
+    to: string
+    icon: ComponentType<BaseIconProps>
+}
+
+const NAV_TOP: NavEntry[] = [
+    { id: 'projects', label: 'Projects', to: '/home/projects', icon: SystemIcons.Folder },
+    { id: 'credentials', label: 'Credentials', to: '/home/credentials', icon: SystemIcons.KeyRound },
+    { id: 'executions', label: 'Executions', to: '/home/executions', icon: SystemIcons.Activity },
+    { id: 'usage', label: 'Usage', to: '/home/usage', icon: SystemIcons.Layers },
+    { id: 'templates', label: 'Templates', to: '/home/templates', icon: SystemIcons.FileText },
+]
+
+export const Sidebar = () => (
+    <aside className="w-56 shrink-0 flex flex-col">
+        <div className="h-14 px-4 flex items-center">
+            <SystemIcons.Pretzel size={30} className="fill-primary" />
+            <span className="font-semibold tracking-tight">PretzelGraph</span>
+        </div>
+
+        <nav className="flex-1 p-2 flex flex-col gap-0.5">
+            {NAV_TOP.map((e) => <NavItem key={e.id} entry={e} />)}
+        </nav>
+    </aside>
+)
+
+function NavItem({ entry }: { entry: NavEntry }) {
+    const pathname = useRouterState({ select: (s) => s.location.pathname })
+    const active = pathname === entry.to || pathname.startsWith(entry.to + '/')
+    const Icon = entry.icon
+
+    return (
+        <Link
+            to={entry.to}
+            className={[
+                'flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors',
+                active ? 'bg-muted/80 font-medium' : 'hover:bg-muted/50 opacity-80 hover:opacity-100',
+            ].join(' ')}
+        >
+            <Icon size={16} className={active ? 'stroke-primary' : ''} />
+            <span>{entry.label}</span>
+        </Link>
     )
 }

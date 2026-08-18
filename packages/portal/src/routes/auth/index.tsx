@@ -3,6 +3,7 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { User } from '@pretzel-cloud/shared/domain'
 import { Button } from '@pretzel-graph/standard-ui/foundations/button'
 import { Form } from '@pretzel-graph/standard-ui/foundations/form'
 import { Input } from '@pretzel-graph/standard-ui/foundations/input'
@@ -17,10 +18,30 @@ export const Route = createFileRoute('/auth/')({
     component: AuthPage,
 })
 
-// Email and password only. The display name is edited on the profile.
+type Variant = 'login' | 'signup'
+
+/** Reports the first failure against `path`, or nothing if the value is fine. */
+function check(schema: z.ZodType, value: unknown, path: string, ctx: z.RefinementCtx) {
+    const result = schema.safeParse(value)
+
+    if (!result.success) {
+        ctx.addIssue({ code: 'custom', path: [path], message: result.error.issues[0]!.message })
+    }
+}
+
+// One schema for both variants: the profile fields exist either way, and are
+// only required when the form is rendering them.
 const credentials = z.object({
-    email:    z.email(),
-    password: z.string().min(8, 'At least 8 characters'),
+    variant:     z.enum(['login', 'signup']),
+    email:       z.email(),
+    password:    z.string().min(8, 'At least 8 characters'),
+    username:    z.string(),
+    displayName: z.string(),
+}).superRefine((values, ctx) => {
+    if (values.variant !== 'signup') return
+
+    check(User.Username,    values.username,    'username',    ctx)
+    check(User.DisplayName, values.displayName, 'displayName', ctx)
 })
 
 type Credentials = z.infer<typeof credentials>
@@ -28,20 +49,23 @@ type Credentials = z.infer<typeof credentials>
 function AuthPage() {
     const router = useRouter()
 
-    const [variant, setVariant] = useState<'login' | 'signup'>('login')
     const [disabled, setDisabled] = useState(false)
 
     const form = useForm<Credentials>({
         resolver: zodResolver(credentials),
-        defaultValues: { email: '', password: '' },
+        defaultValues: { variant: 'login', email: '', password: '', username: '', displayName: '' },
         disabled,
     })
+
+    const variant = form.watch('variant')
+
+    const toggle = () => form.setValue('variant', variant === 'login' ? 'signup' : 'login')
 
     async function onSubmit(values: Credentials) {
         setDisabled(true)
 
-        const success = variant === 'login'
-            ? await AuthSDK.actions.login(values)
+        const success = values.variant === 'login'
+            ? await AuthSDK.actions.login({ email: values.email, password: values.password })
             : await AuthSDK.actions.signup(values)
 
         setDisabled(false)
@@ -74,6 +98,38 @@ function AuthPage() {
                             )}
                         />
 
+                        {variant === 'signup' && (
+                            <>
+                                <Form.Field
+                                    control={form.control}
+                                    name="username"
+                                    render={({ field }) => (
+                                        <Form.Item>
+                                            <Form.Label>Username</Form.Label>
+                                            <Form.Control>
+                                                <Input autoComplete="username" {...field} />
+                                            </Form.Control>
+                                            <Form.Message />
+                                        </Form.Item>
+                                    )}
+                                />
+
+                                <Form.Field
+                                    control={form.control}
+                                    name="displayName"
+                                    render={({ field }) => (
+                                        <Form.Item>
+                                            <Form.Label>Display name</Form.Label>
+                                            <Form.Control>
+                                                <Input autoComplete="name" {...field} />
+                                            </Form.Control>
+                                            <Form.Message />
+                                        </Form.Item>
+                                    )}
+                                />
+                            </>
+                        )}
+
                         <Form.Field
                             control={form.control}
                             name="password"
@@ -100,7 +156,7 @@ function AuthPage() {
 
                 <button
                     type="button"
-                    onClick={() => setVariant(variant === 'login' ? 'signup' : 'login')}
+                    onClick={toggle}
                     className="text-muted-foreground hover:text-foreground mt-4 w-full text-center text-xs"
                 >
                     {variant === 'login'

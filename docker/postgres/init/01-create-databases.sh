@@ -25,6 +25,12 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     -- auth service has none of ours, so it happens here. Password hashes should
     -- refuse a connection, not merely refuse a query.
     revoke connect on database "${GOTRUE_DB}" from public;
+
+    -- The maintenance database holds no data, but its catalogues are readable by
+    -- anyone connected: a workspace role could otherwise list every database and
+    -- role in the cluster, and those names are derived from workspace ids. The
+    -- superuser owns it and keeps access regardless.
+    revoke connect on database "${POSTGRES_DB}" from public;
 EOSQL
 
 # The auth service expects its schema to already exist, and resolves unqualified

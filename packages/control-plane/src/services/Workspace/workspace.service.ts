@@ -97,7 +97,7 @@ export class WorkspaceService {
     }
 
     /** RLS scopes this — there is no membership filter to forget. */
-    async list(principal: Principal.User): Promise<Workspace.Card[]> {
+    async list(principal: Principal.User): Promise<Workspace[]> {
         return PortalDB.asUser(principal, async (trx) => {
             const rows = await trx
                 .selectFrom('workspaces')
@@ -107,7 +107,7 @@ export class WorkspaceService {
                 .orderBy('workspaces.created_at', 'desc')
                 .execute();
 
-            return rows.map((row) => PortalDB.Workspace.toCard(row, principal.userId));
+            return rows.map((row) => PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row)));
         });
     }
 

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import type { AxiosInstance } from "axios"
 import { User } from "../User"
 import { Cluster } from "../Fleet/cluster"
 import { WorkspaceId, createId as createWorkspaceId } from "./ids"
@@ -53,22 +54,19 @@ export namespace Workspace {
         updatedAt:   z.coerce.date(),
     })
 
-    // A workspace as a grid card sees it. Roles live in the workspace's own
-    // database, so the only standing the portal knows is whether you own it —
-    // which is also the only one the grid needs, to decide on a delete button.
-    export const Card = Schema.extend({
-        isOwner: z.boolean(),
-    })
-    export type Card = z.infer<typeof Card>
-
-    // Inline rather than a sibling file: these reference Schema, Card and
-    // Subdomain above, and a separate module importing back into this one would
-    // be a cycle that leaves the zod schemas undefined at load.
+    // Inline rather than a sibling file: these reference Schema and Subdomain
+    // above, and a separate module importing back into this one would be a
+    // cycle that leaves the zod schemas undefined at load.
     export namespace API {
 
         export namespace List {
-            export const Response = z.object({ workspaces: z.array(Card) })
+            export const Response = z.object({ workspaces: z.array(Schema) })
             export type  Response = z.infer<typeof Response>
+        }
+
+        export async function list(api: AxiosInstance): Promise<List.Response> {
+            const { data } = await api.get<List.Response>('/api/workspaces')
+            return List.Response.parse(data)
         }
 
         export namespace Create {
@@ -79,9 +77,20 @@ export namespace Workspace {
             export type  Response = z.infer<typeof Response>
         }
 
+        // Blocks until the workspace is provisioned, or the row is torn down.
+        export async function create(api: AxiosInstance, req: Create.Request): Promise<Create.Response> {
+            const { data } = await api.post<Create.Response>('/api/workspaces', req)
+            return Create.Response.parse(data)
+        }
+
         export namespace Get {
             export const Response = z.object({ workspace: Schema })
             export type  Response = z.infer<typeof Response>
+        }
+
+        export async function get(api: AxiosInstance, workspaceId: Id): Promise<Get.Response> {
+            const { data } = await api.get<Get.Response>(`/api/workspaces/${workspaceId}`)
+            return Get.Response.parse(data)
         }
 
         export namespace Rename {
@@ -90,6 +99,11 @@ export namespace Workspace {
 
             export const Response = z.object({})
             export type  Response = z.infer<typeof Response>
+        }
+
+        export async function rename(api: AxiosInstance, workspaceId: Id, req: Rename.Request): Promise<Rename.Response> {
+            const { data } = await api.patch<Rename.Response>(`/api/workspaces/${workspaceId}`, req)
+            return Rename.Response.parse(data)
         }
 
         // Null clears it. Paid plans only; the canonical host is unaffected.
@@ -101,9 +115,19 @@ export namespace Workspace {
             export type  Response = z.infer<typeof Response>
         }
 
+        export async function setSubdomain(api: AxiosInstance, workspaceId: Id, req: SetSubdomain.Request): Promise<SetSubdomain.Response> {
+            const { data } = await api.patch<SetSubdomain.Response>(`/api/workspaces/${workspaceId}/subdomain`, req)
+            return SetSubdomain.Response.parse(data)
+        }
+
         export namespace Destroy {
             export const Response = z.object({})
             export type  Response = z.infer<typeof Response>
+        }
+
+        export async function destroy(api: AxiosInstance, workspaceId: Id): Promise<Destroy.Response> {
+            const { data } = await api.delete<Destroy.Response>(`/api/workspaces/${workspaceId}`)
+            return Destroy.Response.parse(data)
         }
 
     }

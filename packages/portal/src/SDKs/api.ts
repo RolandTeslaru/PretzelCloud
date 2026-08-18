@@ -5,7 +5,7 @@ const g = globalThis as unknown as { __api?: AxiosInstance };
 
 export const api: AxiosInstance = (g.__api ??= (() => {
     const instance = axios.create({
-        baseURL: import.meta.env.VITE_CONTROL_PLANE_URL || "/",
+        baseURL: import.meta.env?.VITE_CONTROL_PLANE_URL || "/",
     });
 
     instance.interceptors.request.use(async (config) => {

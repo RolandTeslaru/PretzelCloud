@@ -1,10 +1,20 @@
-import { toast } from "sonner";
+import { NotificationSDK } from "@pretzel-graph/standard-ui/SDKs/NotificationSDK";
 import { User } from "@pretzel-cloud/shared/domain";
 import type { AuthSDK, AuthSDKImpl } from "./sdk";
 import { api } from "../api";
 
-const message = (error: unknown) =>
-    error instanceof Error ? error.message : String(error)
+/** The server's reason where there is one; axios only reports the status code. */
+const message = (error: unknown) => {
+    const replied = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
+
+    if (replied) return replied
+
+    return error instanceof Error ? error.message : String(error)
+}
+
+/** Signed in at the issuer, but with no profile row here yet. */
+const isMissingProfile = (error: unknown) =>
+    (error as { response?: { status?: number } })?.response?.status === 404
 
 export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
     return {
@@ -15,7 +25,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
             })
 
             if (error || !data.user) {
-                toast.error(`Could not sign in: ${error?.message}`)
+                NotificationSDK.toast.error(`Could not sign in: ${error?.message}`)
                 return false;
             }
 
@@ -25,28 +35,44 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
         },
 
         /**
-         * Email and password only. The display name is not an issuer concern —
-         * it belongs to the profile row, and is edited there.
+         * The issuer is given email and password only. The username and display
+         * name are profile fields, so they go to our own endpoint once a
+         * session exists.
          */
         signup: async (props) => {
-            const { data, error } = await sdk.client.signUp({
-                email: props.email,
-                password: props.password,
-            })
+            // A previous attempt may have created the account and failed only on
+            // the profile; reusing that session lets a retry pick a free username
+            // instead of signing up an address the issuer already knows.
+            let session = (await sdk.client.getSession()).data.session
 
-            if (error || !data.user) {
-                toast.error(`Could not sign up: ${error?.message}`)
-                return false;
+            if (!session) {
+                const { data, error } = await sdk.client.signUp({
+                    email: props.email,
+                    password: props.password,
+                })
+
+                if (error || !data.user) {
+                    NotificationSDK.toast.error(`Could not sign up: ${error?.message}`)
+                    return false;
+                }
+
+                // No session means the address still has to be confirmed, and
+                // there is no token to register the profile row with yet.
+                if (!data.session) {
+                    NotificationSDK.toast.info("Check your email to confirm your address.")
+                    return false;
+                }
+
+                session = data.session
             }
 
-            // No session means the address still has to be confirmed, and there
-            // is no token to register the profile row with yet.
-            if (!data.session) {
-                toast.info("Check your email to confirm your address.")
+            try {
+                await sdk.actions.register({ username: props.username, displayName: props.displayName })
+            }
+            catch (error) {
+                NotificationSDK.toast.error(message(error))
                 return false;
             }
-
-            await sdk.actions.syncUser()
 
             return sdk.state.isAuthenticated;
         },
@@ -55,7 +81,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
             const { error } = await sdk.client.signOut();
 
             if (error) {
-                toast.error(`Could not sign out: ${error.message}`)
+                NotificationSDK.toast.error(`Could not sign out: ${error.message}`)
                 return false;
             }
 
@@ -72,10 +98,14 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
          * way. The issuer holds the credentials; this row is the portal's own
          * record, and nothing creates it but this call.
          */
+        /**
+         * The boot path: a session says who you are, this says whether this
+         * deployment knows you. A 404 means sign-up never finished, so the
+         * guard sends them back to the form to choose a username.
+         */
         syncUser: async () => {
             try {
-                const response = await api.put('/api/me')
-                const { user } = User.API.Register.Response.parse(response.data)
+                const { user } = await User.API.get(api)
 
                 sdk.setState(s => {
                     s.user = user
@@ -84,16 +114,30 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
                 })
             }
             catch (error) {
-                console.error("Failed to register profile", error)
-                toast.error(`Could not load your profile: ${message(error)}`)
+                if (!isMissingProfile(error)) {
+                    NotificationSDK.toast.error(`Could not load your profile: ${message(error)}`)
+                }
 
-                sdk.setState(s => { s.isLoading = false })
+                sdk.setState(s => {
+                    s.user = null
+                    s.isAuthenticated = false
+                    s.isLoading = false
+                })
             }
         },
 
+        register: async (profile) => {
+            const { user } = await User.API.register(api, profile)
+
+            sdk.setState(s => {
+                s.user = user
+                s.isAuthenticated = true
+                s.isLoading = false
+            })
+        },
+
         updateMe: async (props) => {
-            const response = await api.patch('/api/me', props)
-            const { user } = User.API.Update.Response.parse(response.data)
+            const { user } = await User.API.update(api, props)
 
             sdk.setState(s => { s.user = user })
 

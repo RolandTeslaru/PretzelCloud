@@ -7,7 +7,7 @@ export const Route = createFileRoute('/')({
 
 function Landing() {
     return (
-        <div className="bg-background text-foreground flex min-h-screen items-center justify-center">
+        <div className="text-foreground flex min-h-screen items-center justify-center">
             <div className="text-center">
                 <h1 className="font-chivo text-4xl font-bold">Pretzel</h1>
 

@@ -21,6 +21,7 @@ export namespace PortalDB {
         export const Row = z.object({
             id:           UserD.Id,
             email:        z.string(),
+            username:     z.string(),
             display_name: z.string(),
             avatar_url:   z.string().nullable(),
             created_at:   z.coerce.date(),
@@ -31,6 +32,7 @@ export namespace PortalDB {
         export const toDomain = (row: Row) => UserD.Schema.parse({
             id:          row.id,
             email:       row.email,
+            username:    row.username,
             displayName: row.display_name,
             avatarUrl:   row.avatar_url,
             createdAt:   row.created_at,
@@ -61,10 +63,6 @@ export namespace PortalDB {
             createdAt:   row.created_at,
             updatedAt:   row.updated_at,
         });
-
-        /** A workspace plus whether the caller owns it. */
-        export const toCard = (row: Row, userId: UserD.Id) =>
-            WorkspaceD.Card.parse({ ...toDomain(row), isOwner: row.owner_id === userId });
     }
 
     // The access index. No role, and no toDomain — there is no domain entity

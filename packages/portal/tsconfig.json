@@ -28,7 +28,9 @@
             "zustand": ["../../node_modules/zustand"],
             "zustand/*": ["../../node_modules/zustand/*"],
             "immer": ["../../node_modules/immer"],
-            "tsyringe": ["../../node_modules/tsyringe"]
+            "tsyringe": ["../../node_modules/tsyringe"],
+            "@tanstack/react-query": ["../../node_modules/@tanstack/react-query"],
+            "sonner": ["../../node_modules/sonner"]
         }
     },
     "include": ["src", "vite.config.ts", "tailwind.config.ts"]

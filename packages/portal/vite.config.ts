@@ -30,7 +30,7 @@ export default defineConfig({
         // hooks, two react-hook-forms break form-to-field context, and two
         // zustands give the shared SDKs a second, unread store, and two
         // tsyringes give the SDK registry a second, empty container.
-        dedupe: ['react', 'react-dom', 'react-hook-form', 'zustand', 'immer', 'tsyringe', 'reflect-metadata'],
+        dedupe: ['react', 'react-dom', 'react-hook-form', 'zustand', 'immer', 'tsyringe', 'reflect-metadata', '@tanstack/react-query', 'sonner'],
     },
     plugins: [
         tanstackRouter(),

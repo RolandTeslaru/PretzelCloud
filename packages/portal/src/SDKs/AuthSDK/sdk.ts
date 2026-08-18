@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { User } from "@pretzel-cloud/shared/domain";
-import { BaseSDK } from "../Base";
+import { BaseSDK } from "@pretzel-graph/standard-ui/SDKs/Base";
+import { SDK } from "@pretzel-graph/standard-ui/SDKs/SDKManager";
 import { authClient, getToken } from "./client";
 import { _createAuthActions_ } from "./actions";
 
-class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
+@SDK("Auth")
+export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
     constructor() { super() }
 
     public readonly client = authClient
@@ -59,17 +61,16 @@ export namespace AuthSDK {
 
     export type Actions = {
         login:  (props: { email: string, password: string }) => Promise<boolean>
-        signup: (props: { email: string, password: string }) => Promise<boolean>
+        signup: (props: { email: string, password: string, username: string, displayName: string }) => Promise<boolean>
         logout: () => Promise<boolean>
-        // Registers the profile row if it is missing, then loads it.
+        // Creates the profile row. Throws on a taken username so the sign-up
+        // form can map it onto the field.
+        register: (profile: User.API.Register.Request) => Promise<void>
+        // The boot path: loads the profile, or clears the session if there is none.
         syncUser: () => Promise<void>
         // Throws on failure so callers can map a 409 onto the offending form field.
         updateMe: (props: User.API.Update.Request) => Promise<User>
     }
 }
 
-export type { AuthSDKImpl }
-
-const g = globalThis as unknown as { __authSdk?: AuthSDKImpl };
-
-export const AuthSDK = (g.__authSdk ??= new AuthSDKImpl());
+export const AuthSDK = SDK.get<AuthSDKImpl>("Auth")

@@ -46,6 +46,7 @@ $$;
 create table users (
     id           uuid not null,
     email        text not null,
+    username     text not null,
     display_name text not null,
     avatar_url   text,
     created_at   timestamp with time zone default now() not null,
@@ -97,6 +98,7 @@ alter table only workspaces        add constraint workspaces_pkey        primary
 alter table only workspace_members add constraint workspace_members_pkey primary key (workspace_id, user_id);
 
 create unique index users_email_lower_key on users using btree (lower(email));
+create unique index users_username_lower_key on users using btree (lower(username));
 
 -- Postgres treats nulls as distinct here, so every unnamed workspace coexists.
 create unique index workspaces_subdomain_key on workspaces using btree (subdomain);
@@ -209,7 +211,7 @@ create policy members_read on workspace_members
 grant usage on schema public to portal_app;
 
 grant select on users to portal_app;
-grant update (display_name, avatar_url) on users to portal_app;
+grant update (username, display_name, avatar_url) on users to portal_app;
 
 grant select, delete on workspaces to portal_app;
 grant update (display_name, subdomain) on workspaces to portal_app;

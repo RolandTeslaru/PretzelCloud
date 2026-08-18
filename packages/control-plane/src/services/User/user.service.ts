@@ -3,6 +3,12 @@ import { User } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { Principal } from '@/auth/principal';
 
+const USERNAME_TAKEN = 'users_username_lower_key';
+const EMAIL_TAKEN    = 'users_email_lower_key';
+
+const violates = (error: unknown, constraint: string) =>
+    error instanceof Error && error.message.includes(constraint);
+
 @Injectable()
 export class UserService {
 
@@ -11,9 +17,14 @@ export class UserService {
      *
      * Service credential: there is no insert policy for the app role,
      * deliberately — a request cannot conjure users other than its own caller.
-     * Everything written here comes from the verified token, never the body.
+     * The id and email come from the verified token, never the body.
      */
-    async register(principal: Principal.User): Promise<User> {
+    async register(principal: Principal.User, body: User.API.Register.Request): Promise<User> {
+        const existing = await this.find(principal);
+
+        if (existing)
+            return existing;
+
         try {
             await PortalDB.asService('register user', (db) =>
                 db
@@ -21,18 +32,21 @@ export class UserService {
                     .values({
                         id:           principal.userId,
                         email:        principal.email,
-                        display_name: principal.email.split('@')[0] ?? principal.email,
+                        username:     body.username,
+                        display_name: body.displayName,
                         avatar_url:   null,
                     })
-                    .onConflict((oc) => oc.column('id').doNothing())
                     .execute(),
             );
         }
         catch (error) {
+            if (violates(error, USERNAME_TAKEN))
+                throw new ConflictException('That username is taken');
+
             // Same address, different subject: the issuer account was deleted and
             // remade. Merging them here would hand one person's workspaces to
             // whoever claimed the address next.
-            if (error instanceof Error && error.message.includes('users_email_lower_key'))
+            if (violates(error, EMAIL_TAKEN))
                 throw new ConflictException('That email belongs to a different account');
 
             throw error;
@@ -42,6 +56,15 @@ export class UserService {
     }
 
     async get(principal: Principal.User): Promise<User> {
+        const row = await this.find(principal);
+
+        if (!row)
+            throw new NotFoundException('No profile yet');
+
+        return row;
+    }
+
+    private async find(principal: Principal.User): Promise<User | null> {
         const row = await PortalDB.asUser(principal, (trx) =>
             trx
                 .selectFrom('users')
@@ -50,26 +73,39 @@ export class UserService {
                 .executeTakeFirst(),
         );
 
-        if (!row)
-            throw new NotFoundException('No profile yet');
-
-        return PortalDB.User.toDomain(PortalDB.User.Row.parse(row));
+        return row ? PortalDB.User.toDomain(PortalDB.User.Row.parse(row)) : null;
     }
 
-    /** The name this deployment shows. The issuer holds no copy of it. */
-    async setDisplayName(principal: Principal.User, displayName: string): Promise<User> {
-        const row = await PortalDB.asUser(principal, (trx) =>
-            trx
-                .updateTable('users')
-                .set({ display_name: displayName })
-                .where('id', '=', principal.userId)
-                .returningAll()
-                .executeTakeFirst(),
-        );
+    /** The names this deployment shows. The issuer holds no copy of them. */
+    async update(principal: Principal.User, body: User.API.Update.Request): Promise<User> {
+        const changes = {
+            ...(body.username    !== undefined && { username:     body.username }),
+            ...(body.displayName !== undefined && { display_name: body.displayName }),
+        };
 
-        if (!row)
-            throw new NotFoundException('No profile yet');
+        if (Object.keys(changes).length === 0)
+            return this.get(principal);
 
-        return PortalDB.User.toDomain(PortalDB.User.Row.parse(row));
+        try {
+            const row = await PortalDB.asUser(principal, (trx) =>
+                trx
+                    .updateTable('users')
+                    .set(changes)
+                    .where('id', '=', principal.userId)
+                    .returningAll()
+                    .executeTakeFirst(),
+            );
+
+            if (!row)
+                throw new NotFoundException('No profile yet');
+
+            return PortalDB.User.toDomain(PortalDB.User.Row.parse(row));
+        }
+        catch (error) {
+            if (violates(error, USERNAME_TAKEN))
+                throw new ConflictException('That username is taken');
+
+            throw error;
+        }
     }
 }

@@ -22,8 +22,9 @@ export class UserController {
     @Put()
     async register(
         @AuthenticatedUser() principal: Principal.User,
+        @ZodBody(API.Register.Request) body: User.API.Register.Request,
     ): Promise<User.API.Register.Response> {
-        return { user: await this.users.register(principal) };
+        return { user: await this.users.register(principal, body) };
     }
 
     @Get()
@@ -38,6 +39,6 @@ export class UserController {
         @AuthenticatedUser() principal: Principal.User,
         @ZodBody(API.Update.Request) body: User.API.Update.Request,
     ): Promise<User.API.Update.Response> {
-        return { user: await this.users.setDisplayName(principal, body.displayName) };
+        return { user: await this.users.update(principal, body) };
     }
 }

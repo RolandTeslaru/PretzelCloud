@@ -6,7 +6,7 @@ const g = globalThis as unknown as { __authClient?: GoTrueClient };
 
 /** The fleet issuer's client. Everything that needs a token goes through here. */
 export const authClient: GoTrueClient = (g.__authClient ??= new GoTrueClient({
-    url: import.meta.env.VITE_AUTH_URL || "http://localhost:9998",
+    url: import.meta.env?.VITE_AUTH_URL || "http://localhost:9998",
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
