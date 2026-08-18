@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+@import "@pretzel-graph/standard-ui/styles.css";
