@@ -47,7 +47,7 @@ export class WorkspaceService {
 
         for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
             try {
-                await this.provisioning.provision(id);
+                await this.provisioning.provision(id, principal.userId);
 
                 return this.markReady(id);
             }

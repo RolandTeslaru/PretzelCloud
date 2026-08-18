@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Workspace } from '@pretzel-cloud/shared/domain';
+import { User, Workspace } from '@pretzel-cloud/shared/domain';
 import { ClusterService } from '../cluster/cluster.service';
 import { FleetService } from '../fleet.service';
 import { requireEnv } from '@/db/table';
@@ -27,7 +27,7 @@ export class ProvisioningService {
         private readonly fleet: FleetService,
     ) {}
 
-    async provision(workspaceId: Workspace.Id): Promise<void> {
+    async provision(workspaceId: Workspace.Id, ownerId: User.Id): Promise<void> {
         // The workspace decides what its database and role are called; the
         // cluster service only creates what it is told to.
         const spec = {
@@ -54,6 +54,8 @@ export class ProvisioningService {
                 AUTH_URL:        requireEnv('WORKSPACE_AUTH_URL'),
                 // Tokens are verified locally against the fleet issuer's secret.
                 AUTH_JWT_SECRET: requireEnv('AUTH_JWT_SECRET'),
+                // Names the owner up front, so ownership is not won by arriving first.
+                WORKSPACE_OWNER_ID: ownerId,
             },
         }));
 

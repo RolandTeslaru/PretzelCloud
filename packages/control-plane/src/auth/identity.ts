@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { Request } from 'express';
+import { jwtVerify } from 'jose';
+import { requireEnv } from '@/db/table';
 import { Principal } from './principal';
 
 /** Resolves the caller's identity from the request, or null. */
@@ -7,37 +9,50 @@ export abstract class IdentityResolver {
     abstract resolve(request: Request): Promise<Principal.User | null>;
 }
 
+const ALGORITHM = 'HS256';
+const AUDIENCE  = 'authenticated';
+
+let secret: Uint8Array | undefined;
+
+function getSecret(): Uint8Array {
+    return (secret ??= new TextEncoder().encode(requireEnv('AUTH_JWT_SECRET')));
+}
+
 /**
- * Reads the identity straight off two headers and believes them. Anyone who can
- * reach the port can be anyone.
+ * Verifies the issuer's token against the shared secret. No lookup and no call
+ * to the issuer: a signature and three claims settle it.
  *
- * Requires PORTAL_DEV_AUTH=true, and refuses to construct without it, so it
- * cannot be left on by accident. Replaced by token verification.
+ * Identity only. What the caller may reach is decided per workspace, per
+ * request, so nothing here reads a role.
  */
 @Injectable()
-export class DevIdentityResolver extends IdentityResolver {
-
-    private readonly logger = new Logger(DevIdentityResolver.name);
-
-    static readonly USER_HEADER  = 'x-dev-user-id';
-    static readonly EMAIL_HEADER = 'x-dev-user-email';
-
-    constructor() {
-        super();
-
-        if (process.env.PORTAL_DEV_AUTH !== 'true')
-            throw new Error('DevIdentityResolver requires PORTAL_DEV_AUTH=true');
-
-        this.logger.warn('Header-trusting identity is active. Every request is whoever it claims to be.');
-    }
+export class TokenIdentityResolver extends IdentityResolver {
 
     async resolve(request: Request): Promise<Principal.User | null> {
-        const parsed = Principal.User.Schema.safeParse({
-            type:   'user',
-            userId: request.header(DevIdentityResolver.USER_HEADER),
-            email:  request.header(DevIdentityResolver.EMAIL_HEADER),
-        });
+        const [scheme, token] = request.headers.authorization?.split(' ') ?? [];
 
-        return parsed.success ? parsed.data : null;
+        if (scheme !== 'Bearer' || !token)
+            return null;
+
+        try {
+            // Algorithm pinned: without it a token names its own, and `none`
+            // would skip the signature entirely.
+            const { payload } = await jwtVerify(token, getSecret(), {
+                algorithms: [ALGORITHM],
+                audience:   AUDIENCE,
+            });
+
+            const parsed = Principal.User.Schema.safeParse({
+                type:   'user',
+                userId: payload.sub,
+                email:  payload.email,
+            });
+
+            return parsed.success ? parsed.data : null;
+        }
+        catch {
+            // Forged, expired, or meant for someone else — all the same answer.
+            return null;
+        }
     }
 }

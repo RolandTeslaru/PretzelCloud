@@ -20,6 +20,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     create database fleet  owner fleet_service;
 
     create database "${GOTRUE_DB}";
+
+    -- The portal and fleet databases revoke this in their own migrations; the
+    -- auth service has none of ours, so it happens here. Password hashes should
+    -- refuse a connection, not merely refuse a query.
+    revoke connect on database "${GOTRUE_DB}" from public;
 EOSQL
 
 # The auth service expects its schema to already exist, and resolves unqualified

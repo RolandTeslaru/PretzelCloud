@@ -1,7 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
 import { IdentityResolver } from './identity';
-import { UserService } from './user.service';
 
 /**
  * Proves who is calling, and nothing else. Membership is per workspace and
@@ -10,10 +9,7 @@ import { UserService } from './user.service';
 @Injectable()
 export class UserAuthGuard implements CanActivate {
 
-    constructor(
-        private readonly identity: IdentityResolver,
-        private readonly users: UserService,
-    ) {}
+    constructor(private readonly identity: IdentityResolver) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest<Request>();
@@ -22,8 +18,6 @@ export class UserAuthGuard implements CanActivate {
 
         if (!principal)
             throw new UnauthorizedException('Not authenticated');
-
-        await this.users.ensure(principal);
 
         request.principal = principal;
 
