@@ -66,7 +66,7 @@ const NAV_TOP: NavEntry[] = [
 export const Sidebar = () => (
     <aside className="w-56 shrink-0 flex flex-col">
         <div className="h-14 px-4 flex items-center">
-            <PretzelGraphDropdown />
+            <PretzelGraphDropdown title="PretzelCloud" />
         </div>
 
         <nav className="flex-1 p-2 flex flex-col gap-0.5">
