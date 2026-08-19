@@ -4,6 +4,7 @@ import { PortalDB } from '@/db/portal';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
 import { FleetService } from '@/services/Fleet/fleet.service';
 import { Principal } from '@/auth/principal';
+import { WorkspaceRouter } from '@/services/Router/router.service';
 
 const PROVISION_ATTEMPTS = 3;
 
@@ -15,6 +16,7 @@ export class WorkspaceService {
     constructor(
         private readonly provisioning: ProvisioningService,
         private readonly fleet: FleetService,
+        private readonly router: WorkspaceRouter,
     ) {}
 
     /**
@@ -30,24 +32,41 @@ export class WorkspaceService {
     async create(principal: Principal.User, displayName: string): Promise<Workspace> {
         const id = Workspace.createId();
 
-        await PortalDB.asService('create workspace', async (db) => {
+        const owner = await PortalDB.asService('create workspace', async (db) => {
             await db
                 .insertInto('workspaces')
                 .values({ id, subdomain: null, display_name: displayName, status: 'provisioning', plan: 'free', owner_id: principal.userId })
                 .execute();
 
             // The index entry, so the workspace appears in their grid. The
-            // owner's row in the workspace's own members table is seeded by
+            // owner's rows in the workspace's own tables are seeded by
             // provisioning, once that database exists.
             await db
                 .insertInto('workspace_members')
                 .values({ workspace_id: id, user_id: principal.userId })
                 .execute();
+
+            // Read here so a missing profile fails before anything is built,
+            // rather than partway through provisioning.
+            const row = await db
+                .selectFrom('users')
+                .selectAll()
+                .where('id', '=', principal.userId)
+                .executeTakeFirst();
+
+            if (!row)
+                throw new NotFoundException('No profile yet');
+
+            return PortalDB.User.toDomain(PortalDB.User.Row.parse(row));
         });
 
         for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
             try {
-                await this.provisioning.provision(id, principal.userId);
+                await this.provisioning.provision(id, owner);
+
+                // Its hostnames were unknown until a moment ago, and a probe in
+                // that window would have cached the absence.
+                this.router.invalidate(id);
 
                 return this.markReady(id);
             }
@@ -82,6 +101,8 @@ export class WorkspaceService {
     private async abandon(id: Workspace.Id): Promise<void> {
         try {
             await this.provisioning.deprovision(id);
+
+            this.router.invalidate(id);
         }
         catch (error) {
             this.logger.error(`Teardown of ${id} failed, leaving it for the sweep: ${error instanceof Error ? error.message : error}`);
@@ -148,6 +169,8 @@ export class WorkspaceService {
         }
 
         await this.fleet.setCustomHostnames(workspace.id, subdomain);
+
+        this.router.invalidate(workspace.id, [workspace.subdomain, subdomain]);
     }
 
     /**
@@ -159,6 +182,10 @@ export class WorkspaceService {
     async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
         // Infrastructure first: the row is the only record of what to tear down.
         await this.provisioning.deprovision(workspaceId);
+
+        // Before the row goes: a cached route would otherwise keep answering for
+        // a machine that no longer exists.
+        this.router.invalidate(workspaceId);
 
         await PortalDB.asUser(principal, (trx) =>
             trx.deleteFrom('workspaces').where('id', '=', workspaceId).execute());

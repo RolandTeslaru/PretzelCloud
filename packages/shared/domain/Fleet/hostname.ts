@@ -47,6 +47,18 @@ export namespace Hostname {
         /** Every hostname one subdomain answers at — one per kind. */
         export const createAll = (subdomain: Subdomain) =>
             Kind.options.map((kind) => ({ host: create(subdomain, kind), kind }))
+
+        /**
+         * Scheme, host and port — no path. What a browser is navigated to, and
+         * what an `Origin` header is compared against. Plain HTTP only where the
+         * domain is local: everywhere else a workspace is reached over TLS.
+         */
+        export const getOrigin = (subdomain: Subdomain, kind: Kind): string => {
+            const host   = create(subdomain, kind)
+            const scheme = process.env.FLEET_SCHEME ?? (host.includes('localhost') ? 'http' : 'https')
+
+            return `${scheme}://${host}`
+        }
     }
     export type Host = z.infer<typeof Host.Schema>
 

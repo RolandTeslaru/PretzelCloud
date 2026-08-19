@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { FleetModule } from '@/services/Fleet/fleet.module';
+import { RouterModule } from '@/services/Router/router.module';
 import { WorkspaceController } from './workspace.controller';
 import { WorkspaceService } from './workspace.service';
 
 @Module({
-    imports: [FleetModule],
+    imports: [FleetModule, RouterModule],
     controllers: [WorkspaceController],
     providers: [WorkspaceService],
 })

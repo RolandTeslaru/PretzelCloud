@@ -21,6 +21,6 @@ function driverFor(kind: string | undefined): MachineDriver {
         FleetService,
         ProvisioningService,
     ],
-    exports: [FleetService, ProvisioningService],
+    exports: [FleetService, ProvisioningService, MachineDriver],
 })
 export class FleetModule { }

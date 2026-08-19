@@ -1,4 +1,5 @@
 import { GoTrueClient } from "@supabase/auth-js";
+import { cookieStorage, PRETZEL_STORAGE_KEY } from "@pretzel-graph/standard-ui/utils/cookieStorage";
 
 // A leaf module on purpose: the api client and the SDK both need the token, and
 // importing either from the other would be a cycle.
@@ -10,6 +11,10 @@ export const authClient: GoTrueClient = (g.__authClient ??= new GoTrueClient({
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    // A cookie rather than localStorage: the editor runs on its own hostname,
+    // and only a domain-scoped value is visible to both.
+    storageKey: PRETZEL_STORAGE_KEY,
+    storage: cookieStorage({ domain: import.meta.env?.VITE_SESSION_COOKIE_DOMAIN }),
 }));
 
 /** The current access token, or null when signed out. */

@@ -16,6 +16,17 @@ export const ROLE_LABEL      = 'pretzel.role';
 const ABSENT           = /no such \w+|not found/i;
 const ALREADY_ATTACHED = /already exists in network/i;
 
+// A machine that predates publishing, or one that is stopped, reports this
+// rather than being absent — both mean "no address", not a failure.
+const NOT_PUBLISHED = /no public port|no such \w+|not found/i;
+
+// The port the workspace image serves on.
+const SERVICE_PORT = 3001;
+
+// Bound to loopback, and to a port Docker picks: the router reaches the machine
+// from the host, and nothing on the network can.
+const PUBLISH = `127.0.0.1::${SERVICE_PORT}`;
+
 @Injectable()
 export class DockerDriver extends MachineDriver {
 
@@ -117,6 +128,7 @@ export class DockerDriver extends MachineDriver {
             'run', '-d',
             '--name', options.name,
             '--network', network,
+            '--publish', PUBLISH,
             '--label', `${WORKSPACE_LABEL}=${options.workspaceId}`,
             '--label', `${ROLE_LABEL}=${options.role}`,
             '--env-file', envFile,
@@ -136,6 +148,24 @@ export class DockerDriver extends MachineDriver {
         this.logger.log(`Created ${options.name}`);
 
         return { externalId, state: 'started' };
+    }
+
+    /**
+     * The host port Docker assigned, which is chosen at `create` and changes if
+     * the container is recreated — so it is read each time rather than stored.
+     */
+    async address(externalId: Fleet.Machine.ExternalId): Promise<URL | null> {
+        const published = await this.dockerTolerating(NOT_PUBLISHED, ['port', externalId, String(SERVICE_PORT)]);
+
+        if (!published)
+            return null;
+
+        // One line per binding, `127.0.0.1:54321`, and IPv6 may appear beside it.
+        const port = published.split('\n')
+            .map((line) => line.trim().match(/:(\d+)$/)?.[1])
+            .find(Boolean);
+
+        return port ? new URL(`http://127.0.0.1:${port}`) : null;
     }
 
     async start(externalId: Fleet.Machine.ExternalId): Promise<void> {

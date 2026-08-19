@@ -1,7 +1,7 @@
 import { createFileRoute, Link, redirect, useRouterState } from '@tanstack/react-router'
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { Button } from '@pretzel-graph/standard-ui/foundations/button'
-import { AuthSDK } from '@/SDKs/AuthSDK/sdk'
+import { PretzelGraphDropdown } from '@/components/PretzelGraphDropdown'
 import { WorkspacesGrid, workspacesQuery } from '@/SDKs/WorkspaceSDK/ui/WorkspacesGrid'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { ComponentType } from 'react'
@@ -25,7 +25,6 @@ export const Route = createFileRoute('/workspaces/')({
 })
 
 function Workspaces() {
-    const user = AuthSDK.useStore(s => s.user)
 
 
     return (
@@ -59,18 +58,15 @@ type NavEntry = {
 }
 
 const NAV_TOP: NavEntry[] = [
-    { id: 'projects', label: 'Projects', to: '/home/projects', icon: SystemIcons.Folder },
-    { id: 'credentials', label: 'Credentials', to: '/home/credentials', icon: SystemIcons.KeyRound },
-    { id: 'executions', label: 'Executions', to: '/home/executions', icon: SystemIcons.Activity },
-    { id: 'usage', label: 'Usage', to: '/home/usage', icon: SystemIcons.Layers },
-    { id: 'templates', label: 'Templates', to: '/home/templates', icon: SystemIcons.FileText },
+    { id: 'workspaces', label: 'Workspaces', to: '/workspaces', icon: SystemIcons.Server },
+    { id: 'usage', label: 'Usage', to: '/usage', icon: SystemIcons.ChartNoAxesCombined },
+    { id: 'billing', label: 'Billing', to: '/billing', icon: SystemIcons.Receipt },
 ]
 
 export const Sidebar = () => (
     <aside className="w-56 shrink-0 flex flex-col">
         <div className="h-14 px-4 flex items-center">
-            <SystemIcons.Pretzel size={30} className="fill-primary" />
-            <span className="font-semibold tracking-tight">PretzelGraph</span>
+            <PretzelGraphDropdown />
         </div>
 
         <nav className="flex-1 p-2 flex flex-col gap-0.5">

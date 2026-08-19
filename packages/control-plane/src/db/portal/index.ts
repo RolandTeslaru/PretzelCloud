@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Kysely, PostgresDialect, sql, Transaction as KyselyTransaction } from 'kysely';
 import { Pool } from 'pg';
 import {
+    Fleet,
     User      as UserD,
     Workspace as WorkspaceD,
 } from '@pretzel-cloud/shared/domain';
@@ -60,6 +61,7 @@ export namespace PortalDB {
             status:      row.status,
             plan:        row.plan,
             ownerId:     row.owner_id,
+            appUrl:      Fleet.Hostname.Host.getOrigin(WorkspaceD.Subdomain.canonical(row.id), 'app'),
             createdAt:   row.created_at,
             updatedAt:   row.updated_at,
         });

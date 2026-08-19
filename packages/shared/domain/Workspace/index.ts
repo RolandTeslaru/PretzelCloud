@@ -50,6 +50,9 @@ export namespace Workspace {
         status:      Status,
         plan:        Plan,
         ownerId:     User.Id,
+        // Derived rather than stored, and assembled where the fleet domain is
+        // known — a browser has no way to build it.
+        appUrl:      z.url(),
         createdAt:   z.coerce.date(),
         updatedAt:   z.coerce.date(),
     })

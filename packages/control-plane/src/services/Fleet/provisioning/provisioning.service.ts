@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { ClusterService } from '../cluster/cluster.service';
 import { FleetService } from '../fleet.service';
 import { requireEnv } from '@/db/table';
@@ -27,7 +27,7 @@ export class ProvisioningService {
         private readonly fleet: FleetService,
     ) {}
 
-    async provision(workspaceId: Workspace.Id, ownerId: User.Id): Promise<void> {
+    async provision(workspaceId: Workspace.Id, owner: User): Promise<void> {
         // The workspace decides what its database and role are called; the
         // cluster service only creates what it is told to.
         const spec = {
@@ -55,12 +55,17 @@ export class ProvisioningService {
                 // Tokens are verified locally against the fleet issuer's secret.
                 AUTH_JWT_SECRET: requireEnv('AUTH_JWT_SECRET'),
                 // Names the owner up front, so ownership is not won by arriving first.
-                WORKSPACE_OWNER_ID: ownerId,
+                WORKSPACE_OWNER_ID: owner.id,
+                // The origin a browser reaches this workspace at.
+                CORS_ORIGIN: Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
             },
         }));
 
         // Before hostnames: a machine that never serves should not be published.
         await this.step('health', () => this.fleet.awaitHealthy(workspaceId));
+
+        // After health, which is what says the workspace has run its migrations.
+        await this.step('owner', () => this.cluster.seedOwner(spec.databaseName, owner));
 
         await this.step('hostnames', () => this.fleet.registerCanonicalHostnames(workspaceId));
 

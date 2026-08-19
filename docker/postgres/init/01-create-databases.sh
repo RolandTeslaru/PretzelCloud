@@ -31,6 +31,10 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     -- role in the cluster, and those names are derived from workspace ids. The
     -- superuser owns it and keeps access regardless.
     revoke connect on database "${POSTGRES_DB}" from public;
+
+    -- The default template is connectable and reaches the same catalogues. It
+    -- stays the template for every new database; only public loses access.
+    revoke connect on database template1 from public;
 EOSQL
 
 # The auth service expects its schema to already exist, and resolves unqualified

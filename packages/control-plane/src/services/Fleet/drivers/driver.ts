@@ -25,6 +25,16 @@ export abstract class MachineDriver {
 
     /** Everything this driver holds for a workspace, however it was labelled. */
     abstract findByWorkspace(workspaceId: Workspace.Id): Promise<MachineDriver.Handle[]>;
+
+    /**
+     * Where to reach the machine from inside the fleet. Every platform gives its
+     * own private addressing — a container name, an internal DNS record — so the
+     * driver answers and nothing above it learns which platform it is on.
+     *
+     * Null when the machine is not currently reachable, which is a stopped
+     * machine rather than an error.
+     */
+    abstract address(externalId: Fleet.Machine.ExternalId): Promise<URL | null>;
 }
 
 // Merged with the class above: types only, so nothing is emitted.

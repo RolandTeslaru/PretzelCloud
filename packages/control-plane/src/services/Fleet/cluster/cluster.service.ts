@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Client } from 'pg';
-import { Fleet } from '@pretzel-cloud/shared/domain';
+import { Fleet, User } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
+import { WorkspaceDB } from '@/db/workspace';
 
 const Cluster = Fleet.Cluster;
 
@@ -37,6 +38,68 @@ export class ClusterService {
         finally {
             await client.end();
         }
+    }
+
+    /**
+     * Writes the owner into a workspace's own tables, so the account that
+     * created it is already inside when it first opens.
+     *
+     * `members` and the deployment's claim both reference `users`, so all three
+     * are written together or not at all.
+     *
+     * Runs only once the workspace's migrations have created those tables, which
+     * is what the health gate before it establishes. Idempotent, like every
+     * other step.
+     */
+    async seedOwner(databaseName: Fleet.Cluster.Database.Name, owner: User): Promise<void> {
+        await WorkspaceDB.withWorkspaceDatabase('seed workspace owner', databaseName, async (trx) => {
+            // Locked, so a concurrent seed waits rather than reading a stale
+            // answer and writing a second owner.
+            const deployment = await trx
+                .selectFrom('deployment')
+                .select('claimed_by')
+                .forUpdate()
+                .executeTakeFirst();
+
+            const holder = deployment?.claimed_by ?? null;
+
+            if (holder && holder !== owner.id)
+                throw new Error(`${databaseName} is already owned by ${holder}`);
+
+            // Before the rows that reference it. The profile is a copy of the
+            // portal's, refreshed on a re-run.
+            await trx
+                .insertInto('users')
+                .values({
+                    id:           owner.id,
+                    email:        owner.email,
+                    username:     owner.username,
+                    display_name: owner.displayName,
+                    avatar_url:   owner.avatarUrl,
+                })
+                .onConflict((oc) => oc.column('id').doUpdateSet({
+                    email:        owner.email,
+                    username:     owner.username,
+                    display_name: owner.displayName,
+                    avatar_url:   owner.avatarUrl,
+                }))
+                .execute();
+
+            await trx
+                .insertInto('members')
+                .values({ user_id: owner.id, role: 'owner' })
+                .onConflict((oc) => oc.column('user_id').doNothing())
+                .execute();
+
+            // Leaves the original timestamp alone on a re-run.
+            await trx
+                .updateTable('deployment')
+                .set({ claimed_by: owner.id, claimed_at: new Date() })
+                .where('claimed_at', 'is', null)
+                .execute();
+        });
+
+        this.logger.log(`Seeded owner for ${databaseName}`);
     }
 
     /**

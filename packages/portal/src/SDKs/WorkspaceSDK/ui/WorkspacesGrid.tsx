@@ -145,7 +145,7 @@ export const WorkspacesGrid = () => {
 
             <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4">
                 {workspaces.length === 0 && (
-                    <Button className="w-[340px] h-[140px] bg-transparent! border-1 border-border hover:bg-white/10 cursor-pointer"
+                    <Button className="w-[340px] h-[140px] bg-transparent! border-1 border-border shadow-none! hover:bg-white/10 cursor-pointer"
                         onClick={() => openCreateWorkspaceDialog()}
                     >
 
@@ -154,14 +154,20 @@ export const WorkspacesGrid = () => {
 
                 )}
                 {workspaces.map((workspace) => (
-                    <Card.Root className='w-[340px]' key={workspace.id}>
+                    <Card.Root
+                        className='w-[340px] hover:ring-primary/40 cursor-pointer transition-shadow'
+                        key={workspace.id}
+                        // A full navigation, not a route change: the editor is a
+                        // separate origin with its own lifetime.
+                        onClick={() => { window.location.href = workspace.appUrl }}
+                    >
                         <Card.Header>
                             <div className='flex flex-row gap-2'>
                                 <SystemIcons.Server className='size-4 my-auto'/>
                                 <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
                             </div>
 
-                            <Card.Action>
+                            <Card.Action onClick={(event) => event.stopPropagation()}>
                                 <DropdownMenu.Root>
                                     <DropdownMenu.Trigger asChild>
                                         <Button size="icon-xs" variant="ghost">
