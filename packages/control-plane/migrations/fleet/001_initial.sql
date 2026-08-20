@@ -47,6 +47,10 @@ create table workspace_secrets (
     -- Signs the tokens a running execution presents back to its own backend.
     -- Per workspace: a fleet-wide value would let one workspace mint another's.
     execution_token_signing_key text not null,
+    -- Stamped by the router on forwarded traffic and required by the silo.
+    -- Per workspace: a fleet-wide value would let one silo impersonate the
+    -- router to another.
+    router_secret text not null,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null
 );

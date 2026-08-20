@@ -48,6 +48,7 @@ export class FleetService {
                     // 32 bytes as hex, the shape PRETZEL_ENCRYPTION_KEY requires.
                     encryption_key: randomBytes(32).toString('hex'),
                     execution_token_signing_key: randomBytes(32).toString('hex'),
+                    router_secret:  randomBytes(32).toString('hex'),
                 })
                 .execute();
         });

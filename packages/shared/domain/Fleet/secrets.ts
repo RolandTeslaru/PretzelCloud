@@ -24,6 +24,9 @@ export namespace WorkspaceSecrets {
         // execution rather than at boot.
         EXECUTION_TOKEN_SIGNING_KEY: z.string(),
         WORKSPACE_ID:           WorkspaceId,
+        // Required on traffic reaching the workspace, when it fronts itself
+        // with a proxy that stamps it.
+        TRUSTED_PROXY_TOKEN:    z.string(),
     })
     export type MachineEnv = z.infer<typeof MachineEnv>
 }

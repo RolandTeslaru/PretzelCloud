@@ -26,7 +26,7 @@ export class WorkspaceSessionController {
     @UseGuards(UserAuthGuard)
     @HttpCode(200)
     async mint(@AuthenticatedUser() principal: Principal.User, @Req() req: Request) {
-        const resolution = await this.router.resolve(req.headers.host);
+        const resolution = await this.router.resolve(req);
 
         if (!resolution)
             throw new NotFoundException('No such workspace');

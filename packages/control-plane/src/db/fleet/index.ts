@@ -51,6 +51,7 @@ export namespace FleetDB {
             // text in the column; the brand is applied at the seam below.
             database_url:   z.string(),
             encryption_key: z.string(),
+            router_secret:  z.string(),
             execution_token_signing_key: z.string(),
             created_at:     z.coerce.date(),
             updated_at:     z.coerce.date(),
@@ -63,6 +64,7 @@ export namespace FleetDB {
             PRETZEL_ENCRYPTION_KEY: row.encryption_key,
             EXECUTION_TOKEN_SIGNING_KEY: row.execution_token_signing_key,
             WORKSPACE_ID:           row.workspace_id,
+            TRUSTED_PROXY_TOKEN:    row.router_secret,
         });
     }
 

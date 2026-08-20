@@ -9,6 +9,9 @@ import { WorkspaceRouter, type Resolution } from './router.service';
 
 const DEFAULT_PORT = 8080;
 
+/** Every silo-bound request carries this, so silos can refuse direct dials. */
+const TRUST_HEADER = 'x-trusted-proxy-token';
+
 /**
  * Paths the workspace itself answers. Everything else is the editor, which is
  * the same build for every workspace and comes from outside the silo.
@@ -109,11 +112,11 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        const resolution = await this.router.resolve(req.headers.host);
+        const resolution = await this.router.resolve(req);
 
         // The interface is served whether or not the machine behind it is
         // awake: a booting screen has to be able to render.
-        if (resolution && !isSiloPath(req.url)) {
+        if (resolution && isSiloPath(req.url) === false) {
             this.serveFrontend(req, res);
             return;
         }
@@ -143,7 +146,10 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         this.proxy.web(
             req,
             res,
-            { target: resolution.target.toString() },
+            {
+                target:  resolution.target.toString(),
+                headers: { [TRUST_HEADER]: resolution.routerSecret },
+            },
             (error) => void this.onUpstreamError(error, resolution, res),
         );
     }
@@ -220,7 +226,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
      * 404 or 503 on its next plain request.
      */
     private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
-        const resolution = await this.router.resolve(req.headers.host);
+        const resolution = await this.router.resolve(req);
 
         if (!resolution?.target) {
             if (resolution)
@@ -230,7 +236,10 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        this.proxy.ws(req, socket, head, { target: resolution.target.toString() });
+        this.proxy.ws(req, socket, head, {
+            target:  resolution.target.toString(),
+            headers: { [TRUST_HEADER]: resolution.routerSecret },
+        });
     }
 
     /**

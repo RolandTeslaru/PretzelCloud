@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
+import type { IncomingMessage } from 'node:http';
 import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { FleetDB } from '@/db/fleet';
 import { MachineDriver } from '@/services/Fleet/drivers/driver';
@@ -21,6 +22,8 @@ export type Resolution = {
     workspaceId: Workspace.Id;
     kind:        Fleet.Hostname.Kind;
     machine:     Fleet.Machine;
+    /** Stamped on forwarded traffic, so the silo can require it. */
+    routerSecret: string;
     /** Where to forward. Null when the machine is not currently serving. */
     target:      URL | null;
 };
@@ -41,46 +44,55 @@ export class WorkspaceRouter {
 
     // Separate instances rather than one holding nullable values: the two want
     // very different lifetimes, and the class takes a single TTL.
-    private readonly hits   = new TtlCache<string, Resolution>(HIT_TTL_MS,  HIT_CACHE_MAX);
-    private readonly misses = new TtlCache<string, true>      (MISS_TTL_MS, MISS_CACHE_MAX);
+    private readonly hits   = new TtlCache<Fleet.Hostname.Host, Resolution>(HIT_TTL_MS,  HIT_CACHE_MAX);
+    private readonly misses = new TtlCache<Fleet.Hostname.Host, true>      (MISS_TTL_MS, MISS_CACHE_MAX);
 
     /**
      * Host headers arrive in whatever case the client sent, and DNS names are
      * case-insensitive; the registry stores them lower case. The port stays —
      * it is part of the name whenever it is not the scheme's default, and
      * lookups match on equality.
+     *
+     * Parsed into the same branded type the registrar writes, so anything the
+     * schema rejects cannot be in the registry and is refused before the
+     * caches or the database see it.
      */
-    private normalize(host: string | undefined): string | null {
+    private normalize(host: string | undefined): Fleet.Hostname.Host | null {
         if (!host)
             return null;
 
-        const trimmed = host.trim().toLowerCase();
+        const parsed = Fleet.Hostname.Host.Schema.safeParse(host.trim().toLowerCase());
 
-        return trimmed.length > 0 ? trimmed : null;
+        return parsed.success ? parsed.data : null;
     }
 
-    async resolve(host: string | undefined): Promise<Resolution | null> {
-        const key = this.normalize(host);
+    /**
+     * Resolution reads the Host header and nothing else about the request —
+     * which workspace a request belongs to must never depend on its path,
+     * cookies, or method.
+     */
+    async resolve(req: IncomingMessage): Promise<Resolution | null> {
+        const host = this.normalize(req.headers.host);
 
-        if (!key)
+        if (!host)
             return null;
 
-        const cached = this.hits.get(key);
+        const cached = this.hits.get(host);
 
         if (cached)
             return cached;
 
-        if (this.misses.get(key))
+        if (this.misses.get(host))
             return null;
 
-        const found = await this.lookup(key);
+        const found = await this.lookup(host);
 
         if (!found) {
-            this.misses.set(key, true);
+            this.misses.set(host, true);
             return null;
         }
 
-        this.hits.set(key, found);
+        this.hits.set(host, found);
 
         return found;
     }
@@ -89,21 +101,26 @@ export class WorkspaceRouter {
      * One query, because two would let a workspace be torn down between them and
      * return a hostname pointing at a machine that no longer exists.
      */
-    private async lookup(host: string): Promise<Resolution | null> {
+    private async lookup(host: Fleet.Hostname.Host): Promise<Resolution | null> {
         const row = await FleetDB.asService('resolve host', (trx) =>
             trx
                 .selectFrom('hostnames')
                 .innerJoin('machines', 'machines.workspace_id', 'hostnames.workspace_id')
+                .innerJoin('workspace_secrets', 'workspace_secrets.workspace_id', 'hostnames.workspace_id')
                 .where('hostnames.host', '=', host)
                 .where('machines.state', '!=', 'destroyed')
                 .selectAll('machines')
-                .select(['hostnames.kind as hostname_kind', 'hostnames.workspace_id as hostname_workspace_id'])
+                .select([
+                    'hostnames.kind as hostname_kind',
+                    'hostnames.workspace_id as hostname_workspace_id',
+                    'workspace_secrets.router_secret as router_secret',
+                ])
                 .executeTakeFirst());
 
         if (!row)
             return null;
 
-        const { hostname_kind, hostname_workspace_id, ...columns } = row;
+        const { hostname_kind, hostname_workspace_id, router_secret, ...columns } = row;
 
         const machine = FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(columns));
 
@@ -111,6 +128,7 @@ export class WorkspaceRouter {
             workspaceId: hostname_workspace_id,
             kind:        Fleet.Hostname.Kind.parse(hostname_kind),
             machine,
+            routerSecret: router_secret,
             // The driver decides how a machine is reached — a published port
             // here, internal DNS elsewhere.
             target: await this.driver.address(machine.externalId),
