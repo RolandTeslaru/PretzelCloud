@@ -13,7 +13,8 @@ async function bootstrap(): Promise<void> {
 
     const app = await NestFactory.create(AppModule);
 
-    app.setGlobalPrefix('api');
+    // jwks lives at its conventional address, outside the api prefix.
+    app.setGlobalPrefix('api', { exclude: ['.well-known/jwks.json'] });
 
     app.enableCors({
         origin: (process.env.CORS_ORIGIN ?? 'http://localhost:5174').split(',').map((o) => o.trim()),

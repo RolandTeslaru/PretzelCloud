@@ -4,7 +4,7 @@ import { PortalDB } from '@/db/portal';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
 import { FleetService } from '@/services/Fleet/fleet.service';
 import { Principal } from '@/auth/principal';
-import { WorkspaceRouter } from '@/services/Router/router.service';
+import { WorkspaceRouter } from '@/services/WorkspaceRouter/router.service';
 
 const PROVISION_ATTEMPTS = 3;
 

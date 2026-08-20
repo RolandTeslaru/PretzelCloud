@@ -18,6 +18,15 @@ const SILO_PREFIXES = ['/api', '/socket', '/webhook', '/health'];
 const isSiloPath = (url: string | undefined) =>
     SILO_PREFIXES.some((prefix) => url === prefix || url?.startsWith(`${prefix}/`) || url?.startsWith(`${prefix}?`));
 
+/**
+ * Paths the control plane answers even on a workspace hostname. Checked before
+ * the silo prefixes, which also match `/api`.
+ */
+const CONTROL_PLANE_PREFIXES = ['/api/session'];
+
+const isControlPlanePath = (url: string | undefined) =>
+    CONTROL_PLANE_PREFIXES.some((prefix) => url === prefix || url?.startsWith(`${prefix}/`) || url?.startsWith(`${prefix}?`));
+
 /** How long a client is asked to wait while a machine boots. */
 const RETRY_AFTER_S = 3;
 
@@ -114,6 +123,13 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        // Before the target check: minting a token must work while the machine
+        // behind the hostname is asleep.
+        if (isControlPlanePath(req.url)) {
+            this.serveControlPlane(req, res);
+            return;
+        }
+
         if (!resolution.target) {
             await this.wake(resolution);
 
@@ -130,6 +146,18 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             { target: resolution.target.toString() },
             (error) => void this.onUpstreamError(error, resolution, res),
         );
+    }
+
+    /** This same process, on its HTTP port. */
+    private serveControlPlane(req: IncomingMessage, res: ServerResponse): void {
+        const origin = `http://127.0.0.1:${process.env.PORT ?? 4000}`;
+
+        this.proxy.web(req, res, { target: origin }, (error) => {
+            this.logger.warn(`Control plane forward failed: ${error.message}`);
+
+            if (!res.headersSent)
+                res.writeHead(502, { 'Content-Type': 'text/plain' }).end('Bad Gateway\n');
+        });
     }
 
     /**

@@ -3,6 +3,7 @@ import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { ClusterService } from '../cluster/cluster.service';
 import { FleetService } from '../fleet.service';
 import { requireEnv } from '@/db/table';
+import { WorkspaceTokenIssuer } from '@/services/WorkspaceSession/token-issuer.service';
 
 export class ProvisioningError extends Error {
     constructor(readonly step: string, cause: unknown) {
@@ -25,6 +26,7 @@ export class ProvisioningService {
     constructor(
         private readonly cluster: ClusterService,
         private readonly fleet: FleetService,
+        private readonly workspaceTokenIssuer: WorkspaceTokenIssuer,
     ) {}
 
     async provision(workspaceId: Workspace.Id, owner: User): Promise<void> {
@@ -44,6 +46,8 @@ export class ProvisioningService {
         if (!env)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
 
+        const publicKey = JSON.stringify(await this.workspaceTokenIssuer.publicJwk());
+
         await this.step('machine', () => this.fleet.createMachine(workspaceId, 'combined', {
             image: requireEnv('WORKSPACE_IMAGE'),
             size:  process.env.WORKSPACE_SIZE ?? 'shared-1x-512',
@@ -52,8 +56,10 @@ export class ProvisioningService {
                 // The issuer as reached from inside the container, not the URL a
                 // browser is given.
                 AUTH_URL:        requireEnv('WORKSPACE_AUTH_URL'),
-                // Tokens are verified locally against the fleet issuer's secret.
-                AUTH_JWT_SECRET: requireEnv('AUTH_JWT_SECRET'),
+                // Verifies, cannot mint. The signing key never leaves the
+                // control plane.
+                WORKSPACE_TOKEN_PUBLIC_KEY: publicKey,
+                TOKEN_ISSUER:               this.workspaceTokenIssuer.issuer(),
                 // Names the owner up front, so ownership is not won by arriving first.
                 WORKSPACE_OWNER_ID: owner.id,
                 // The origin a browser reaches this workspace at.

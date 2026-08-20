@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { WorkspaceTokenIssuerModule } from '@/services/WorkspaceSession/token-issuer.module';
 import { MachineDriver } from './drivers/driver';
 import { DockerDriver } from './drivers/docker.driver';
 import { ClusterService } from './cluster/cluster.service';
@@ -15,6 +16,7 @@ function driverFor(kind: string | undefined): MachineDriver {
 }
 
 @Module({
+    imports: [WorkspaceTokenIssuerModule],
     providers: [
         { provide: MachineDriver, useFactory: () => driverFor(process.env.MACHINE_DRIVER) },
         ClusterService,
