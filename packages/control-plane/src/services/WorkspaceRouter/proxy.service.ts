@@ -30,6 +30,13 @@ const CONTROL_PLANE_PREFIXES = ['/api/session'];
 const isControlPlanePath = (url: string | undefined) =>
     CONTROL_PLANE_PREFIXES.some((prefix) => url === prefix || url?.startsWith(`${prefix}/`) || url?.startsWith(`${prefix}?`));
 
+/** All the hooks hostname serves. The app hostname still serves them too, for
+ *  the URLs already copied out of the editor. */
+const WEBHOOK_PREFIXES = ['/webhook', '/webhook-test'];
+
+const isWebhookPath = (url: string | undefined) =>
+    WEBHOOK_PREFIXES.some((prefix) => url === prefix || url?.startsWith(`${prefix}/`) || url?.startsWith(`${prefix}?`));
+
 /** How long a client is asked to wait while a machine boots. */
 const RETRY_AFTER_S = 3;
 
@@ -113,6 +120,13 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
     private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const resolution = await this.router.resolve(req);
+
+        // The hooks hostname is webhook delivery and nothing else — no editor,
+        // no API, no token mint. Policy attaches to the hostname.
+        if (resolution?.kind === 'hooks' && !isWebhookPath(req.url)) {
+            res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found\n');
+            return;
+        }
 
         // The interface is served whether or not the machine behind it is
         // awake: a booting screen has to be able to render.
@@ -227,6 +241,12 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
      */
     private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
         const resolution = await this.router.resolve(req);
+
+        // Webhooks never upgrade.
+        if (resolution?.kind === 'hooks') {
+            socket.destroy();
+            return;
+        }
 
         if (!resolution?.target) {
             if (resolution)
