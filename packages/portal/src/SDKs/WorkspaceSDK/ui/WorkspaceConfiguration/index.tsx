@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { ScrollArea, Separator } from '@pretzel-graph/standard-ui/foundations'
-import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
+import { Illustrations, SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
@@ -50,12 +50,13 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId }: PanelProps) => {
     const workspace   = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])
     const ActivePanel = activeId ? PANELS[activeId] : null
 
+    
     return (
         <div className='pl-2 flex flex-row gap-4 !overflow-hidden'>
             <div className='p-0.5 py-2 w-50 shrink-0 border-r border-border'>
                 <div className='inline-flex items-center px-1'>
-                    <SystemIcons.Cog className='size-4 m-2' />
-                    <p className='font-medium text-sm truncate'>{workspace?.displayName ?? 'Workspace'}</p>
+                    <SystemIcons.Server className='size-4 m-2' />
+                    <p className='font-medium w-35 text-sm text-ellipsis text-nowrap overflow-hidden'>{workspace?.displayName ?? 'Workspace'}</p>
                 </div>
 
                 <Separator className='w-[calc(100%-0.5rem)]! mx-auto' />
@@ -90,7 +91,7 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId }: PanelProps) => {
                     </>
                 ) : (
                     <div className='absolute top-1/2 -translate-1/2 left-1/2 w-[300px] flex flex-col gap-2 p-6 h-full justify-center items-center text-center'>
-                        <SystemIcons.Cog className='size-8 text-muted-foreground/50' />
+                        <Illustrations.GearIllustration className='size-15 text-muted-foreground/50' />
                         <p className='text-sm font-medium'>Workspace Settings</p>
                         <p className='text-xs text-muted-foreground max-w-55'>
                             Rename this workspace, give it an address of its own, or tear it down.

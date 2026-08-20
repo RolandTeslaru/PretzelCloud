@@ -10,6 +10,7 @@ import { WorkspaceSDK } from '../sdk'
 import { DEFAULT_SORT } from '../selectors'
 import { openCreateWorkspaceDialog } from '@/SDKs/WorkspaceSDK/ui/create-dialogs'
 import { openWorkspaceConfigurationDialog } from '@/SDKs/WorkspaceSDK/ui/WorkspaceConfiguration'
+import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
 
 const STALE_TIME = 30_000
 
@@ -143,7 +144,7 @@ export const WorkspacesGrid = () => {
             </div>
 
 
-            <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4">
+            <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
                 {workspaces.length === 0 && (
                     <Button className="w-[340px] h-[140px] bg-transparent! border-1 border-border shadow-none! hover:bg-white/10 cursor-pointer"
                         onClick={() => openCreateWorkspaceDialog()}
@@ -155,7 +156,7 @@ export const WorkspacesGrid = () => {
                 )}
                 {workspaces.map((workspace) => (
                     <Card.Root
-                        className='w-[340px] hover:ring-primary/40 cursor-pointer transition-shadow'
+                        className='w-[340px] cursor-pointer transition-shadow'
                         key={workspace.id}
                         // A full navigation, not a route change: the editor is a
                         // separate origin with its own lifetime.
@@ -163,7 +164,7 @@ export const WorkspacesGrid = () => {
                     >
                         <Card.Header>
                             <div className='flex flex-row gap-2'>
-                                <SystemIcons.Server className='size-4 my-auto'/>
+                                <ServerIllustration className='h-6'/>
                                 <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
                             </div>
 
