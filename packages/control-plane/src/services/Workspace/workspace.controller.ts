@@ -119,6 +119,15 @@ export class WorkspaceController {
         return {};
     }
 
+    @Post(':workspaceId/rebuild')
+    @Scoped('workspace')
+    @RequireOwner()
+    async rebuild(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
+        await this.workspaces.rebuild(workspace.id, workspace.ownerId, workspace.plan);
+
+        return {};
+    }
+
     @Post(':workspaceId/restart')
     @Scoped('workspace')
     @RequireOwner()

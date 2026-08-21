@@ -83,6 +83,20 @@ export class ProvisioningService {
         await this.step('convert', () => this.hardware.convertTo(workspaceId, plan, specInputs));
     }
 
+    /** Rebuilds a workspace's machines from the current spec, keeping its data. */
+    async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
+        const env = await this.secrets.get(workspaceId);
+
+        if (!env)
+            throw new ProvisioningError('secrets', 'no secrets for this workspace');
+
+        const specInputs = await this.specInputs(workspaceId, ownerId, env);
+
+        // No health wait here: the caller stops the hardware around a rebuild
+        // and starts it after, so nothing is serving until it does.
+        await this.step('rebuild', () => this.hardware.rebuild(workspaceId, plan, specInputs));
+    }
+
     /**
      * What a machine is built from, shared by the first build and later
      * conversions. Which image and size each role runs is the hardware's own

@@ -123,9 +123,12 @@ export class MachineService {
     }
 
     /** Asks the driver, not the row: the daemon is the truth about what is running. */
-    async refreshState(machine: Fleet.Machine): Promise<void> {
+    /** Records what the driver says, and hands it back to the caller. */
+    async refreshState(machine: Fleet.Machine): Promise<Fleet.Machine.State> {
         const state = await this.driver.status(machine.externalId);
 
         await FleetDB.asService('refresh machine state', (trx) => this.db.setState(trx, machine.id, state));
+
+        return state;
     }
 }

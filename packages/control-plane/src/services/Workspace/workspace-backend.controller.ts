@@ -16,11 +16,18 @@ export class WorkspaceBackendController {
 
     constructor(private readonly workspaces: WorkspaceService) {}
 
-    @Post(':workspaceId/wake-worker')
+    @Post(':workspaceId/worker/wake')
     async wakeWorker(@Param('workspaceId') workspaceId: string): Promise<Record<string, never>> {
         // Parsed here rather than read from a scope: the scoped guard is the
         // user path's, and this caller is a machine.
         await this.workspaces.wakeWorker(Workspace.Id.parse(workspaceId));
+
+        return {};
+    }
+
+    @Post(':workspaceId/worker/sleep')
+    async sleepWorker(@Param('workspaceId') workspaceId: string): Promise<Record<string, never>> {
+        await this.workspaces.sleepWorker(Workspace.Id.parse(workspaceId));
 
         return {};
     }

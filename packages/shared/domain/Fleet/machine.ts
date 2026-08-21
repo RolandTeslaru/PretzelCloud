@@ -62,9 +62,10 @@ export namespace Machine {
 
         /** Answers HTTP and holds the queue. The only role that may call the fleet. */
         export const Backend = Base.extend({
-            role:          z.literal("backend"),
-            backendToken:  z.string(),
-            wakeWorkerUrl: z.string(),
+            role:         z.literal("backend"),
+            backendToken: z.string(),
+            /** Base of the worker lifecycle routes; the action is the path under it. */
+            workerLifecycleUrl: z.string(),
         })
         export type Backend = z.infer<typeof Backend>
 
@@ -121,10 +122,10 @@ export namespace Machine {
                 case "backend":
                     return {
                         ...spec.env,
-                        // Its own credential and the one call it makes: waking
-                        // the worker before handing it something to run.
-                        CONTROL_PLANE_TOKEN: spec.backendToken,
-                        WORKER_WAKE_URL:     spec.wakeWorkerUrl,
+                        // Its own credential, and where it drives the machine
+                        // that drains the queue.
+                        CONTROL_PLANE_TOKEN:  spec.backendToken,
+                        WORKER_LIFECYCLE_URL: spec.workerLifecycleUrl,
                     };
 
                 case "worker":

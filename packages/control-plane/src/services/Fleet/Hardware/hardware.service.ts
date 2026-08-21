@@ -67,8 +67,8 @@ export class HardwareService {
                 env,
                 image:         requireEnv('WORKSPACE_IMAGE_BACKEND'),
                 size:          requireEnv('WORKSPACE_SIZE_BACKEND'),
-                backendToken:  inputs.backendToken,
-                wakeWorkerUrl: `${requireEnv('CONTROL_PLANE_INTERNAL_URL')}/api/workspaces/${workspaceId}/wake-worker`,
+                backendToken:       inputs.backendToken,
+                workerLifecycleUrl: `${requireEnv('CONTROL_PLANE_INTERNAL_URL')}/api/workspaces/${workspaceId}/worker`,
             };
 
         return {
@@ -78,6 +78,23 @@ export class HardwareService {
             size:        requireEnv('WORKSPACE_SIZE_WORKER'),
             backendHost: Fleet.Machine.Name.create(workspaceId, 'backend'),
         };
+    }
+
+    /**
+     * Replaces every machine with one built from the spec as it stands now.
+     * Only compute is discarded: the database lives in the cluster, and the
+     * hostnames and secrets are the fleet's, so nothing the workspace holds
+     * goes with it. The caller stops the hardware first — destroy refuses a
+     * live machine.
+     */
+    async rebuild(
+        workspaceId: Workspace.Id,
+        plan:        Workspace.Plan,
+        inputs:      Fleet.Machine.Spec.Inputs,
+    ): Promise<void> {
+        await this.destroy(workspaceId);
+
+        await this.build(workspaceId, plan, inputs);
     }
 
     /**
@@ -168,9 +185,12 @@ export class HardwareService {
             throw new Error(`${workspaceId} has no worker machine to start`);
         }
 
-        if (worker.state === 'suspended')
+        // The record can lag the machine, so the driver is asked before deciding.
+        const state = await this.machines.refreshState(worker);
+
+        if (state === 'suspended')
             await this.machines.resume(worker.externalId);
-        else if (worker.state === 'stopped')
+        else if (state === 'stopped')
             await this.machines.start(worker.externalId);
 
         await this.refreshStates(workspaceId);
@@ -179,6 +199,26 @@ export class HardwareService {
     /** Nothing left running — worker included. */
     stopAll(workspaceId: Workspace.Id): Promise<void> {
         return this.fanOut(workspaceId, 'stop');
+    }
+
+    /**
+     * Stops the machine that drains the queue, leaving the backend answering.
+     * A combined machine is left alone: its worker is the machine serving the
+     * workspace, so stopping it would take the workspace down with it.
+     */
+    async stopWorker(workspaceId: Workspace.Id): Promise<void> {
+        const worker = await this.machines.getByRole(workspaceId, ['worker']);
+
+        if (!worker)
+            return;
+
+        // The record can lag the machine, so the driver is asked before deciding.
+        const state = await this.machines.refreshState(worker);
+
+        if (Fleet.Machine.canApply('stop', { role: worker.role, state }))
+            await this.machines.stop(worker.externalId);
+
+        await this.refreshStates(workspaceId);
     }
 
     /**

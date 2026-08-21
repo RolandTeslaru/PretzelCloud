@@ -244,6 +244,8 @@ export namespace Workspace {
         export const suspend = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'suspend')
         export const resume  = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'resume')
         export const restart = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'restart')
+        /** Replaces the machines from the current spec; the data is untouched. */
+        export const rebuild = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'rebuild')
 
         export namespace Destroy {
             export const Response = z.object({})

@@ -230,6 +230,15 @@ export class WorkspaceService {
     }
 
     /**
+     * Stops the worker once its backend reports the queue has been quiet. The
+     * backend holds the clock: it is the machine that never sleeps, and the one
+     * that sees every job start and finish.
+     */
+    sleepWorker(workspaceId: Workspace.Id): Promise<void> {
+        return this.hardware.stopWorker(workspaceId);
+    }
+
+    /**
      * Starting a workspace means making it answerable, which is its backend. The
      * worker is demand-driven — the backend wakes it before it enqueues — so
      * starting one here would be paying for compute nobody asked for.
@@ -306,6 +315,24 @@ export class WorkspaceService {
      * plan is written first: the topology is derived from it, so a conversion
      * that fails leaves the intent recorded for a retry.
      */
+    /**
+     * Rebuilds the machines from the spec as it stands now — a new image, or a
+     * changed environment, reaches an existing workspace this way. Its database,
+     * hostnames and secrets are untouched; only the compute is replaced.
+     */
+    async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
+        // Down for the rebuild: stopped first so executions end and pools close.
+        await this.stop(workspaceId);
+
+        await this.provisioning.rebuild(workspaceId, ownerId, plan);
+
+        await this.start(workspaceId);
+
+        await this.hardware.awaitHealthy(workspaceId);
+
+        this.router.invalidate(workspaceId);
+    }
+
     async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
         await PortalDB.asService('set workspace plan', (db) =>
             db.updateTable('workspaces').set({ plan }).where('id', '=', workspaceId).execute());

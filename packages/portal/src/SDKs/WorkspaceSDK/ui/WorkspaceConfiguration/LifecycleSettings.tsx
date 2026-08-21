@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
+import { AlertDialog, Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
+import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { Fleet } from '@pretzel-cloud/shared/domain'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
@@ -8,6 +9,8 @@ import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge } from '../status'
 
 type Action = Fleet.Machine.LifecycleAction
+
+const REBUILD_CONFIRM_ID = 'rebuild-workspace'
 
 // Raw state-machine controls are for developing the fleet, not for users. Gated
 // on the origin: `localhost` is a reserved TLD that no deployment can serve, so
@@ -44,6 +47,8 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
 
     const [converting, setConverting] = useState<Workspace.Plan | null>(null)
 
+    const [rebuilding, setRebuilding] = useState(false)
+
     if (!workspace) return null
 
     const run = (action: Action) => async () => {
@@ -78,6 +83,41 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
         }
     }
 
+    const rebuild = () => {
+        DialogSDK.actions.push(REBUILD_CONFIRM_ID, (props) => (
+            <DialogSDK.AlertTemplate
+                {...props}
+                type="danger"
+                approveLabel="Rebuild"
+                onCancel={() => DialogSDK.actions.pop(REBUILD_CONFIRM_ID)}
+                onApprove={async () => {
+                    DialogSDK.actions.pop(REBUILD_CONFIRM_ID)
+
+                    setRebuilding(true)
+
+                    try {
+                        await WorkspaceSDK.actions.rebuild(workspaceId)
+
+                        NotificationSDK.toast.success('Machines rebuilt')
+                    }
+                    catch {
+                        NotificationSDK.toast.error('Could not rebuild the machines')
+                    }
+                    finally {
+                        setRebuilding(false)
+                    }
+                }}
+            >
+                <AlertDialog.Title>Rebuild {workspace.displayName}?</AlertDialog.Title>
+                <AlertDialog.Description>
+                    The machines are replaced with new ones built from the current configuration.
+                    The workspace is offline while it runs, and anything executing is stopped. Its
+                    database, address and credentials are untouched.
+                </AlertDialog.Description>
+            </DialogSDK.AlertTemplate>
+        ))
+    }
+
     return (
         <div className="flex flex-col gap-4 pr-2">
             <div className="flex items-center justify-between rounded-lg ">
@@ -106,6 +146,27 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                 >
                     {busy === 'restart' ? <Spinner className="size-3.5" /> : <SystemIcons.RefreshCcw />}
                     Restart workspace
+                </Button>
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-lg">
+                <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium">Rebuild machines</p>
+                    <p className="text-muted-foreground text-xs">
+                        Replaces the machines with new ones built from the current configuration.
+                        Picks up a new version. The database is untouched.
+                    </p>
+                </div>
+
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="mr-auto"
+                    disabled={rebuilding || busy !== null}
+                    onClick={rebuild}
+                >
+                    {rebuilding ? <Spinner className="size-3.5" /> : <SystemIcons.Server />}
+                    Rebuild machines
                 </Button>
             </div>
 
