@@ -5,9 +5,24 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 import './index.css'
 import { SystemSDK } from '@pretzel-graph/standard-ui/SDKs/SystemSDK'
 import { AuthSDK } from './SDKs/AuthSDK/sdk'
+import { RealtimeSDK, socketUrl } from './SDKs/RealtimeSDK'
 import { routeTree } from './routeTree.gen'
 
 SystemSDK.init()
+
+// The socket follows the session, not the page: the handshake carries a token,
+// and signing in or out navigates rather than reloads. Registered before init so
+// the session it recovers is itself a transition.
+AuthSDK.subscribe((auth, previous) => {
+    if (auth.isAuthenticated === previous.isAuthenticated)
+        return
+
+    if (auth.isAuthenticated)
+        RealtimeSDK.connect(socketUrl())
+    else
+        RealtimeSDK.disconnect()
+})
+
 AuthSDK.init()
 
 export const router = createRouter({

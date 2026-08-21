@@ -1,4 +1,4 @@
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain'
 import { api } from '../api'
 import type { WorkspaceSDKImpl } from './sdk'
 
@@ -9,6 +9,8 @@ export type _WorkspaceSDKActions_ = {
     rename:       (workspaceId: Workspace.Id, payload: Workspace.API.Rename.Request) => Promise<void>
     setSubdomain: (workspaceId: Workspace.Id, payload: Workspace.API.SetSubdomain.Request) => Promise<void>
     destroy:      (workspaceId: Workspace.Id) => Promise<void>
+    lifecycle:    (workspaceId: Workspace.Id, action: Fleet.Machine.LifecycleAction) => Promise<Workspace>
+    applyEvent:   (event: Workspace.Event.Any) => void
 }
 
 export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKActions_ {
@@ -76,6 +78,38 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
 
             setState((s) => {
                 delete s.workspaces[workspaceId]
+            })
+        },
+
+        // The transition changes machine state, which the workspace's status
+        // reflects — so re-read the card rather than guessing the new value.
+        lifecycle: async (workspaceId, action) => {
+            await Workspace.API.lifecycle(api, workspaceId, { action })
+
+            return sdk.actions.refresh(workspaceId)
+        },
+
+        // Patched in place rather than re-fetched: the event already carries the
+        // field that moved. An event for a card this client never loaded is
+        // dropped — the list decides what is on screen.
+        applyEvent: (event) => {
+            setState((s) => {
+                if (event.type === 'destroyed') {
+                    delete s.workspaces[event.workspaceId]
+
+                    return
+                }
+
+                const card = s.workspaces[event.workspaceId]
+
+                if (!card)
+                    return
+
+                if (event.type === 'state:changed')
+                    card.state = event.state
+
+                if (event.type === 'provisioning:changed')
+                    card.provisioningStatus = event.provisioningStatus
             })
         },
     }

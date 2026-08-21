@@ -8,6 +8,7 @@ import { WorkspaceSDK } from '../../sdk'
 import { GeneralSettings } from './GeneralSettings'
 import { DomainSettings } from './DomainSettings'
 import { DangerSettings } from './DangerSettings'
+import { LifecycleSettings } from './LifecycleSettings'
 
 // Per workspace, so opening one from another card does not reuse its panel state.
 const dialogId = (workspaceId: Workspace.Id) => `workspace-configuration-${workspaceId}`
@@ -22,25 +23,28 @@ export function openWorkspaceConfigurationDialog(workspaceId: Workspace.Id) {
     ))
 }
 
-type ItemId = 'general' | 'domain' | 'danger'
+type ItemId = 'general' | 'domain' | 'lifecycle' | 'danger'
 
 type PanelProps = { workspaceId: Workspace.Id; dialogId: string }
 
 const ITEMS: { id: ItemId; icon: React.FC<React.SVGProps<SVGSVGElement>>; label: string }[] = [
     { id: 'general', icon: SystemIcons.Settings,      label: 'General' },
     { id: 'domain',  icon: SystemIcons.Globe,         label: 'Domain' },
+    { id: 'lifecycle', icon: SystemIcons.Power,       label: 'Lifecycle' },
     { id: 'danger',  icon: SystemIcons.AlertTriangle, label: 'Danger zone' },
 ]
 
 const LABELS: Record<ItemId, string> = {
     general: 'General',
     domain:  'Domain',
+    lifecycle: 'Lifecycle',
     danger:  'Danger zone',
 }
 
 const PANELS: Record<ItemId, React.FC<PanelProps>> = {
     general: GeneralSettings,
     domain:  DomainSettings,
+    lifecycle: LifecycleSettings,
     danger:  DangerSettings,
 }
 
@@ -52,7 +56,7 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId }: PanelProps) => {
 
     
     return (
-        <div className='pl-2 flex flex-row gap-4 !overflow-hidden'>
+        <div className='pl-2 flex min-h-[600px] flex-row gap-4 !overflow-hidden'>
             <div className='p-0.5 py-2 w-50 shrink-0 border-r border-border'>
                 <div className='inline-flex items-center px-1'>
                     <SystemIcons.Server className='size-4 m-2' />

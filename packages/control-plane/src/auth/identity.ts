@@ -7,6 +7,12 @@ import { Principal } from './principal';
 /** Resolves the caller's identity from the request, or null. */
 export abstract class IdentityResolver {
     abstract resolve(request: Request): Promise<Principal.User | null>;
+
+    /**
+     * The same answer, for callers holding a bare token. A socket handshake has
+     * no Authorization header to read, so it carries its token in the query.
+     */
+    abstract resolveToken(token: string): Promise<Principal.User | null>;
 }
 
 const ALGORITHM = 'HS256';
@@ -34,6 +40,10 @@ export class TokenIdentityResolver extends IdentityResolver {
         if (scheme !== 'Bearer' || !token)
             return null;
 
+        return this.resolveToken(token);
+    }
+
+    async resolveToken(token: string): Promise<Principal.User | null> {
         try {
             // Algorithm pinned: without it a token names its own, and `none`
             // would skip the signature entirely.

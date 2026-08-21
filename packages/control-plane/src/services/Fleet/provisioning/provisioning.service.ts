@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { ClusterService } from '../cluster/cluster.service';
-import { FleetService } from '../fleet.service';
+import { WorkspaceSecretsService } from '../WorkspaceSecrets/workspace-secrets.service';
+import { HardwareService } from '../Hardware/hardware.service';
+import { HostnameService } from '../Hostname/hostname.service';
 import { requireEnv } from '@/db/table';
 import { WorkspaceTokenIssuer } from '@/services/WorkspaceSession/token-issuer.service';
 
@@ -24,12 +26,14 @@ export class ProvisioningService {
     private readonly logger = new Logger(ProvisioningService.name);
 
     constructor(
-        private readonly cluster: ClusterService,
-        private readonly fleet: FleetService,
+        private readonly cluster:  ClusterService,
+        private readonly secrets:  WorkspaceSecretsService,
+        private readonly hardware: HardwareService,
+        private readonly hostnames: HostnameService,
         private readonly workspaceTokenIssuer: WorkspaceTokenIssuer,
     ) {}
 
-    async provision(workspaceId: Workspace.Id, owner: User): Promise<void> {
+    async provision(workspaceId: Workspace.Id, owner: User, plan: Workspace.Plan): Promise<void> {
         // The workspace decides what its database and role are called; the
         // cluster service only creates what it is told to.
         const spec = {
@@ -39,16 +43,16 @@ export class ProvisioningService {
 
         const databaseUrl = await this.step('database', () => this.cluster.createDatabase(spec));
 
-        await this.step('secrets', () => this.fleet.ensureSecrets(workspaceId, databaseUrl));
+        await this.step('secrets', () => this.secrets.ensure(workspaceId, databaseUrl));
 
-        const env = await this.step('secrets', () => this.fleet.machineEnv(workspaceId));
+        const env = await this.step('secrets', () => this.secrets.get(workspaceId));
 
         if (!env)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
 
         const publicKey = JSON.stringify(await this.workspaceTokenIssuer.publicJwk());
 
-        await this.step('machine', () => this.fleet.createMachine(workspaceId, 'combined', {
+        await this.step('hardware', () => this.hardware.build(workspaceId, plan, {
             image: requireEnv('WORKSPACE_IMAGE'),
             size:  process.env.WORKSPACE_SIZE ?? 'shared-1x-512',
             env:   {
@@ -68,19 +72,21 @@ export class ProvisioningService {
         }));
 
         // Before hostnames: a machine that never serves should not be published.
-        await this.step('health', () => this.fleet.awaitHealthy(workspaceId));
+        await this.step('health', () => this.hardware.awaitHealthy(workspaceId));
 
         // After health, which is what says the workspace has run its migrations.
         await this.step('owner', () => this.cluster.seedOwner(spec.databaseName, owner));
 
-        await this.step('hostnames', () => this.fleet.registerCanonicalHostnames(workspaceId));
+        await this.step('hostnames', () => this.hostnames.registerCanonical(workspaceId));
 
         this.logger.log(`Provisioned ${workspaceId}`);
     }
 
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
-        await this.fleet.teardown(workspaceId);
+        await this.hardware.destroy(workspaceId);
+        await this.hostnames.delete(workspaceId);
+        await this.secrets.delete(workspaceId);
 
         await this.cluster.dropDatabase({
             databaseName: Workspace.getDatabaseName(workspaceId),

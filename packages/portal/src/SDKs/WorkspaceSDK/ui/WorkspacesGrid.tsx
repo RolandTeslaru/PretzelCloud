@@ -1,11 +1,12 @@
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Badge, Button, DropdownMenu, SearchInput, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { Card } from '@pretzel-graph/standard-ui/foundations/card'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { BadgeProps } from '@pretzel-graph/standard-ui/foundations'
-import type { Workspace } from '@pretzel-cloud/shared/domain'
+import { Workspace } from '@pretzel-cloud/shared/domain'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
+import { RealtimeSDK } from '@/SDKs/RealtimeSDK'
 import { WorkspaceSDK } from '../sdk'
 import { DEFAULT_SORT } from '../selectors'
 import { openCreateWorkspaceDialog } from '@/SDKs/WorkspaceSDK/ui/create-dialogs'
@@ -23,15 +24,29 @@ export const workspacesQuery = {
 
 // Keyed by the status enum, so adding a state to it fails to compile until it
 // is given an appearance here.
-const STATUS: Record<Workspace.Status, { label: string; variant: BadgeProps['variant']; icon: ReactNode }> = {
-    provisioning: { label: 'Provisioning', variant: 'secondary', icon: <Spinner className="size-2.5" /> },
-    ready: { label: 'Ready', variant: 'success', icon: <SystemIcons.Check /> },
-    suspended: { label: 'Suspended', variant: 'outline', icon: <SystemIcons.Moon /> },
-    failed: { label: 'Failed', variant: 'destructive', icon: <SystemIcons.AlertTriangle /> },
+type Appearance = { label: string; variant: BadgeProps['variant']; icon: ReactNode }
+
+// The card shows one badge, but two things move behind it: whether the workspace
+// is built (its status) and whether its machine is up (its runtime state). Being
+// built but not yet placed wins, so the state below only shows once it applies.
+const displayStatus = (workspace: Workspace): Appearance => {
+    if (workspace.provisioningStatus === 'provisioning')
+        return { label: 'Provisioning', variant: 'secondary', icon: <Spinner className="size-2.5" /> }
+
+    if (workspace.provisioningStatus === 'failed')
+        return { label: 'Failed', variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
+
+    switch (workspace.state) {
+        case 'running':   return { label: 'Running',   variant: 'success', icon: <SystemIcons.Check /> }
+        case 'suspended': return { label: 'Suspended', variant: 'outline', icon: <SystemIcons.Moon /> }
+        case 'stopped':   return { label: 'Stopped',   variant: 'outline', icon: <SystemIcons.Power /> }
+        case 'creating':  return { label: 'Starting',  variant: 'secondary', icon: <Spinner className="size-2.5" /> }
+        default:          return { label: 'Ready',     variant: 'success', icon: <SystemIcons.Check /> }
+    }
 }
 
-const StatusBadge = ({ status }: { status: Workspace.Status }) => {
-    const { label, variant, icon } = STATUS[status]
+const StatusBadge = ({ workspace }: { workspace: Workspace }) => {
+    const { label, variant, icon } = displayStatus(workspace)
 
     return (
         <Badge variant={variant} size="sm">
@@ -115,11 +130,26 @@ const SortMenu = ({ sort, onChange }: {
  */
 export const WorkspacesGrid = () => {
 
+    // The list seeds the store once; the socket keeps it live from there.
     const { error, isPending } = QuerySDK.useQuery<unknown, Error>(
         workspacesQuery.queryKey,
         workspacesQuery.queryFn,
         { staleTime: STALE_TIME },
     )
+
+    // Shallow-compared by the store, so this is stable until a card is added or
+    // removed — which is exactly when the subscriptions should be rebuilt.
+    const ids = WorkspaceSDK.useStore((s) => Object.keys(s.workspaces) as Workspace.Id[])
+
+    useEffect(() => {
+        const stops = ids.map((id) =>
+            RealtimeSDK.subscribeToChannel<Workspace.Event.Any>(
+                Workspace.Event.getChannel(id),
+                (event) => WorkspaceSDK.actions.applyEvent(event),
+            ))
+
+        return () => stops.forEach((stop) => stop())
+    }, [ids])
 
     // Filtering is local to what the store already holds, so typing never
     // reaches the control plane.
@@ -195,7 +225,7 @@ export const WorkspacesGrid = () => {
                             </Card.Action>
                         </Card.Header>
                         <Card.Content className='w-full flex'>
-                            <StatusBadge status={workspace.status} />
+                            <StatusBadge workspace={workspace} />
 
                         </Card.Content>
                     </Card.Root>

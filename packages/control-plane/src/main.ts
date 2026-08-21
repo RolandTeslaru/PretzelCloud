@@ -1,6 +1,7 @@
 import './load-env';
 
 import { NestFactory } from '@nestjs/core';
+import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { PortalDB } from './db/portal';
 import { FleetDB } from './db/fleet';
@@ -12,6 +13,9 @@ async function bootstrap(): Promise<void> {
     await migrateToLatest('fleet',  FleetDB.forMigrations(),  migrationsDir('fleet'));
 
     const app = await NestFactory.create(AppModule);
+
+    // ws rather than socket.io: the portal speaks the same protocol the editor does.
+    app.useWebSocketAdapter(new WsAdapter(app));
 
     // jwks lives at its conventional address, outside the api prefix.
     app.setGlobalPrefix('api', { exclude: ['.well-known/jwks.json'] });

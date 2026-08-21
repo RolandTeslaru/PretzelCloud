@@ -20,16 +20,20 @@ export namespace Machine {
 
     // Where the container runs. Everything else in provisioning is identical
     // across the two.
-    export const Driver = z.enum(["docker", "fly"])
-    export type  Driver = z.infer<typeof Driver>
 
     // 'combined' is the free-tier shape: one machine holding backend, Redis and
     // worker together.
     export const Role = z.enum(["backend", "worker", "combined"])
     export type  Role = z.infer<typeof Role>
 
-    export const State = z.enum(["creating", "started", "stopped", "destroyed"])
+    // `suspended`: frozen in place and resumable without a boot; `stopped`: powered off.
+    export const State = z.enum(["creating", "running", "suspended", "stopped", "destroyed"])
     export type  State = z.infer<typeof State>
+
+    // Operator-driven transitions. `restart` is the one users press; the rest
+    // are the raw state machine, surfaced only behind dev controls.
+    export const LifecycleAction = z.enum(["start", "stop", "suspend", "resume", "restart"])
+    export type  LifecycleAction = z.infer<typeof LifecycleAction>
 
     /** The driver's own handle: a Fly machine id, or a Docker container id. */
     export const ExternalId = z.string().min(1).brand("Fleet.Machine.ExternalId")
@@ -51,7 +55,7 @@ export namespace Machine {
     export const Schema = z.object({
         id:          Id,
         workspaceId: WorkspaceId,
-        driver:      Driver,
+        hardwareId:  z.uuid().brand("Fleet.Hardware.Id").nullable(),
         externalId:  ExternalId,
         role:        Role,
         size:        z.string(),

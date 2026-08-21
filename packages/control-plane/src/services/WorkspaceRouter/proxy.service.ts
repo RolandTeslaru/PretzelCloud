@@ -4,7 +4,7 @@ import type { Duplex } from 'node:stream';
 import httpProxy from 'http-proxy';
 import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { MachineDriver } from '@/services/Fleet/drivers/driver';
+import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { WorkspaceRouter, type Resolution } from './router.service';
 
 const DEFAULT_PORT = 8080;
@@ -84,7 +84,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
     constructor(
         private readonly router: WorkspaceRouter,
-        private readonly driver: MachineDriver,
+        private readonly hardware: HardwareService,
     ) {}
 
     onModuleInit(): void {
@@ -263,12 +263,12 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Starts a stopped machine, once. The route stays cached without a target
-     * until the entry expires, so the resolution is dropped here — the next
-     * request re-reads it and finds the address the driver can now report.
+     * Caffeinates the backend, once. The route stays cached without a target
+     * until the entry expires, so it is dropped here — the next request re-reads
+     * it and finds the address the woken backend now reports.
      */
     private async wake(resolution: Resolution): Promise<void> {
-        const { workspaceId, machine } = resolution;
+        const { workspaceId } = resolution;
 
         if (this.waking.get(workspaceId))
             return;
@@ -278,7 +278,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         try {
             this.logger.log(`Waking ${workspaceId}`);
 
-            await this.driver.start(machine.externalId);
+            await this.hardware.ensureBackendCaffeinated(workspaceId);
 
             this.router.invalidate(workspaceId);
         }

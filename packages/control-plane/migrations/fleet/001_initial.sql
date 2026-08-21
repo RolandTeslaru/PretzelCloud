@@ -55,10 +55,27 @@ create table workspace_secrets (
     updated_at   timestamp with time zone default now() not null
 );
 
-create table machines (
+-- A workspace's compute. One row per workspace (the unique index enforces the
+-- 1:1); its machines hold the FK back. `driver` lives here, not on the machine:
+-- a workspace never mixes substrates.
+create table hardware (
     id           uuid default gen_random_uuid() not null,
     workspace_id uuid not null,
     driver       text not null,
+    last_boot_at timestamp with time zone,
+    last_seen_at timestamp with time zone,
+    created_at   timestamp with time zone default now() not null,
+    updated_at   timestamp with time zone default now() not null,
+
+    constraint hardware_driver_check check (driver in ('docker', 'fly'))
+);
+
+create table machines (
+    id           uuid default gen_random_uuid() not null,
+    workspace_id uuid not null,
+    -- The hardware this machine backs. Nullable until provisioning creates the
+    -- hardware row that owns it.
+    hardware_id  uuid,
     external_id  text not null,
     role         text not null,
     size         text not null,
@@ -68,9 +85,8 @@ create table machines (
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null,
 
-    constraint machines_driver_check check (driver in ('docker', 'fly')),
     constraint machines_role_check   check (role in ('backend', 'worker', 'combined')),
-    constraint machines_state_check  check (state in ('creating', 'started', 'stopped', 'destroyed'))
+    constraint machines_state_check  check (state in ('creating', 'running', 'suspended', 'stopped', 'destroyed'))
 );
 
 create table hostnames (
@@ -93,19 +109,22 @@ create table workspace_runtime (
 -- ── Primary keys and unique constraints ──────────────────────────────────────
 
 alter table only workspace_secrets add constraint workspace_secrets_pkey primary key (workspace_id);
+alter table only hardware          add constraint hardware_pkey          primary key (id);
 alter table only machines          add constraint machines_pkey          primary key (id);
 alter table only hostnames         add constraint hostnames_pkey         primary key (host);
 alter table only workspace_runtime add constraint workspace_runtime_pkey primary key (workspace_id);
 
 -- A workspace has one machine per role. A re-run collides here instead of
 -- creating a second machine nobody is tracking.
+create unique index hardware_workspace_key on hardware using btree (workspace_id);
 create unique index machines_workspace_role_key on machines using btree (workspace_id, role);
+alter table only machines add constraint machines_hardware_fkey foreign key (hardware_id) references hardware(id) on delete cascade;
 
 -- No uniqueness on (workspace_id, kind): a workspace answers at its canonical
 -- host and, on paid plans, an additional custom one. A host still resolves to
 -- exactly one workspace — that is the primary key.
 
-create unique index machines_driver_external_key on machines using btree (driver, external_id);
+create unique index machines_external_key on machines using btree (external_id);
 
 
 -- ── Indexes ──────────────────────────────────────────────────────────────────

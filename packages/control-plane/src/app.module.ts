@@ -6,10 +6,11 @@ import { RouterModule } from './services/WorkspaceRouter/router.module';
 import { WorkspaceSessionModule } from './services/WorkspaceSession/session.module';
 import { UserModule } from './services/User/user.module';
 import { WorkspaceModule } from './services/Workspace/workspace.module';
+import { RealtimeModule } from './services/Realtime/realtime.module';
 import { ZodExceptionFilter } from './filters/zod-exception.filter';
 
 @Module({
-    imports: [AuthModule, FleetModule, RouterModule, WorkspaceSessionModule, UserModule, WorkspaceModule],
+    imports: [AuthModule, FleetModule, RouterModule, WorkspaceSessionModule, UserModule, WorkspaceModule, RealtimeModule],
     providers: [
         { provide: APP_FILTER, useClass: ZodExceptionFilter },
     ],

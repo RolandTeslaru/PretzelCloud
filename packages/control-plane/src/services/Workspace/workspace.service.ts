@@ -1,10 +1,12 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
-import { FleetService } from '@/services/Fleet/fleet.service';
+import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
+import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/principal';
 import { WorkspaceRouter } from '@/services/WorkspaceRouter/router.service';
+import { RealtimeService } from '@/services/Realtime/realtime.service';
 
 const PROVISION_ATTEMPTS = 3;
 
@@ -15,9 +17,21 @@ export class WorkspaceService {
 
     constructor(
         private readonly provisioning: ProvisioningService,
-        private readonly fleet: FleetService,
+        private readonly hardware: HardwareService,
+        private readonly hostnames: HostnameService,
         private readonly router: WorkspaceRouter,
+        private readonly realtime: RealtimeService,
     ) {}
+
+    /**
+     * Addressing is derived here, never passed in: a caller that cannot write
+     * `channel` or `workspaceId` cannot address another tenant's channel.
+     */
+    private emit(workspaceId: Workspace.Id, event: Workspace.Event.Unstamped): void {
+        const channel = Workspace.Event.getChannel(workspaceId);
+
+        this.realtime.publish(channel, { ...event, channel, workspaceId });
+    }
 
     /**
      * The id is minted first and every step is keyed by it, so a run killed
@@ -62,7 +76,7 @@ export class WorkspaceService {
 
         for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
             try {
-                await this.provisioning.provision(id, owner);
+                await this.provisioning.provision(id, owner, 'free');
 
                 // Its hostnames were unknown until a moment ago, and a probe in
                 // that window would have cached the absence.
@@ -89,7 +103,11 @@ export class WorkspaceService {
                 .returningAll()
                 .executeTakeFirstOrThrow();
 
-            return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+            const workspace = PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+
+            this.emit(id, Workspace.Event.create('provisioning:changed', { provisioningStatus: workspace.provisioningStatus }));
+
+            return workspace;
         });
     }
 
@@ -110,11 +128,15 @@ export class WorkspaceService {
             await PortalDB.asService('flag failed workspace', (db) =>
                 db.updateTable('workspaces').set({ status: 'failed' }).where('id', '=', id).execute());
 
+            this.emit(id, Workspace.Event.create('provisioning:changed', { provisioningStatus: 'failed' }));
+
             return;
         }
 
         await PortalDB.asService('delete abandoned workspace', (db) =>
             db.deleteFrom('workspaces').where('id', '=', id).execute());
+
+        this.emit(id, Workspace.Event.create('destroyed'));
     }
 
     /** RLS scopes this — there is no membership filter to forget. */
@@ -128,8 +150,22 @@ export class WorkspaceService {
                 .orderBy('workspaces.created_at', 'desc')
                 .execute();
 
-            return rows.map((row) => PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row)));
+            const states = await this.hardware.getStates(rows.map((row) => row.id));
+
+            return rows.map((row) =>
+                PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row), states.get(row.id) ?? null));
         });
+    }
+
+    /** One workspace, with its live machine state attached. */
+    async withRuntime(workspaceId: Workspace.Id): Promise<Workspace> {
+        const [base, states] = await Promise.all([
+            PortalDB.asService('read workspace', (db) =>
+                db.selectFrom('workspaces').selectAll().where('id', '=', workspaceId).executeTakeFirstOrThrow()),
+            this.hardware.getStates([workspaceId]),
+        ]);
+
+        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(base), states.get(workspaceId) ?? null);
     }
 
     /** The name on the account. Ownership was settled by the guard. */
@@ -168,7 +204,7 @@ export class WorkspaceService {
             throw error;
         }
 
-        await this.fleet.setCustomHostnames(workspace.id, subdomain);
+        await this.hostnames.setCustom(workspace.id, subdomain);
 
         this.router.invalidate(workspace.id, [workspace.subdomain, subdomain]);
     }
@@ -179,6 +215,23 @@ export class WorkspaceService {
      * itself has any say in. A workspace that rewrote its own members table
      * still cannot reach this.
      */
+    /**
+     * An operator-driven machine transition. Ownership is checked at the guard;
+     * the router is invalidated after, since a suspended or stopped machine must
+     * stop being a forwarding target.
+     */
+    async lifecycle(workspaceId: Workspace.Id, action: Fleet.Machine.LifecycleAction): Promise<void> {
+        await this.hardware.applyAction(workspaceId, action);
+
+        this.router.invalidate(workspaceId);
+
+        // Read back rather than inferred from the action: what the machine
+        // actually settled on is the only state worth pushing.
+        const states = await this.hardware.getStates([workspaceId]);
+
+        this.emit(workspaceId, Workspace.Event.create('state:changed', { state: states.get(workspaceId) ?? null }));
+    }
+
     async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
         // Infrastructure first: the row is the only record of what to tear down.
         await this.provisioning.deprovision(workspaceId);
@@ -189,5 +242,7 @@ export class WorkspaceService {
 
         await PortalDB.asUser(principal, (trx) =>
             trx.deleteFrom('workspaces').where('id', '=', workspaceId).execute());
+
+        this.emit(workspaceId, Workspace.Event.create('destroyed'));
     }
 }

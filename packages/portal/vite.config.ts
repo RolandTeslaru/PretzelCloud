@@ -17,6 +17,7 @@ export default defineConfig({
         port: 5174,
         proxy: {
             '/api': { target: 'http://localhost:4000', changeOrigin: true },
+            '/socket': { target: 'ws://localhost:4000', ws: true },
         },
         fs: {
             allow: [here, standardUi],

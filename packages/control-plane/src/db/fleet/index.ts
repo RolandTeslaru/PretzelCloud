@@ -18,7 +18,7 @@ export namespace FleetDB {
         export const Row = z.object({
             id:           Fleet.Machine.Id,
             workspace_id: WorkspaceD.Id,
-            driver:       Fleet.Machine.Driver,
+            hardware_id:  Fleet.Hardware.Id.nullable(),
             external_id:  z.string(),
             role:         Fleet.Machine.Role,
             size:         z.string(),
@@ -33,7 +33,7 @@ export namespace FleetDB {
         export const toDomain = (row: Row) => Fleet.Machine.Schema.parse({
             id:          row.id,
             workspaceId: row.workspace_id,
-            driver:      row.driver,
+            hardwareId:  row.hardware_id,
             externalId:  row.external_id,
             role:        row.role,
             size:        row.size,
@@ -101,7 +101,33 @@ export namespace FleetDB {
         });
     }
 
+    export namespace Hardware {
+        export const Row = z.object({
+            id:           Fleet.Hardware.Id,
+            workspace_id: WorkspaceD.Id,
+            driver:       Fleet.Hardware.Driver,
+            last_boot_at: z.coerce.date().nullable(),
+            last_seen_at: z.coerce.date().nullable(),
+            created_at:   z.coerce.date(),
+            updated_at:   z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+
+        // machineIds is the reverse FK — not a column, so the caller passes it.
+        export const toDomain = (row: Row, machineIds: Fleet.Machine.Id[]) => Fleet.Hardware.Schema.parse({
+            id:          row.id,
+            workspaceId: row.workspace_id,
+            driver:      row.driver,
+            machineIds,
+            lastBootAt:  row.last_boot_at,
+            lastSeenAt:  row.last_seen_at,
+            createdAt:   row.created_at,
+            updatedAt:   row.updated_at,
+        });
+    }
+
     export interface Tables {
+        hardware:          Table<typeof Hardware.Row, 'id' | Stamps>;
         machines:          Table<typeof Machine.Row, 'id' | Stamps>;
         workspace_secrets: Table<typeof WorkspaceSecrets.Row, Stamps>;
         hostnames:         Table<typeof Hostname.Row, 'created_at'>;

@@ -46,7 +46,7 @@ export namespace PortalDB {
             id:           WorkspaceD.Id,
             subdomain:    z.string().nullable(),
             display_name: z.string(),
-            status:       WorkspaceD.Status,
+            status:       WorkspaceD.ProvisioningStatus,
             plan:         WorkspaceD.Plan,
             owner_id:     UserD.Id,
             created_at:   z.coerce.date(),
@@ -54,11 +54,12 @@ export namespace PortalDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => WorkspaceD.Schema.parse({
+        export const toDomain = (row: Row, state: Fleet.Machine.State | null = null) => WorkspaceD.Schema.parse({
             id:          row.id,
             subdomain:   row.subdomain,
             displayName: row.display_name,
-            status:      row.status,
+            provisioningStatus: row.status,
+            state,
             plan:        row.plan,
             ownerId:     row.owner_id,
             appUrl:      Fleet.Hostname.Host.getOrigin(WorkspaceD.Subdomain.canonical(row.id), 'app'),

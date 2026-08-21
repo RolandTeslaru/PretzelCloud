@@ -4,16 +4,25 @@ import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
  * Where a workspace's containers run. Everything else in provisioning —
  * database, revoke, keygen, registry rows — is identical across implementations.
  */
-export abstract class MachineDriver {
+export abstract class AbstractHardwareDriver {
 
-    abstract readonly kind: Fleet.Machine.Driver;
+    abstract readonly kind: Fleet.Hardware.Driver;
 
     /** Idempotent: returns the existing machine if `name` already exists. */
-    abstract create(options: MachineDriver.CreateOptions): Promise<MachineDriver.Handle>;
+    abstract create(options: AbstractHardwareDriver.CreateOptions): Promise<AbstractHardwareDriver.Handle>;
 
     abstract start(externalId: Fleet.Machine.ExternalId): Promise<void>;
 
     abstract stop(externalId: Fleet.Machine.ExternalId): Promise<void>;
+
+    /**
+     * Freezes the machine in place — memory kept, nothing scheduled — so that
+     * `resume` continues it without a boot. Cheaper to wake than `stop`, and
+     * the machine's own connections go stale while it is frozen.
+     */
+    abstract suspend(externalId: Fleet.Machine.ExternalId): Promise<void>;
+
+    abstract resume(externalId: Fleet.Machine.ExternalId): Promise<void>;
 
     /** Idempotent: succeeds when the machine is already gone. */
     abstract destroy(externalId: Fleet.Machine.ExternalId): Promise<void>;
@@ -21,10 +30,10 @@ export abstract class MachineDriver {
     abstract status(externalId: Fleet.Machine.ExternalId): Promise<Fleet.Machine.State>;
 
     /** Whether the software inside is serving, as opposed to merely running. */
-    abstract health(externalId: Fleet.Machine.ExternalId): Promise<MachineDriver.Health>;
+    abstract health(externalId: Fleet.Machine.ExternalId): Promise<AbstractHardwareDriver.Health>;
 
     /** Everything this driver holds for a workspace, however it was labelled. */
-    abstract findByWorkspace(workspaceId: Workspace.Id): Promise<MachineDriver.Handle[]>;
+    abstract findByWorkspace(workspaceId: Workspace.Id): Promise<AbstractHardwareDriver.Handle[]>;
 
     /**
      * Where to reach the machine from inside the fleet. Every platform gives its
@@ -38,7 +47,7 @@ export abstract class MachineDriver {
 }
 
 // Merged with the class above: types only, so nothing is emitted.
-export namespace MachineDriver {
+export namespace AbstractHardwareDriver {
 
     export type CreateOptions = {
         workspaceId: Workspace.Id;

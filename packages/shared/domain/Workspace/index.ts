@@ -2,8 +2,10 @@ import { z } from "zod"
 import type { AxiosInstance } from "axios"
 import { User } from "../User"
 import { Cluster } from "../Fleet/cluster"
+import { Machine as MachineMod } from "../Fleet/machine"
 import { WorkspaceId, createId as createWorkspaceId } from "./ids"
 import * as SubdomainMod from "./subdomain"
+import { Realtime } from "../Realtime"
 
 // A workspace as the portal knows it: desired state. What has been materialized
 // for it lives in Fleet, on another credential.
@@ -19,8 +21,8 @@ export namespace Workspace {
     // provisioned is torn down and its row deleted, so they simply retry; the
     // row survives only when teardown itself failed and the reconciler still
     // has work to do.
-    export const Status = z.enum(["provisioning", "ready", "suspended", "failed"])
-    export type  Status = z.infer<typeof Status>
+    export const ProvisioningStatus = z.enum(["provisioning", "ready", "suspended", "failed"])
+    export type  ProvisioningStatus = z.infer<typeof ProvisioningStatus>
 
     export const Plan = z.enum(["free", "pro"])
     export type  Plan = z.infer<typeof Plan>
@@ -47,7 +49,9 @@ export namespace Workspace {
         // Null until a paid plan sets one; the canonical host is derived.
         subdomain:   Subdomain.Schema.nullable(),
         displayName: z.string(),
-        status:      Status,
+        provisioningStatus: ProvisioningStatus,
+        // The workspace's machine state — null while it has no machine yet.
+        state:       MachineMod.State.nullable(),
         plan:        Plan,
         ownerId:     User.Id,
         // Derived rather than stored, and assembled where the fleet domain is
@@ -56,6 +60,66 @@ export namespace Workspace {
         createdAt:   z.coerce.date(),
         updatedAt:   z.coerce.date(),
     })
+
+    // One channel per workspace: workspace:<id>. Outbound only — every command
+    // travels over the API below.
+    //
+    // Inline for the same reason API is: these reference ProvisioningStatus
+    // above, and a separate module importing back into this one would be a
+    // cycle that leaves the zod schemas undefined at load.
+    export namespace Event {
+
+        export const Channel = Realtime.Channel.brand("Workspace.Event.Channel")
+        export type  Channel = z.infer<typeof Channel>
+
+        export const getChannel = (workspaceId: Id) =>
+            `workspace:${workspaceId}` as Channel
+
+        /** The id back out of a channel a client asked for, or null. */
+        export const parseChannel = (channel: string): Id | null => {
+            const [prefix, rest] = channel.split(':')
+
+            if (prefix !== 'workspace')
+                return null
+
+            const parsed = Id.safeParse(rest)
+
+            return parsed.success ? parsed.data : null
+        }
+
+        export const Base = Realtime.Event.Base.extend({
+            channel:     Channel,
+            workspaceId: Id,
+        })
+        export type  Base = z.infer<typeof Base>
+
+        export const StateChanged = Base.extend({
+            type:  z.literal('state:changed'),
+            state: MachineMod.State.nullable(),
+        })
+        export type  StateChanged = z.infer<typeof StateChanged>
+
+        export const ProvisioningChanged = Base.extend({
+            type:               z.literal('provisioning:changed'),
+            provisioningStatus: ProvisioningStatus,
+        })
+        export type  ProvisioningChanged = z.infer<typeof ProvisioningChanged>
+
+        export const Destroyed = Base.extend({ type: z.literal('destroyed') })
+        export type  Destroyed = z.infer<typeof Destroyed>
+
+        export const Schema = z.discriminatedUnion('type', [StateChanged, ProvisioningChanged, Destroyed])
+
+        export type Any = z.infer<typeof Schema>
+
+        /** Derived from the workspace by whatever publishes the event. */
+        const Stamped = ['channel', 'workspaceId'] as const
+
+        /** An event as constructed, before its addressing is filled in. */
+        export type Unstamped<T extends Any = Any> = Realtime.Event.Unstamped<T, typeof Stamped[number]>
+
+        export const create = Realtime.Event.defineFactory(Schema, Stamped)
+    }
 
     // Inline rather than a sibling file: these reference Schema and Subdomain
     // above, and a separate module importing back into this one would be a
@@ -121,6 +185,18 @@ export namespace Workspace {
         export async function setSubdomain(api: AxiosInstance, workspaceId: Id, req: SetSubdomain.Request): Promise<SetSubdomain.Response> {
             const { data } = await api.patch<SetSubdomain.Response>(`/api/workspaces/${workspaceId}/subdomain`, req)
             return SetSubdomain.Response.parse(data)
+        }
+
+        export namespace Lifecycle {
+            export const Request = z.object({ action: MachineMod.LifecycleAction })
+            export type  Request = z.infer<typeof Request>
+            export const Response = z.object({})
+            export type  Response = z.infer<typeof Response>
+        }
+
+        export async function lifecycle(api: AxiosInstance, workspaceId: Id, req: Lifecycle.Request): Promise<Lifecycle.Response> {
+            const { data } = await api.post<Lifecycle.Response>(`/api/workspaces/${workspaceId}/lifecycle`, req)
+            return Lifecycle.Response.parse(data)
         }
 
         export namespace Destroy {

@@ -67,6 +67,20 @@ services:
     ports:
       - "${GOTRUE_PORT:-9998}:9999"
 
+  # Pub/sub and shared state for the control plane (realtime fan-out, and the
+  # cross-instance locks and rate limits that follow).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "${CONTROL_REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   postgres-data:
 

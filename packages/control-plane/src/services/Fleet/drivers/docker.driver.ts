@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
-import { MachineDriver } from './driver';
+import { AbstractHardwareDriver } from './driver';
 
 const run = promisify(execFile);
 
@@ -28,7 +28,7 @@ const SERVICE_PORT = 3001;
 const PUBLISH = `127.0.0.1::${SERVICE_PORT}`;
 
 @Injectable()
-export class DockerDriver extends MachineDriver {
+export class DockerDriver extends AbstractHardwareDriver {
 
     readonly kind = 'docker' as const;
 
@@ -101,7 +101,10 @@ export class DockerDriver extends MachineDriver {
 
     private toState(status: string): Fleet.Machine.State {
         if (status === 'running')
-            return 'started';
+            return 'running';
+
+        if (status === 'paused')
+            return 'suspended';
 
         if (status === 'created')
             return 'creating';
@@ -109,7 +112,7 @@ export class DockerDriver extends MachineDriver {
         return 'stopped';
     }
 
-    async create(options: MachineDriver.CreateOptions): Promise<MachineDriver.Handle> {
+    async create(options: AbstractHardwareDriver.CreateOptions): Promise<AbstractHardwareDriver.Handle> {
         // Idempotency: the name is derived from the workspace id, so a re-run
         // finds the container the killed run left behind.
         const existing = await this.dockerTolerating(ABSENT, ['inspect', '-f', '{{.Id}}|{{.State.Status}}', options.name]);
@@ -147,7 +150,7 @@ export class DockerDriver extends MachineDriver {
 
         this.logger.log(`Created ${options.name}`);
 
-        return { externalId, state: 'started' };
+        return { externalId, state: 'running' };
     }
 
     /**
@@ -176,6 +179,16 @@ export class DockerDriver extends MachineDriver {
         await this.docker(['stop', externalId]);
     }
 
+    // The cgroup freezer: processes stop being scheduled and stay resident, the
+    // closest Docker comes to a VM snapshot.
+    async suspend(externalId: Fleet.Machine.ExternalId): Promise<void> {
+        await this.docker(['pause', externalId]);
+    }
+
+    async resume(externalId: Fleet.Machine.ExternalId): Promise<void> {
+        await this.docker(['unpause', externalId]);
+    }
+
     async destroy(externalId: Fleet.Machine.ExternalId): Promise<void> {
         await this.dockerTolerating(ABSENT, ['rm', '-f', externalId]);
     }
@@ -187,7 +200,7 @@ export class DockerDriver extends MachineDriver {
         return status ? this.toState(status) : 'destroyed';
     }
 
-    async health(externalId: Fleet.Machine.ExternalId): Promise<MachineDriver.Health> {
+    async health(externalId: Fleet.Machine.ExternalId): Promise<AbstractHardwareDriver.Health> {
         const status = await this.dockerTolerating(ABSENT, [
             'inspect', '-f', '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', externalId,
         ]);
@@ -198,7 +211,7 @@ export class DockerDriver extends MachineDriver {
         return 'unknown';
     }
 
-    async findByWorkspace(workspaceId: Workspace.Id): Promise<MachineDriver.Handle[]> {
+    async findByWorkspace(workspaceId: Workspace.Id): Promise<AbstractHardwareDriver.Handle[]> {
         const output = await this.docker([
             'ps', '-a',
             '--filter', `label=${WORKSPACE_LABEL}=${workspaceId}`,

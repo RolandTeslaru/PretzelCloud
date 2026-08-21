@@ -41,7 +41,8 @@ export class WorkspaceController {
     async get(
         @WorkspaceScope() workspace: Workspace,
     ): Promise<Workspace.API.Get.Response> {
-        return { workspace };
+        // The scope object carries no machine state; re-read it with the live one.
+        return { workspace: await this.workspaces.withRuntime(workspace.id) };
     }
 
     @Patch(':workspaceId')
@@ -66,6 +67,18 @@ export class WorkspaceController {
         @ZodBody(API.SetSubdomain.Request) body: Workspace.API.SetSubdomain.Request,
     ): Promise<Workspace.API.SetSubdomain.Response> {
         await this.workspaces.setSubdomain(principal, workspace, body.subdomain);
+
+        return {};
+    }
+
+    @Post(':workspaceId/lifecycle')
+    @Scoped('workspace')
+    @RequireOwner()
+    async lifecycle(
+        @WorkspaceIdParam() workspaceId: Workspace.Id,
+        @ZodBody(API.Lifecycle.Request) body: Workspace.API.Lifecycle.Request,
+    ): Promise<Workspace.API.Lifecycle.Response> {
+        await this.workspaces.lifecycle(workspaceId, body.action);
 
         return {};
     }
