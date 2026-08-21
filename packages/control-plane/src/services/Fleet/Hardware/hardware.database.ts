@@ -29,6 +29,32 @@ export class HardwareDatabase {
         return row ? FleetDB.Hardware.Row.parse(row) : undefined;
     }
 
+    /** Marks the workspace as used just now. */
+    touch(trx: Trx, workspaceId: Workspace.Id) {
+        return trx
+            .updateTable('hardware')
+            .set({ last_seen_at: new Date() })
+            .where('workspace_id', '=', workspaceId)
+            .execute();
+    }
+
+    /**
+     * When each workspace was last used, for deciding what to do with the ones
+     * that have not been. Falls back to when the hardware was made, so a
+     * workspace nobody has visited yet still has an age.
+     */
+    async getLastSeen(trx: Trx): Promise<{ workspaceId: Workspace.Id; lastSeenAt: Date }[]> {
+        const rows = await trx
+            .selectFrom('hardware')
+            .select(['workspace_id', 'last_seen_at', 'last_boot_at', 'created_at'])
+            .execute();
+
+        return rows.map((row) => ({
+            workspaceId: Workspace.Id.parse(row.workspace_id),
+            lastSeenAt:  row.last_seen_at ?? row.last_boot_at ?? row.created_at,
+        }));
+    }
+
     deleteFor(trx: Trx, workspaceId: Workspace.Id) {
         return trx.deleteFrom('hardware').where('workspace_id', '=', workspaceId).execute();
     }

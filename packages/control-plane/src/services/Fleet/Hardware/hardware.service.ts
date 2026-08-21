@@ -201,6 +201,36 @@ export class HardwareService {
         return this.fanOut(workspaceId, 'stop');
     }
 
+    /** Whether the workspace has compute at all — it is reclaimed when unused. */
+    async exists(workspaceId: Workspace.Id): Promise<boolean> {
+        const hardware = await FleetDB.asService('read hardware', (trx) => this.db.getByWorkspace(trx, workspaceId));
+
+        return hardware !== undefined;
+    }
+
+    /** Marks the workspace as used just now. */
+    async touch(workspaceId: Workspace.Id): Promise<void> {
+        await FleetDB.asService('record workspace activity', (trx) => this.db.touch(trx, workspaceId));
+    }
+
+    /** When each workspace was last used, for deciding what to do about idleness. */
+    getLastSeen(): Promise<{ workspaceId: Workspace.Id; lastSeenAt: Date }[]> {
+        return FleetDB.asService('read workspace activity', (trx) => this.db.getLastSeen(trx));
+    }
+
+    /**
+     * Whether the machine that runs jobs is still up. The backend is idle-safe
+     * to freeze; a running worker means work is in flight.
+     */
+    async hasRunningWorker(workspaceId: Workspace.Id): Promise<boolean> {
+        const worker = await this.machines.getByRole(workspaceId, ['worker']);
+
+        if (!worker)
+            return false;
+
+        return await this.machines.refreshState(worker) === 'running';
+    }
+
     /**
      * Stops the machine that drains the queue, leaving the backend answering.
      * A combined machine is left alone: its worker is the machine serving the

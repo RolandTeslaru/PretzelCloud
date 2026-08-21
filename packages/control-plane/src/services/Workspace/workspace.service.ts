@@ -243,8 +243,42 @@ export class WorkspaceService {
      * worker is demand-driven — the backend wakes it before it enqueues — so
      * starting one here would be paying for compute nobody asked for.
      */
-    start(workspaceId: Workspace.Id): Promise<void> {
+    async start(workspaceId: Workspace.Id): Promise<void> {
+        await this.ensureCompute(workspaceId);
+
         return this.runTransition(workspaceId, 'start', () => this.hardware.startBackend(workspaceId));
+    }
+
+    /**
+     * Gives the machines back while keeping everything the workspace is. Its
+     * database, hostnames and secrets stay; the next request rebuilds compute.
+     */
+    async reclaimCompute(workspaceId: Workspace.Id): Promise<void> {
+        await this.stop(workspaceId);
+
+        await this.hardware.destroy(workspaceId);
+
+        this.router.invalidate(workspaceId);
+    }
+
+    /**
+     * Rebuilds the machines of a workspace whose compute was given back while
+     * it went unused. Its data was never on them, so this is a slow start
+     * rather than a restore.
+     */
+    private async ensureCompute(workspaceId: Workspace.Id): Promise<void> {
+        if (await this.hardware.exists(workspaceId))
+            return;
+
+        const row = await PortalDB.asService('read workspace to rebuild compute', (db) =>
+            db.selectFrom('workspaces').select(['owner_id', 'plan']).where('id', '=', workspaceId).executeTakeFirst());
+
+        if (!row)
+            return;
+
+        this.logger.log(`Rebuilding reclaimed machines for ${workspaceId}`);
+
+        await this.provisioning.rebuild(workspaceId, User.Id.parse(row.owner_id), Workspace.Plan.parse(row.plan));
     }
 
     /** Stopping means nothing is left running, worker included. */

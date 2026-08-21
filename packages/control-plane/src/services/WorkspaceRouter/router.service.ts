@@ -20,7 +20,6 @@ const MISS_CACHE_MAX = 1_000;
 /** What one lookup produces: everything needed to forward, or to refuse. */
 export type Resolution = {
     workspaceId: Workspace.Id;
-    hardwareId:  Fleet.Hardware.Id;
     kind:        Fleet.Hostname.Kind;
     /** Stamped on forwarded traffic, so the silo can require it. */
     routerSecret: string;
@@ -99,17 +98,17 @@ export class WorkspaceRouter {
 
     /**
      * One query, because two would let a workspace be torn down between them and
-     * return a hostname pointing at a machine that no longer exists.
+     * return a hostname for one that no longer exists. Its secrets are the test:
+     * they outlive the machines, which are given back while it goes unused, and
+     * go when the workspace itself does.
      */
     private async lookup(host: Fleet.Hostname.Host): Promise<Resolution | null> {
         const row = await FleetDB.asService('resolve host', (trx) =>
             trx
                 .selectFrom('hostnames')
-                .innerJoin('hardware', 'hardware.workspace_id', 'hostnames.workspace_id')
                 .innerJoin('workspace_secrets', 'workspace_secrets.workspace_id', 'hostnames.workspace_id')
                 .where('hostnames.host', '=', host)
                 .select([
-                    'hardware.id as hardware_id',
                     'hostnames.kind as hostname_kind',
                     'hostnames.workspace_id as hostname_workspace_id',
                     'workspace_secrets.router_secret as router_secret',
@@ -121,11 +120,10 @@ export class WorkspaceRouter {
 
         return {
             workspaceId:  row.hostname_workspace_id,
-            hardwareId:   row.hardware_id,
             kind:         Fleet.Hostname.Kind.parse(row.hostname_kind),
             routerSecret: row.router_secret,
-            // The hardware resolves where its backend is reached — a published
-            // port here, internal DNS elsewhere.
+            // Where the backend is reached — a published port here, internal DNS
+            // elsewhere. Null when there is no machine, which a request rebuilds.
             target: await this.hardware.getBackendAddress(row.hostname_workspace_id),
         };
     }

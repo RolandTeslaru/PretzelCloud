@@ -41,6 +41,14 @@ export namespace Workspace {
     export const getTopology = (plan: Plan): MachineMod.Role[] =>
         isPaid(plan) ? ["backend", "worker"] : ["combined"]
 
+    /**
+     * What becomes of a workspace nobody has used for a while. Paid stays up —
+     * it is what the plan buys. Free is frozen in place, which costs nothing to
+     * hold and comes back without a boot.
+     */
+    export const getIdlePolicy = (plan: Plan): "suspend" | "none" =>
+        isPaid(plan) ? "none" : "suspend"
+
 
     export const DisplayName = z.string().trim()
         .min(1, 'Workspace name is required')

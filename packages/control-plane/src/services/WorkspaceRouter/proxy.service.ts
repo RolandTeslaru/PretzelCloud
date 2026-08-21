@@ -5,6 +5,7 @@ import httpProxy from 'http-proxy';
 import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
+import { SiloActivityService } from '@/services/Workspace/silo-activity.service';
 import { WorkspaceRouter, type Resolution } from './router.service';
 
 const DEFAULT_PORT = 8080;
@@ -86,6 +87,9 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         private readonly router: WorkspaceRouter,
         @Inject(forwardRef(() => WorkspaceService))
         private readonly workspaces: WorkspaceService,
+
+        @Inject(forwardRef(() => SiloActivityService))
+        private readonly activity: SiloActivityService,
     ) {}
 
     onModuleInit(): void {
@@ -121,6 +125,10 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
     private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const resolution = await this.router.resolve(req);
+
+        // Anything reaching a workspace counts as use, whatever it asks for.
+        if (resolution)
+            this.activity.noteActivity(resolution.workspaceId);
 
         // The hooks hostname is webhook delivery and nothing else — no editor,
         // no API, no token mint. Policy attaches to the hostname.
@@ -242,6 +250,9 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
      */
     private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
         const resolution = await this.router.resolve(req);
+
+        if (resolution)
+            this.activity.noteActivity(resolution.workspaceId);
 
         // Webhooks never upgrade.
         if (resolution?.kind === 'hooks') {

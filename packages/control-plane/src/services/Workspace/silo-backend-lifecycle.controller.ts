@@ -4,7 +4,8 @@ import { BackendInstanceAuthGuard } from '@/auth/backend-instance-auth.guard';
 import { WorkspaceService } from './workspace.service';
 
 /**
- * What a workspace's own backend may ask of the fleet.
+ * What a workspace's own backend may ask of the fleet — driving the machine it
+ * hands work to.
  *
  * Its own controller rather than a route on the user-facing one: the caller is
  * a machine holding a per-workspace token, so the session and membership guards
@@ -12,7 +13,7 @@ import { WorkspaceService } from './workspace.service';
  */
 @Controller('workspaces')
 @UseGuards(BackendInstanceAuthGuard)
-export class WorkspaceBackendController {
+export class SiloBackendLifecycleController {
 
     constructor(private readonly workspaces: WorkspaceService) {}
 
