@@ -157,7 +157,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (!resolution.target) {
-            await this.wake(resolution);
+            this.wake(resolution);
 
             res
                 .writeHead(503, { 'Retry-After': String(RETRY_AFTER_S), 'Content-Type': 'text/plain' })
@@ -235,7 +235,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        await this.wake(resolution);
+        this.wake(resolution);
 
         if (!res.headersSent)
             res
@@ -262,7 +262,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
         if (!resolution?.target) {
             if (resolution)
-                await this.wake(resolution);
+                this.wake(resolution);
 
             socket.destroy();
             return;
@@ -280,23 +280,25 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
      * written and subscribers hear about it, instead of a machine quietly
      * coming up behind a row that still says stopped.
      */
-    private async wake(resolution: Resolution): Promise<void> {
+    private wake(resolution: Resolution): void {
         const { workspaceId } = resolution;
 
+        // A cooldown as well as a guard: a workspace that cannot come up must
+        // not be kicked again by every request that arrives meanwhile.
         if (this.waking.get(workspaceId))
             return;
 
         this.waking.set(workspaceId, true);
 
-        try {
-            this.logger.log(`Waking ${workspaceId}`);
+        this.logger.log(`Waking ${workspaceId}`);
 
-            await this.workspaces.start(workspaceId);
-        }
-        catch (error) {
+        // Not awaited: the client is told to retry, and the wake carries on
+        // behind it. Machines reclaimed while unused are rebuilt here, which is
+        // far longer than a request should be held open for.
+        void this.workspaces.ensureStarted(workspaceId).catch((error) => {
             this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);
 
             this.waking.delete(workspaceId);
-        }
+        });
     }
 }

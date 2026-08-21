@@ -243,6 +243,39 @@ export class WorkspaceService {
      * worker is demand-driven — the backend wakes it before it enqueues — so
      * starting one here would be paying for compute nobody asked for.
      */
+    /**
+     * Serving by the time this returns — the primitive every trigger path calls
+     * before it needs a workspace, rather than each one waking it its own way.
+     *
+     * Health is asked first, so a workspace already up costs two driver reads
+     * and writes nothing. Concurrent callers share one wake: a webhook and a
+     * scheduled run arriving together must not start the same machine twice.
+     */
+    ensureStarted(workspaceId: Workspace.Id): Promise<void> {
+        const inFlight = this.starting.get(workspaceId);
+
+        if (inFlight)
+            return inFlight;
+
+        const wake = this.wakeAndAwait(workspaceId).finally(() => this.starting.delete(workspaceId));
+
+        this.starting.set(workspaceId, wake);
+
+        return wake;
+    }
+
+    /** One entry per wake in progress; absent means nothing is starting. */
+    private readonly starting = new Map<Workspace.Id, Promise<void>>();
+
+    private async wakeAndAwait(workspaceId: Workspace.Id): Promise<void> {
+        if (await this.hardware.isServing(workspaceId))
+            return;
+
+        await this.start(workspaceId);
+
+        await this.hardware.awaitHealthy(workspaceId);
+    }
+
     async start(workspaceId: Workspace.Id): Promise<void> {
         await this.ensureCompute(workspaceId);
 

@@ -201,6 +201,24 @@ export class HardwareService {
         return this.fanOut(workspaceId, 'stop');
     }
 
+    /**
+     * Whether the workspace answers right now. Asked of the driver and recorded
+     * nowhere: this is the cheap check in front of waking one, so it must not
+     * write rows or announce anything.
+     */
+    async isServing(workspaceId: Workspace.Id): Promise<boolean> {
+        const backend = await this.machines.getByRole(workspaceId, ['backend', 'combined']);
+
+        if (!backend)
+            return false;
+
+        if (await this.machines.getState(backend.externalId) !== 'running')
+            return false;
+
+        // `unknown` covers an image that declares no health check at all.
+        return await this.machines.health(backend.externalId) !== 'unhealthy';
+    }
+
     /** Whether the workspace has compute at all — it is reclaimed when unused. */
     async exists(workspaceId: Workspace.Id): Promise<boolean> {
         const hardware = await FleetDB.asService('read hardware', (trx) => this.db.getByWorkspace(trx, workspaceId));

@@ -59,6 +59,16 @@ export class MachineService {
     }
 
     /** Blocks until this one machine reports serving, not merely started. */
+    /** The driver's view, without recording it — for reads that must stay cheap. */
+    getState(externalId: Fleet.Machine.ExternalId): Promise<Fleet.Machine.State> {
+        return this.driver.status(externalId);
+    }
+
+    /** Whether the software inside is serving, as opposed to merely running. */
+    health(externalId: Fleet.Machine.ExternalId): Promise<AbstractHardwareDriver.Health> {
+        return this.driver.health(externalId);
+    }
+
     async awaitHealthy(externalId: Fleet.Machine.ExternalId, timeoutMs = HEALTH_TIMEOUT_MS): Promise<void> {
         const deadline = Date.now() + timeoutMs;
 
