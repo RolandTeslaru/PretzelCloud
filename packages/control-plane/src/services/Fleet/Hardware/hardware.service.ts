@@ -202,7 +202,9 @@ export class HardwareService {
      * hardware suspends what can suspend, and a worker simply is not one.
      */
     private async fanOut(workspaceId: Workspace.Id, action: Fleet.Machine.LifecycleAction): Promise<void> {
-        const machines = await this.machines.getAll(workspaceId);
+        // Ordered, not arbitrary: stopping the backend first would strand the
+        // worker, whose shutdown needs the queue it is being cut off from.
+        const machines = Fleet.Machine.inLifecycleOrder(action, await this.machines.getAll(workspaceId));
 
         for (const machine of machines)
             if (Fleet.Machine.canApply(action, machine))

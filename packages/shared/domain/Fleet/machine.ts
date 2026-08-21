@@ -168,6 +168,24 @@ export namespace Machine {
         return APPLICABLE_FROM[action].includes(machine.state)
     }
 
+    // A worker reaches the backend for its queue and its API. It goes down
+    // before the backend does, and comes up after it, so that it is never
+    // running with nothing to talk to.
+    const TEARDOWN_RANK: Record<Role, number> = {
+        worker:   0,
+        combined: 1,
+        backend:  2,
+    }
+
+    const BRINGS_UP: LifecycleAction[] = ["start", "resume"]
+
+    /** The machines in the order the action should reach them. */
+    export const inLifecycleOrder = <T extends { role: Role }>(action: LifecycleAction, machines: T[]): T[] => {
+        const ordered = [...machines].sort((a, b) => TEARDOWN_RANK[a.role] - TEARDOWN_RANK[b.role])
+
+        return BRINGS_UP.includes(action) ? ordered.reverse() : ordered
+    }
+
     /** The driver's own handle: a Fly machine id, or a Docker container id. */
     export const ExternalId = z.string().min(1).brand("Fleet.Machine.ExternalId")
     export type  ExternalId = z.infer<typeof ExternalId>

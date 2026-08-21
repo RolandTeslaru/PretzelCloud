@@ -27,6 +27,12 @@ const SERVICE_PORT = 3001;
 // from the host, and nothing on the network can.
 const PUBLISH = `127.0.0.1::${SERVICE_PORT}`;
 
+// Seconds between the stop signal and the kill. The daemon's own default is 1,
+// which is short enough that a busy machine is killed before it has closed its
+// database connections. The workspace image bounds its own shutdown at 10s, so
+// this leaves margin rather than sitting exactly on it.
+const STOP_TIMEOUT_SECONDS = 15;
+
 @Injectable()
 export class DockerDriver extends AbstractHardwareDriver {
 
@@ -136,6 +142,7 @@ export class DockerDriver extends AbstractHardwareDriver {
             '--label', `${ROLE_LABEL}=${options.role}`,
             '--env-file', envFile,
             '--restart', 'unless-stopped',
+            '--stop-timeout', String(STOP_TIMEOUT_SECONDS),
             options.image,
         ]));
 
@@ -176,7 +183,9 @@ export class DockerDriver extends AbstractHardwareDriver {
     }
 
     async stop(externalId: Fleet.Machine.ExternalId): Promise<void> {
-        await this.docker(['stop', externalId]);
+        // Also passed here, not just at create: machines made before the
+        // container-level setting existed still carry the daemon's default.
+        await this.docker(['stop', '--timeout', String(STOP_TIMEOUT_SECONDS), externalId]);
     }
 
     // The cgroup freezer: processes stop being scheduled and stay resident, the
