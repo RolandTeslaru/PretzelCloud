@@ -22,7 +22,7 @@ export const DomainSettings = ({ workspaceId }: { workspaceId: Workspace.Id }) =
 
     if (!workspace) return null
 
-    const paid = workspace.plan === 'pro'
+    const paid = Workspace.isPaid(workspace.plan)
 
     const onSubmit = async (values: Values) => {
         try {

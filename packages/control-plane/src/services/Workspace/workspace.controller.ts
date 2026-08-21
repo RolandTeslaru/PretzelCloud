@@ -71,17 +71,63 @@ export class WorkspaceController {
         return {};
     }
 
-    @Post(':workspaceId/lifecycle')
+    @Patch(':workspaceId/plan')
     @Scoped('workspace')
     @RequireOwner()
-    async lifecycle(
-        @WorkspaceIdParam() workspaceId: Workspace.Id,
-        @ZodBody(API.Lifecycle.Request) body: Workspace.API.Lifecycle.Request,
-    ): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaces.lifecycle(workspaceId, body.action);
+    async setPlan(
+        @WorkspaceScope() workspace: Workspace,
+        @ZodBody(API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
+    ): Promise<Workspace.API.SetPlan.Response> {
+        await this.workspaces.setPlan(workspace.id, workspace.ownerId, body.plan);
 
         return {};
     }
+
+    @Post(':workspaceId/start')
+    @Scoped('workspace')
+    @RequireOwner()
+    async start(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
+        await this.workspaces.start(workspaceId);
+
+        return {};
+    }
+
+    @Post(':workspaceId/stop')
+    @Scoped('workspace')
+    @RequireOwner()
+    async stop(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
+        await this.workspaces.stop(workspaceId);
+
+        return {};
+    }
+
+    @Post(':workspaceId/suspend')
+    @Scoped('workspace')
+    @RequireOwner()
+    async suspend(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
+        await this.workspaces.suspend(workspaceId);
+
+        return {};
+    }
+
+    @Post(':workspaceId/resume')
+    @Scoped('workspace')
+    @RequireOwner()
+    async resume(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
+        await this.workspaces.resume(workspaceId);
+
+        return {};
+    }
+
+    @Post(':workspaceId/restart')
+    @Scoped('workspace')
+    @RequireOwner()
+    async restart(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
+        await this.workspaces.restart(workspaceId);
+
+        return {};
+    }
+
 
     @Delete(':workspaceId')
     @Scoped('workspace')

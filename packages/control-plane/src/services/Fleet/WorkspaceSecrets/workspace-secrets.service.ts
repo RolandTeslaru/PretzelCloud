@@ -28,6 +28,9 @@ export class WorkspaceSecretsService {
                 encryption_key:              randomBytes(32).toString('hex'),
                 execution_token_signing_key: randomBytes(32).toString('hex'),
                 router_secret:               randomBytes(32).toString('hex'),
+                internal_token:              randomBytes(32).toString('hex'),
+                redis_password:              randomBytes(32).toString('hex'),
+                backend_token:               randomBytes(32).toString('hex'),
             });
         });
     }
@@ -37,6 +40,19 @@ export class WorkspaceSecretsService {
             const row = await this.db.read(trx, workspaceId);
 
             return row ? FleetDB.WorkspaceSecrets.toMachineEnv(FleetDB.WorkspaceSecrets.Row.parse(row)) : null;
+        });
+    }
+
+    /**
+     * The backend's own credential for calling the control plane. Read
+     * separately from the machine env because only one role may hold it — the
+     * worker runs workflow code and must not be able to reach the fleet.
+     */
+    async getBackendToken(workspaceId: Workspace.Id): Promise<string | null> {
+        return FleetDB.asService('read backend token', async (trx) => {
+            const row = await this.db.read(trx, workspaceId);
+
+            return row ? FleetDB.WorkspaceSecrets.Row.parse(row).backend_token : null;
         });
     }
 

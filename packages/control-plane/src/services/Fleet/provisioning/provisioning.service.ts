@@ -50,26 +50,9 @@ export class ProvisioningService {
         if (!env)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
 
-        const publicKey = JSON.stringify(await this.workspaceTokenIssuer.publicJwk());
+        const specInputs = await this.specInputs(workspaceId, owner.id, env);
 
-        await this.step('hardware', () => this.hardware.build(workspaceId, plan, {
-            image: requireEnv('WORKSPACE_IMAGE'),
-            size:  process.env.WORKSPACE_SIZE ?? 'shared-1x-512',
-            env:   {
-                ...env,
-                // The issuer as reached from inside the container, not the URL a
-                // browser is given.
-                AUTH_URL:        requireEnv('WORKSPACE_AUTH_URL'),
-                // Verifies, cannot mint. The signing key never leaves the
-                // control plane.
-                WORKSPACE_TOKEN_PUBLIC_KEY: publicKey,
-                TOKEN_ISSUER:               this.workspaceTokenIssuer.issuer(),
-                // Names the owner up front, so ownership is not won by arriving first.
-                WORKSPACE_OWNER_ID: owner.id,
-                // The origin a browser reaches this workspace at.
-                CORS_ORIGIN: Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
-            },
-        }));
+        await this.step('hardware', () => this.hardware.build(workspaceId, plan, specInputs));
 
         // Before hostnames: a machine that never serves should not be published.
         await this.step('health', () => this.hardware.awaitHealthy(workspaceId));
@@ -82,8 +65,50 @@ export class ProvisioningService {
         this.logger.log(`Provisioned ${workspaceId}`);
     }
 
+    /**
+     * Moves a workspace's compute to a different plan's topology. The machines
+     * are rebuilt to match; the database is in the cluster, so nothing it holds
+     * is touched.
+     */
+    async convert(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
+        const env = await this.secrets.get(workspaceId);
+
+        if (!env)
+            throw new ProvisioningError('secrets', 'no secrets for this workspace');
+
+        const specInputs = await this.specInputs(workspaceId, ownerId, env);
+
+        // No health wait here: the caller stops the hardware around a conversion
+        // and starts it after, so nothing is serving until it does.
+        await this.step('convert', () => this.hardware.convertTo(workspaceId, plan, specInputs));
+    }
+
+    /**
+     * What a machine is built from, shared by the first build and later
+     * conversions. Which image and size each role runs is the hardware's own
+     * decision, so nothing here names one.
+     */
+    private async specInputs(
+        workspaceId: Workspace.Id,
+        ownerId:     User.Id,
+        env:         Fleet.WorkspaceSecrets.MachineEnv,
+    ): Promise<Fleet.Machine.Spec.Inputs> {
+        return {
+            ownerId,
+            backendToken: await this.secrets.getBackendToken(workspaceId) ?? '',
+            secrets:      env,
+            authUrl:      requireEnv('WORKSPACE_AUTH_URL'),
+            tokenIssuer:  this.workspaceTokenIssuer.issuer(),
+            publicKey:    JSON.stringify(await this.workspaceTokenIssuer.publicJwk()),
+            appOrigin:    Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
+        };
+    }
+
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
+        // Stopped before removed: removal is a kill, and a killed machine
+        // abandons its customer database connections instead of closing them.
+        await this.hardware.stopAll(workspaceId);
         await this.hardware.destroy(workspaceId);
         await this.hostnames.delete(workspaceId);
         await this.secrets.delete(workspaceId);

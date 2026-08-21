@@ -71,7 +71,7 @@ create table workspaces (
     updated_at   timestamp with time zone default now() not null,
 
     constraint workspaces_status_check check (status in ('provisioning', 'ready', 'suspended', 'failed')),
-    constraint workspaces_plan_check   check (plan in ('free', 'pro'))
+    constraint workspaces_plan_check   check (plan in ('free', 'starter', 'pro'))
 );
 
 -- The user x workspace access index, and deliberately nothing more: no role.

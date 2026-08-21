@@ -9,7 +9,12 @@ export type _WorkspaceSDKActions_ = {
     rename:       (workspaceId: Workspace.Id, payload: Workspace.API.Rename.Request) => Promise<void>
     setSubdomain: (workspaceId: Workspace.Id, payload: Workspace.API.SetSubdomain.Request) => Promise<void>
     destroy:      (workspaceId: Workspace.Id) => Promise<void>
-    lifecycle:    (workspaceId: Workspace.Id, action: Fleet.Machine.LifecycleAction) => Promise<Workspace>
+    start:        (workspaceId: Workspace.Id) => Promise<Workspace>
+    stop:         (workspaceId: Workspace.Id) => Promise<Workspace>
+    suspend:      (workspaceId: Workspace.Id) => Promise<Workspace>
+    resume:       (workspaceId: Workspace.Id) => Promise<Workspace>
+    restart:      (workspaceId: Workspace.Id) => Promise<Workspace>
+    setPlan:      (workspaceId: Workspace.Id, plan: Workspace.Plan) => Promise<Workspace>
     applyEvent:   (event: Workspace.Event.Any) => void
 }
 
@@ -19,6 +24,8 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
     const merge = (workspace: Workspace) => {
         setState((s) => {
             s.workspaces[workspace.id] = workspace
+
+            delete s.transitions[workspace.id]
         })
     }
 
@@ -32,6 +39,9 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 // Replaced, not merged: a workspace someone removed elsewhere
                 // has to disappear from the grid.
                 s.workspaces = byId
+                // The rows just read are authoritative; anything believed to be
+                // in flight was settled by an event this client may have missed.
+                s.transitions = {}
             })
 
             return byId
@@ -83,8 +93,16 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
 
         // The transition changes machine state, which the workspace's status
         // reflects — so re-read the card rather than guessing the new value.
-        lifecycle: async (workspaceId, action) => {
-            await Workspace.API.lifecycle(api, workspaceId, { action })
+        start:   async (workspaceId) => { await Workspace.API.start(api, workspaceId);   return sdk.actions.refresh(workspaceId) },
+        stop:    async (workspaceId) => { await Workspace.API.stop(api, workspaceId);    return sdk.actions.refresh(workspaceId) },
+        suspend: async (workspaceId) => { await Workspace.API.suspend(api, workspaceId); return sdk.actions.refresh(workspaceId) },
+        resume:  async (workspaceId) => { await Workspace.API.resume(api, workspaceId);  return sdk.actions.refresh(workspaceId) },
+        restart: async (workspaceId) => { await Workspace.API.restart(api, workspaceId); return sdk.actions.refresh(workspaceId) },
+
+        // The plan decides the topology, so the machines are rebuilt behind
+        // this — re-read rather than patching the plan in place.
+        setPlan: async (workspaceId, plan) => {
+            await Workspace.API.setPlan(api, workspaceId, { plan })
 
             return sdk.actions.refresh(workspaceId)
         },
@@ -96,6 +114,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
             setState((s) => {
                 if (event.type === 'destroyed') {
                     delete s.workspaces[event.workspaceId]
+                    delete s.transitions[event.workspaceId]
 
                     return
                 }
@@ -105,8 +124,15 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 if (!card)
                     return
 
-                if (event.type === 'state:changed')
+                // Held only until the machine reports what it settled on.
+                if (event.type === 'transition:started')
+                    s.transitions[event.workspaceId] = event.action
+
+                if (event.type === 'state:changed') {
                     card.state = event.state
+
+                    delete s.transitions[event.workspaceId]
+                }
 
                 if (event.type === 'provisioning:changed')
                     card.provisioningStatus = event.provisioningStatus

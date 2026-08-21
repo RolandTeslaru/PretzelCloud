@@ -1,10 +1,10 @@
-import { Injectable, Logger, type OnModuleInit, type OnModuleDestroy } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, type OnModuleInit, type OnModuleDestroy } from '@nestjs/common';
 import { Agent, createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import httpProxy from 'http-proxy';
 import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
+import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { WorkspaceRouter, type Resolution } from './router.service';
 
 const DEFAULT_PORT = 8080;
@@ -84,7 +84,8 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
     constructor(
         private readonly router: WorkspaceRouter,
-        private readonly hardware: HardwareService,
+        @Inject(forwardRef(() => WorkspaceService))
+        private readonly workspaces: WorkspaceService,
     ) {}
 
     onModuleInit(): void {
@@ -263,9 +264,10 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Caffeinates the backend, once. The route stays cached without a target
-     * until the entry expires, so it is dropped here — the next request re-reads
-     * it and finds the address the woken backend now reports.
+     * Starts the workspace, once. Routed through the workspace rather than its
+     * hardware so a wake is bookkept like any other transition: the state is
+     * written and subscribers hear about it, instead of a machine quietly
+     * coming up behind a row that still says stopped.
      */
     private async wake(resolution: Resolution): Promise<void> {
         const { workspaceId } = resolution;
@@ -278,9 +280,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         try {
             this.logger.log(`Waking ${workspaceId}`);
 
-            await this.hardware.ensureBackendCaffeinated(workspaceId);
-
-            this.router.invalidate(workspaceId);
+            await this.workspaces.start(workspaceId);
         }
         catch (error) {
             this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);

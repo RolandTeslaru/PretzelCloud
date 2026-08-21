@@ -32,6 +32,9 @@ export class WorkspaceSecretsDatabase {
         encryption_key: string;
         execution_token_signing_key: string;
         router_secret: string;
+        internal_token: string;
+        redis_password: string;
+        backend_token: string;
     }) {
         return trx.insertInto('workspace_secrets').values(values).execute();
     }

@@ -10,7 +10,7 @@ import { Machine } from "./machine";
  * Operations a workspace names — restart, suspend — are hardware operations; the
  * hardware fans them out to its machines by role. State is NOT stored here: a
  * machine's state is volatile and would go stale the moment it were copied up,
- * so hardware state is derived fresh from the machines when asked.
+ * so it is read from the machines when asked.
  */
 export namespace Hardware {
     export const Id = z.uuid().brand("Fleet.Hardware.Id")
@@ -20,26 +20,6 @@ export namespace Hardware {
     // workspace never mixes a Docker backend with a Fly worker.
     export const Driver = z.enum(["docker", "fly"])
     export type  Driver = z.infer<typeof Driver>
-
-    // The coarse, user-facing rollup — is my compute on or off. Finer machine
-    // states (suspended, stopped) collapse to this; suspend is a wake-latency
-    // detail below the workspace's notice.
-    export const State = z.enum(["creating", "running", "stopped"])
-    export type  State = z.infer<typeof State>
-
-    export const LifecycleAction = z.enum(["start", "stop", "suspend", "resume", "restart"])
-    export type  LifecycleAction = z.infer<typeof LifecycleAction>
-
-    /** Collapses the machine states into the one the workspace sees. */
-    export const collapseState = (machineStates: Machine.State[]): State => {
-        if (machineStates.some((s) => s === "creating"))
-            return "creating"
-
-        if (machineStates.some((s) => s === "running"))
-            return "running"
-
-        return "stopped"
-    }
 
     export const Schema = z.object({
         id:          Id,

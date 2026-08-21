@@ -27,6 +27,12 @@ export namespace WorkspaceSecrets {
         // Required on traffic reaching the workspace, when it fronts itself
         // with a proxy that stamps it.
         TRUSTED_PROXY_TOKEN:    z.string(),
+        // Shared by the backend and its worker. Generated here rather than in a
+        // container because a split's two machines must present the same value.
+        WORKER_SERVICE_INTERNAL_TOKEN: z.string(),
+        // What lets the worker reach the queue on its sibling: Redis bound off
+        // loopback refuses unauthenticated clients.
+        REDIS_PASSWORD: z.string(),
     })
     export type MachineEnv = z.infer<typeof MachineEnv>
 }

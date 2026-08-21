@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react'
-import { Badge, Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
-import type { BadgeProps } from '@pretzel-graph/standard-ui/foundations'
+import { Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { Fleet } from '@pretzel-cloud/shared/domain'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
+import { StatusBadge } from '../status'
 
 type Action = Fleet.Machine.LifecycleAction
 
@@ -16,23 +16,10 @@ const DEV_CONTROLS =
     typeof location !== 'undefined' &&
     (location.hostname === 'localhost' || location.hostname.endsWith('.localhost'))
 
-type Appearance = { label: string; variant: BadgeProps['variant']; icon: ReactNode }
-
-const displayStatus = (workspace: Workspace): Appearance => {
-    if (workspace.provisioningStatus === 'provisioning')
-        return { label: 'Provisioning', variant: 'secondary', icon: <Spinner className="size-2.5" /> }
-
-    if (workspace.provisioningStatus === 'failed')
-        return { label: 'Failed', variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
-
-    switch (workspace.state) {
-        case 'running':   return { label: 'Running',   variant: 'success', icon: <SystemIcons.Check /> }
-        case 'suspended': return { label: 'Suspended', variant: 'outline', icon: <SystemIcons.Moon /> }
-        case 'stopped':   return { label: 'Stopped',   variant: 'outline', icon: <SystemIcons.Power /> }
-        case 'creating':  return { label: 'Starting',  variant: 'secondary', icon: <Spinner className="size-2.5" /> }
-        default:          return { label: 'Ready',     variant: 'success', icon: <SystemIcons.Check /> }
-    }
-}
+const PLANS: { plan: Workspace.Plan; label: string; machines: string }[] = [
+    { plan: 'free', label: 'Free', machines: '1 machine'  },
+    { plan: 'pro',  label: 'Pro',  machines: '2 machines' },
+]
 
 const DEV_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
     { action: 'start',   label: 'Start',   icon: <SystemIcons.Play /> },
@@ -41,20 +28,29 @@ const DEV_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
     { action: 'resume',  label: 'Resume',  icon: <SystemIcons.Zap /> },
 ]
 
+// The SDK has a method per action; the map is only what the buttons render.
+const CALL: Record<Action, (workspaceId: Workspace.Id) => Promise<unknown>> = {
+    start:   WorkspaceSDK.actions.start,
+    stop:    WorkspaceSDK.actions.stop,
+    suspend: WorkspaceSDK.actions.suspend,
+    resume:  WorkspaceSDK.actions.resume,
+    restart: WorkspaceSDK.actions.restart,
+}
+
 export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialogId: string }) => {
     const workspace = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])
 
     const [busy, setBusy] = useState<Action | null>(null)
 
-    if (!workspace) return null
+    const [converting, setConverting] = useState<Workspace.Plan | null>(null)
 
-    const status = displayStatus(workspace)
+    if (!workspace) return null
 
     const run = (action: Action) => async () => {
         setBusy(action)
 
         try {
-            await WorkspaceSDK.actions.lifecycle(workspaceId, action)
+            await CALL[action](workspaceId)
 
             NotificationSDK.toast.success(`${action[0].toUpperCase()}${action.slice(1)} done`)
         }
@@ -66,6 +62,22 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
         }
     }
 
+    const convert = (plan: Workspace.Plan) => async () => {
+        setConverting(plan)
+
+        try {
+            await WorkspaceSDK.actions.setPlan(workspaceId, plan)
+
+            NotificationSDK.toast.success(`Rebuilt on the ${plan} topology`)
+        }
+        catch {
+            NotificationSDK.toast.error('Could not change the topology')
+        }
+        finally {
+            setConverting(null)
+        }
+    }
+
     return (
         <div className="flex flex-col gap-4 pr-2">
             <div className="flex items-center justify-between rounded-lg ">
@@ -74,10 +86,7 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                     <p className="text-muted-foreground text-xs">The workspace's current machine state.</p>
                 </div>
 
-                <Badge variant={status.variant} size="sm">
-                    {status.icon}
-                    {status.label}
-                </Badge>
+                <StatusBadge workspace={workspace} />
             </div>
 
             <div className="flex flex-col gap-3 rounded-lg">
@@ -121,6 +130,35 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                             >
                                 {busy === action ? <Spinner className="size-3.5" /> : icon}
                                 {label}
+                            </Button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {DEV_CONTROLS && (
+                <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border p-4">
+                    <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium">Topology</p>
+                        <p className="text-muted-foreground text-xs">
+                            The plan decides how many machines back this workspace: free runs one
+                            combined machine, paid splits the backend and the worker. Changing it
+                            rebuilds the machines — the database is untouched.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                        {PLANS.map(({ plan, label, machines }) => (
+                            <Button
+                                key={plan}
+                                variant={workspace.plan === plan ? 'default' : 'input'}
+                                size="sm"
+                                disabled={converting !== null || workspace.plan === plan}
+                                onClick={convert(plan)}
+                            >
+                                {converting === plan ? <Spinner className="size-3.5" /> : <SystemIcons.Server />}
+                                {label}
+                                <span className="text-muted-foreground text-[10px]">{machines}</span>
                             </Button>
                         ))}
                     </div>

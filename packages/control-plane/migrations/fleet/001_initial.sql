@@ -51,6 +51,12 @@ create table workspace_secrets (
     -- Per workspace: a fleet-wide value would let one silo impersonate the
     -- router to another.
     router_secret text not null,
+    -- Shared by a split's backend and worker, so it cannot be per-container.
+    internal_token text not null,
+    redis_password text not null,
+    -- The backend's own credential for calling the control plane. Never given to
+    -- the worker: that machine runs workflow code.
+    backend_token text not null,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null
 );

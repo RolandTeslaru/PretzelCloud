@@ -52,6 +52,9 @@ export namespace FleetDB {
             database_url:   z.string(),
             encryption_key: z.string(),
             router_secret:  z.string(),
+            internal_token: z.string(),
+            redis_password: z.string(),
+            backend_token:  z.string(),
             execution_token_signing_key: z.string(),
             created_at:     z.coerce.date(),
             updated_at:     z.coerce.date(),
@@ -65,6 +68,8 @@ export namespace FleetDB {
             EXECUTION_TOKEN_SIGNING_KEY: row.execution_token_signing_key,
             WORKSPACE_ID:           row.workspace_id,
             TRUSTED_PROXY_TOKEN:    row.router_secret,
+            WORKER_SERVICE_INTERNAL_TOKEN: row.internal_token,
+            REDIS_PASSWORD: row.redis_password,
         });
     }
 

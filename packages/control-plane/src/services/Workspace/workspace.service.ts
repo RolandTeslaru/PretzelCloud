@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
@@ -186,7 +186,7 @@ export class WorkspaceService {
      * to whoever submits in between.
      */
     async setSubdomain(principal: Principal.User, workspace: Workspace, subdomain: Workspace.Subdomain | null): Promise<void> {
-        if (workspace.plan !== 'pro')
+        if (!Workspace.isPaid(workspace.plan))
             throw new ForbiddenException('A custom subdomain requires a paid plan');
 
         try {
@@ -220,16 +220,108 @@ export class WorkspaceService {
      * the router is invalidated after, since a suspended or stopped machine must
      * stop being a forwarding target.
      */
-    async lifecycle(workspaceId: Workspace.Id, action: Fleet.Machine.LifecycleAction): Promise<void> {
-        await this.hardware.applyAction(workspaceId, action);
+    /**
+     * Wakes the worker so it can drain the queue. Called by the workspace's own
+     * backend before it enqueues, which is the only moment anything knows work
+     * is coming.
+     */
+    wakeWorker(workspaceId: Workspace.Id): Promise<void> {
+        return this.hardware.startWorker(workspaceId);
+    }
+
+    /**
+     * Starting a workspace means making it answerable, which is its backend. The
+     * worker is demand-driven — the backend wakes it before it enqueues — so
+     * starting one here would be paying for compute nobody asked for.
+     */
+    start(workspaceId: Workspace.Id): Promise<void> {
+        return this.runTransition(workspaceId, 'start', () => this.hardware.startBackend(workspaceId));
+    }
+
+    /** Stopping means nothing is left running, worker included. */
+    stop(workspaceId: Workspace.Id): Promise<void> {
+        return this.runTransition(workspaceId, 'stop', () => this.hardware.stopAll(workspaceId));
+    }
+
+    suspend(workspaceId: Workspace.Id): Promise<void> {
+        return this.runTransition(workspaceId, 'suspend', () => this.hardware.suspendBackend(workspaceId));
+    }
+
+    /** The waking half of suspend, and like `start`, the backend's alone. */
+    resume(workspaceId: Workspace.Id): Promise<void> {
+        return this.runTransition(workspaceId, 'resume', () => this.hardware.startBackend(workspaceId));
+    }
+
+    /** Everything down, then answerable again. The worker returns on demand. */
+    restart(workspaceId: Workspace.Id): Promise<void> {
+        return this.runTransition(workspaceId, 'restart', () => this.hardware.restartAll(workspaceId));
+    }
+
+    /**
+     * What every transition shares: the machines move, the router stops trusting
+     * a route that may now point at something down, and subscribers hear about
+     * it either way.
+     */
+    private async runTransition(
+        workspaceId: Workspace.Id,
+        action:      Fleet.Machine.LifecycleAction,
+        apply:       () => Promise<void>,
+    ): Promise<void> {
+        // Announced before the work starts and written nowhere: a transition is
+        // not a state the machine can be in, so the row keeps saying what the
+        // driver last reported until this settles.
+        this.emit(workspaceId, Workspace.Event.create('transition:started', { action }));
+
+        try {
+            await apply();
+
+            this.router.invalidate(workspaceId);
+        }
+        finally {
+            // In `finally`, so a failed transition still reports where it left
+            // the machines. Its own try: the settle must not replace the error
+            // that caused it.
+            try {
+                const states = await this.hardware.getStates([workspaceId]);
+
+                this.emit(workspaceId, Workspace.Event.create('state:changed', { state: states.get(workspaceId) ?? null }));
+            }
+            catch (error) {
+                this.logger.error(`Could not read ${workspaceId} back after a transition: ${error instanceof Error ? error.message : error}`);
+            }
+        }
+    }
+
+    /**
+     * What the machine actually ended up on, read back rather than inferred from
+     * the action. Runs on the failure path too — a transition that threw still
+     * has to clear the card, or it spins forever.
+     *
+     * Its own errors are swallowed: this runs in a `finally`, and a throw here
+     * would replace whatever went wrong with a read failure.
+     */
+
+    /**
+     * Moves a workspace to another plan and rebuilds its compute to match. The
+     * plan is written first: the topology is derived from it, so a conversion
+     * that fails leaves the intent recorded for a retry.
+     */
+    async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
+        await PortalDB.asService('set workspace plan', (db) =>
+            db.updateTable('workspaces').set({ plan }).where('id', '=', workspaceId).execute());
+
+        // A conversion rebuilds the machines, so the workspace goes down for it:
+        // stopped first so executions end and pools close, started again once
+        // the new topology exists.
+        await this.stop(workspaceId);
+
+        await this.provisioning.convert(workspaceId, ownerId, plan);
+
+        await this.start(workspaceId);
+
+        await this.hardware.awaitHealthy(workspaceId);
 
         this.router.invalidate(workspaceId);
-
-        // Read back rather than inferred from the action: what the machine
-        // actually settled on is the only state worth pushing.
-        const states = await this.hardware.getStates([workspaceId]);
-
-        this.emit(workspaceId, Workspace.Event.create('state:changed', { state: states.get(workspaceId) ?? null }));
     }
 
     async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {

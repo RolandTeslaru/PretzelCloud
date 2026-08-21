@@ -24,8 +24,22 @@ export namespace Workspace {
     export const ProvisioningStatus = z.enum(["provisioning", "ready", "suspended", "failed"])
     export type  ProvisioningStatus = z.infer<typeof ProvisioningStatus>
 
-    export const Plan = z.enum(["free", "pro"])
+    export const Plan = z.enum(["free", "starter", "pro"])
     export type  Plan = z.infer<typeof Plan>
+
+    /** Everything above free. Paid plans split their compute and may set a subdomain. */
+    export const isPaid = (plan: Plan): boolean => plan !== "free"
+
+    /**
+     * The machines a plan's compute is made of.
+     *
+     * Free runs one machine: it has a booting screen by design, so an
+     * always-warm backend buys it nothing and one machine halves the dormant
+     * floor. Paid splits, so the worker's memory sits on a usage clock instead
+     * of being paid for around the clock.
+     */
+    export const getTopology = (plan: Plan): MachineMod.Role[] =>
+        isPaid(plan) ? ["backend", "worker"] : ["combined"]
 
 
     export const DisplayName = z.string().trim()
@@ -108,7 +122,21 @@ export namespace Workspace {
         export const Destroyed = Base.extend({ type: z.literal('destroyed') })
         export type  Destroyed = z.infer<typeof Destroyed>
 
-        export const Schema = z.discriminatedUnion('type', [StateChanged, ProvisioningChanged, Destroyed])
+        /**
+         * A transition in flight. Not a machine state and never stored — the
+         * machine holds whatever it last settled on until this one finishes,
+         * and `state:changed` says what that turned out to be.
+         *
+         * The action rather than a state per action: the actions are already an
+         * enum, and what to call each one while it runs is the reader's choice.
+         */
+        export const TransitionStarted = Base.extend({
+            type:   z.literal('transition:started'),
+            action: MachineMod.LifecycleAction,
+        })
+        export type  TransitionStarted = z.infer<typeof TransitionStarted>
+
+        export const Schema = z.discriminatedUnion('type', [StateChanged, ProvisioningChanged, Destroyed, TransitionStarted])
 
         export type Any = z.infer<typeof Schema>
 
@@ -187,17 +215,35 @@ export namespace Workspace {
             return SetSubdomain.Response.parse(data)
         }
 
-        export namespace Lifecycle {
-            export const Request = z.object({ action: MachineMod.LifecycleAction })
+        export namespace SetPlan {
+            export const Request = z.object({ plan: Plan })
             export type  Request = z.infer<typeof Request>
             export const Response = z.object({})
             export type  Response = z.infer<typeof Response>
         }
 
-        export async function lifecycle(api: AxiosInstance, workspaceId: Id, req: Lifecycle.Request): Promise<Lifecycle.Response> {
-            const { data } = await api.post<Lifecycle.Response>(`/api/workspaces/${workspaceId}/lifecycle`, req)
+        export async function setPlan(api: AxiosInstance, workspaceId: Id, req: SetPlan.Request): Promise<SetPlan.Response> {
+            const { data } = await api.patch<SetPlan.Response>(`/api/workspaces/${workspaceId}/plan`, req)
+            return SetPlan.Response.parse(data)
+        }
+
+        // One route per action rather than an action in a body: the verb is the
+        // request, and nothing has to be dispatched on the way down.
+        export namespace Lifecycle {
+            export const Response = z.object({})
+            export type  Response = z.infer<typeof Response>
+        }
+
+        const act = async (api: AxiosInstance, workspaceId: Id, action: string): Promise<Lifecycle.Response> => {
+            const { data } = await api.post<Lifecycle.Response>(`/api/workspaces/${workspaceId}/${action}`)
             return Lifecycle.Response.parse(data)
         }
+
+        export const start   = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'start')
+        export const stop    = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'stop')
+        export const suspend = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'suspend')
+        export const resume  = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'resume')
+        export const restart = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'restart')
 
         export namespace Destroy {
             export const Response = z.object({})

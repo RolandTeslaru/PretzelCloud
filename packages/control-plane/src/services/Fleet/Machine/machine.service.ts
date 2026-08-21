@@ -20,33 +20,42 @@ export class MachineService {
         private readonly db:     MachineDatabase,
     ) {}
 
+    /** The spec says which role this is, so nothing else has to be told. */
     async create(
         hardwareId:  Fleet.Hardware.Id,
         workspaceId: Workspace.Id,
-        role:        Fleet.Machine.Role,
-        options:     { image: string; size: string; env: Record<string, string> },
+        spec:        Fleet.Machine.Spec,
     ): Promise<void> {
         const handle = await this.driver.create({
             workspaceId,
-            name:  Fleet.Machine.Name.create(workspaceId, role),
-            role,
-            image: options.image,
-            size:  options.size,
-            env:   options.env,
+            name:  Fleet.Machine.Name.create(workspaceId, spec.role),
+            role:  spec.role,
+            image: spec.image,
+            size:  spec.size,
+            env:   Fleet.Machine.Spec.toEnv(spec),
         });
 
         await FleetDB.asService('record machine', (trx) => this.db.insert(trx, {
             workspace_id: workspaceId,
             hardware_id:  hardwareId,
             external_id:  handle.externalId,
-            role,
-            size:         options.size,
+            role:         spec.role,
+            size:         spec.size,
             state:        handle.state,
         }));
     }
 
-    listFor(workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
-        return FleetDB.asService('list machines', (trx) => this.db.listByWorkspace(trx, workspaceId));
+    getAll(workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
+        return FleetDB.asService('list machines', (trx) => this.db.getAll(trx, workspaceId));
+    }
+
+    /**
+     * One machine by role, preferring the order given — `['backend',
+     * 'combined']` finds a split's backend or the single machine standing in
+     * for it. Reads one row rather than the whole set.
+     */
+    getByRole(workspaceId: Workspace.Id, roles: Fleet.Machine.Role[]): Promise<Fleet.Machine | undefined> {
+        return FleetDB.asService('read machine by role', (trx) => this.db.getByRole(trx, workspaceId, roles));
     }
 
     /** Blocks until this one machine reports serving, not merely started. */
@@ -96,8 +105,18 @@ export class MachineService {
         await this.driver.start(externalId);
     }
 
-    /** Destroys one machine — the substrate instance and its record. */
+    /**
+     * Destroys one machine — the substrate instance and its record.
+     *
+     * Refuses a live one. Removal is a kill: it would abandon the machine's
+     * customer database connections and leave its job locked for the lease, so
+     * stopping first is the caller's to do, and forgetting is a bug rather than
+     * something to paper over here.
+     */
     async destroy(machine: Fleet.Machine): Promise<void> {
+        if (machine.state === 'running' || machine.state === 'suspended')
+            throw new Error(`Machine ${machine.externalId} is ${machine.state}; stop it before destroying it`);
+
         await this.driver.destroy(machine.externalId);
 
         await FleetDB.asService('delete machine', (trx) => this.db.deleteById(trx, machine.id));

@@ -8,7 +8,7 @@ type Trx = FleetDB.Transaction;
 @Injectable()
 export class MachineDatabase {
 
-    async listByWorkspace(trx: Trx, workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
+    async getAll(trx: Trx, workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
         const rows = await trx
             .selectFrom('machines')
             .selectAll()
@@ -18,11 +18,23 @@ export class MachineDatabase {
         return rows.map((row) => FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(row)));
     }
 
-    /** Non-destroyed states for many workspaces, for the grid's status enrichment. */
+    /** One role's machine, for callers that want a single one rather than all. */
+    async getByRole(trx: Trx, workspaceId: Workspace.Id, roles: Fleet.Machine.Role[]): Promise<Fleet.Machine | undefined> {
+        const row = await trx
+            .selectFrom('machines')
+            .selectAll()
+            .where('workspace_id', '=', workspaceId)
+            .where('role', 'in', roles)
+            .executeTakeFirst();
+
+        return row ? FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(row)) : undefined;
+    }
+
+    /** Non-destroyed states for many workspaces, with the role that owns each. */
     getStatesByWorkspaces(trx: Trx, workspaceIds: Workspace.Id[]) {
         return trx
             .selectFrom('machines')
-            .select(['workspace_id', 'state'])
+            .select(['workspace_id', 'role', 'state'])
             .where('workspace_id', 'in', workspaceIds)
             .where('state', '!=', 'destroyed')
             .execute();

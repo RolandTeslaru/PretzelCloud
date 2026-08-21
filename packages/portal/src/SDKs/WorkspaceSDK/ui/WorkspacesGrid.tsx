@@ -1,12 +1,13 @@
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Badge, Button, DropdownMenu, SearchInput, Spinner } from '@pretzel-graph/standard-ui/foundations'
+import { Button, DropdownMenu, SearchInput } from '@pretzel-graph/standard-ui/foundations'
 import { Card } from '@pretzel-graph/standard-ui/foundations/card'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
-import type { BadgeProps } from '@pretzel-graph/standard-ui/foundations'
 import { Workspace } from '@pretzel-cloud/shared/domain'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { RealtimeSDK } from '@/SDKs/RealtimeSDK'
+import { StatusBadge, isReachable } from './status'
+import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import { WorkspaceSDK } from '../sdk'
 import { DEFAULT_SORT } from '../selectors'
 import { openCreateWorkspaceDialog } from '@/SDKs/WorkspaceSDK/ui/create-dialogs'
@@ -20,40 +21,6 @@ export const workspacesQuery = {
     queryKey: ['workspaces'] as const,
     queryFn: () => WorkspaceSDK.actions.list(),
     staleTime: STALE_TIME,
-}
-
-// Keyed by the status enum, so adding a state to it fails to compile until it
-// is given an appearance here.
-type Appearance = { label: string; variant: BadgeProps['variant']; icon: ReactNode }
-
-// The card shows one badge, but two things move behind it: whether the workspace
-// is built (its status) and whether its machine is up (its runtime state). Being
-// built but not yet placed wins, so the state below only shows once it applies.
-const displayStatus = (workspace: Workspace): Appearance => {
-    if (workspace.provisioningStatus === 'provisioning')
-        return { label: 'Provisioning', variant: 'secondary', icon: <Spinner className="size-2.5" /> }
-
-    if (workspace.provisioningStatus === 'failed')
-        return { label: 'Failed', variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
-
-    switch (workspace.state) {
-        case 'running':   return { label: 'Running',   variant: 'success', icon: <SystemIcons.Check /> }
-        case 'suspended': return { label: 'Suspended', variant: 'outline', icon: <SystemIcons.Moon /> }
-        case 'stopped':   return { label: 'Stopped',   variant: 'outline', icon: <SystemIcons.Power /> }
-        case 'creating':  return { label: 'Starting',  variant: 'secondary', icon: <Spinner className="size-2.5" /> }
-        default:          return { label: 'Ready',     variant: 'success', icon: <SystemIcons.Check /> }
-    }
-}
-
-const StatusBadge = ({ workspace }: { workspace: Workspace }) => {
-    const { label, variant, icon } = displayStatus(workspace)
-
-    return (
-        <Badge variant={variant} size="sm">
-            {icon}
-            {label}
-        </Badge>
-    )
 }
 
 /**
@@ -124,6 +91,64 @@ const SortMenu = ({ sort, onChange }: {
 )
 
 /**
+ * Its own component so it can read its own transition, and so only the card that
+ * changed re-renders. Opens the workspace only while the machine behind it is
+ * up — a card that cannot answer is not a link.
+ */
+const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
+    const transition = WorkspaceSDK.useStore((s) => s.transitions[workspace.id])
+
+    const reachable = isReachable(workspace, transition)
+
+    return (
+        <Card.Root
+            className={cn('w-[340px] transition-shadow', reachable ? 'cursor-pointer' : 'cursor-default')}
+            aria-disabled={!reachable}
+            // A full navigation, not a route change: the editor is a
+            // separate origin with its own lifetime.
+            onClick={reachable ? () => { window.location.href = workspace.appUrl } : undefined}
+        >
+            <Card.Header>
+                {/* Dimmed while unreachable — but not the menu, which is how it gets started again. */}
+                <div className={cn('flex flex-row gap-2', !reachable && 'opacity-60')}>
+                    <ServerIllustration className='h-6'/>
+                    <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
+                </div>
+
+                <Card.Action onClick={(event) => event.stopPropagation()}>
+                    <DropdownMenu.Root>
+                        <DropdownMenu.Trigger asChild>
+                            <Button size="icon-xs" variant="ghost">
+                                <SystemIcons.Ellipsis />
+                            </Button>
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Content align='start' side="right">
+                            <DropdownMenu.Item
+                                className='gap-2 text-xs'
+                                onClick={() => copyWorkspaceId(workspace.id)}
+                            >
+                                <SystemIcons.Copy />
+                                Copy Workspace ID
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                className='gap-2 text-xs'
+                                onClick={() => openWorkspaceConfigurationDialog(workspace.id)}
+                            >
+                                <SystemIcons.Settings />
+                                Open Configuration
+                            </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                    </DropdownMenu.Root>
+                </Card.Action>
+            </Card.Header>
+            <Card.Content className='w-full flex'>
+                <StatusBadge workspace={workspace} />
+            </Card.Content>
+        </Card.Root>
+    )
+}
+
+/**
  * Every workspace the caller can reach. The query owns the request; the store
  * owns the data, so a create or destroy elsewhere shows up here without a
  * refetch.
@@ -185,50 +210,7 @@ export const WorkspacesGrid = () => {
 
                 )}
                 {workspaces.map((workspace) => (
-                    <Card.Root
-                        className='w-[340px] cursor-pointer transition-shadow'
-                        key={workspace.id}
-                        // A full navigation, not a route change: the editor is a
-                        // separate origin with its own lifetime.
-                        onClick={() => { window.location.href = workspace.appUrl }}
-                    >
-                        <Card.Header>
-                            <div className='flex flex-row gap-2'>
-                                <ServerIllustration className='h-6'/>
-                                <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
-                            </div>
-
-                            <Card.Action onClick={(event) => event.stopPropagation()}>
-                                <DropdownMenu.Root>
-                                    <DropdownMenu.Trigger asChild>
-                                        <Button size="icon-xs" variant="ghost">
-                                            <SystemIcons.Ellipsis />
-                                        </Button>
-                                    </DropdownMenu.Trigger>
-                                    <DropdownMenu.Content align='start' side="right">
-                                        <DropdownMenu.Item
-                                            className='gap-2 text-xs'
-                                            onClick={() => copyWorkspaceId(workspace.id)}
-                                        >
-                                            <SystemIcons.Copy />
-                                            Copy Workspace ID
-                                        </DropdownMenu.Item>
-                                        <DropdownMenu.Item
-                                            className='gap-2 text-xs'
-                                            onClick={() => openWorkspaceConfigurationDialog(workspace.id)}
-                                        >
-                                            <SystemIcons.Settings />
-                                            Open Configuration
-                                        </DropdownMenu.Item>
-                                    </DropdownMenu.Content>
-                                </DropdownMenu.Root>
-                            </Card.Action>
-                        </Card.Header>
-                        <Card.Content className='w-full flex'>
-                            <StatusBadge workspace={workspace} />
-
-                        </Card.Content>
-                    </Card.Root>
+                    <WorkspaceCard key={workspace.id} workspace={workspace} />
                 ))}
             </div>
         </>
