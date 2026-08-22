@@ -243,7 +243,6 @@ export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
                 </Table.Body>
             </Table.Root>
 
-
         </section>
     )
 }

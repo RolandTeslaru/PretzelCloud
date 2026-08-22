@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-import { Spinner } from '@pretzel-graph/standard-ui/foundations'
+import { ScrollArea, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
 import { workspacesQuery } from '@/SDKs/WorkspaceSDK/ui/WorkspacesGrid'
 import { WorkspaceUsage } from '@/SDKs/EntitlementSDK/ui/WorkspaceUsage'
@@ -39,10 +39,10 @@ function UsagePage() {
         )
 
     return (
-        <div className='flex flex-col gap-10'>
-            {workspaces.map((workspace) => (
-                <WorkspaceUsage key={workspace.id} workspace={workspace} />
-            ))}
+        <div className='flex flex-col gap-10 overflow-hidden!'>
+                {workspaces.map((workspace) => (
+                    <WorkspaceUsage key={workspace.id} workspace={workspace} />
+                ))}
         </div>
     )
 }

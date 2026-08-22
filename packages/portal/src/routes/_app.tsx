@@ -40,12 +40,12 @@ function AppLayout() {
 
             <Sidebar />
 
-            <div className="flex flex-col">
+            <div className="flex flex-col max-h-screen overflow-hidden">
                 <nav className="min-h-[60px] px-4 flex items-center">
                     <h1 className="text-xl font-semibold">{title}</h1>
                 </nav>
 
-                <main className="pl-3 w-6xl pr-10 pt-6">
+                <main className="flex-1 min-h-0 overflow-y-auto pl-3 w-6xl pr-10 pt-6 pb-10">
                     <Outlet />
                 </main>
             </div>
