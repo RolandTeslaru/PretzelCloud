@@ -62,6 +62,54 @@ create table users (
 -- workspace also answers at a canonical label derived from its id, which is not
 -- stored: deriving it means it cannot drift from the id, cannot be edited, and
 -- survives a custom name changing — so a webhook URL never breaks.
+-- What a plan is, rather than what the code believes a plan is. A row here is a
+-- plan that can be sold, including one made for a single customer.
+create table plans (
+    id                   text not null,
+    display_name         text not null,
+    -- Display only. Stripe holds the amount that is actually charged.
+    price_cents          integer not null default 0,
+    currency             text not null default 'usd',
+    -- Checkout takes a price, not a product: one product carries many prices.
+    stripe_price_id      text,
+    stripe_product_id    text,
+
+    -- What the plan buys, and what the fleet reads.
+    topology             text not null,
+    backend_size         text not null,
+    worker_size          text,
+    idle_backend_policy  text not null,
+    -- How many executions may run at once. Memory follows from it: the machine
+    -- running them needs roughly this many isolates' worth.
+    execution_concurrency_limit integer not null default 1,
+
+    -- Limits. Null is unlimited.
+    max_workflows            integer,
+    max_executions_monthly   integer,
+    max_workspace_members    integer,
+    max_uptime_hours_monthly integer,
+
+    -- A plan nobody may buy: withdrawn, or written for one customer.
+    purchasable          boolean not null default true,
+    sort_order           integer not null default 0,
+
+    created_at           timestamp with time zone default now() not null,
+    updated_at           timestamp with time zone default now() not null,
+
+    constraint plans_pkey primary key (id),
+    constraint plans_topology_check check (topology in ('combined', 'separate')),
+    constraint plans_idle_check     check (idle_backend_policy in ('suspend', 'stop', 'none')),
+    -- A split topology has a worker to size; a combined one has none.
+    constraint plans_worker_size_check check ((topology = 'separate') = (worker_size is not null)),
+    constraint plans_concurrency_check check (execution_concurrency_limit >= 1)
+);
+
+-- Seeded to exactly what the code did before this table existed.
+insert into plans (id, display_name, price_cents, stripe_price_id, topology, backend_size, worker_size, idle_backend_policy, execution_concurrency_limit, sort_order) values
+    ('free', 'Free', 0,    null, 'combined', 'shared-1x-2048', null,             'suspend', 2,  0),
+    ('base', 'Base', 2500, null, 'separate', 'shared-1x-512',  'shared-4x-7168', 'none',    5,  1),
+    ('pro',  'Pro',  6000, null, 'separate', 'shared-1x-1024', 'shared-4x-7168', 'none',    10, 2);
+
 create table workspaces (
     id           uuid not null,
     subdomain    text,
@@ -77,7 +125,7 @@ create table workspaces (
     updated_at   timestamp with time zone default now() not null,
 
     constraint workspaces_status_check check (status in ('provisioning', 'ready', 'suspended', 'failed')),
-    constraint workspaces_plan_check   check (plan in ('free', 'base', 'pro'))
+    constraint workspaces_plan_fkey   foreign key (plan) references plans(id) on delete restrict
 );
 
 -- The user x workspace access index, and deliberately nothing more: no role.

@@ -1,5 +1,6 @@
 export { User } from "./User"
 export { Workspace } from "./Workspace"
+export { Plan } from "./Plan"
 export { Billing } from "./Billing"
 export { Fleet } from "./Fleet"
 export { Realtime } from "./Realtime"

@@ -61,9 +61,13 @@ const PLAN_LABEL: Record<Workspace.Plan, string> = {
     pro:  'Pro',
 }
 
-/** The account's plan, not a state — quiet, so it never competes with the status. */
+/**
+ * The account's plan, not a state. Free is the default everyone starts on, so it
+ * stays quiet and never competes with the status; a paid plan is worth pointing
+ * at, and is the one thing on the card the account chose.
+ */
 export const PlanBadge = ({ plan }: { plan: Workspace.Plan }) => (
-    <Badge variant="outline" size="sm">
+    <Badge variant={plan === 'free' ? 'outline' : 'active'} size="sm">
         {PLAN_LABEL[plan]}
     </Badge>
 )

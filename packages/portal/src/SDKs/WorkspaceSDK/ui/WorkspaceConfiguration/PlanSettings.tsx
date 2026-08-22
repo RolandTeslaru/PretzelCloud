@@ -60,7 +60,7 @@ export const PlanSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialo
                     </div>
 
                     <Button
-                        variant="outline"
+                        variant="input"
                         size="sm"
                         className="mr-auto"
                         disabled={busy !== null}

@@ -3,6 +3,7 @@ import { Kysely, PostgresDialect, sql, Transaction as KyselyTransaction } from '
 import { Pool } from 'pg';
 import {
     Fleet,
+    Plan      as PlanD,
     User      as UserD,
     Workspace as WorkspaceD,
 } from '@pretzel-cloud/shared/domain';
@@ -83,6 +84,53 @@ export namespace PortalDB {
         export type Row = z.infer<typeof Row>;
     }
 
+    export namespace Plan {
+        export const Row = z.object({
+            id:                  PlanD.Id,
+            display_name:        z.string(),
+            price_cents:         z.number().int(),
+            currency:            z.string(),
+            stripe_price_id:     z.string().nullable(),
+            stripe_product_id:   z.string().nullable(),
+            topology:            PlanD.Topology,
+            backend_size:        z.string(),
+            worker_size:         z.string().nullable(),
+            idle_backend_policy: PlanD.IdleBackendPolicy,
+            execution_concurrency_limit: z.number().int(),
+            max_workflows:            z.number().int().nullable(),
+            max_executions_monthly:   z.number().int().nullable(),
+            max_workspace_members:    z.number().int().nullable(),
+            max_uptime_hours_monthly: z.number().int().nullable(),
+            purchasable:         z.boolean(),
+            sort_order:          z.number().int(),
+            created_at:          z.coerce.date(),
+            updated_at:          z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+
+        export const toDomain = (row: Row) => PlanD.Schema.parse({
+            id:          row.id,
+            displayName: row.display_name,
+            priceCents:  row.price_cents,
+            currency:    row.currency,
+            stripePriceId:   row.stripe_price_id,
+            stripeProductId: row.stripe_product_id,
+            topology:          row.topology,
+            backendSize:       row.backend_size,
+            workerSize:        row.worker_size,
+            idleBackendPolicy: row.idle_backend_policy,
+            executionConcurrencyLimit: row.execution_concurrency_limit,
+            maxWorkflows:          row.max_workflows,
+            maxExecutionsMonthly:  row.max_executions_monthly,
+            maxWorkspaceMembers:   row.max_workspace_members,
+            maxUptimeHoursMonthly: row.max_uptime_hours_monthly,
+            purchasable: row.purchasable,
+            sortOrder:   row.sort_order,
+            createdAt:   row.created_at,
+            updatedAt:   row.updated_at,
+        });
+    }
+
     // Events already acted on. Stripe retries until it gets a 2xx, so the same
     // one arrives more than once.
     export namespace StripeEvent {
@@ -98,6 +146,7 @@ export namespace PortalDB {
         workspaces:        Table<typeof Workspace.Row, Stamps>;
         workspace_members: Table<typeof Member.Row, 'created_at'>;
         stripe_events:     Table<typeof StripeEvent.Row, 'received_at'>;
+        plans:             Table<typeof Plan.Row, Stamps>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {
