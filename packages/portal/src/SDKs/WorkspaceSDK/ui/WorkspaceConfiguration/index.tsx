@@ -9,27 +9,30 @@ import { GeneralSettings } from './GeneralSettings'
 import { DomainSettings } from './DomainSettings'
 import { DangerSettings } from './DangerSettings'
 import { LifecycleSettings } from './LifecycleSettings'
+import { PlanSettings } from './PlanSettings'
 
 // Per workspace, so opening one from another card does not reuse its panel state.
 const dialogId = (workspaceId: Workspace.Id) => `workspace-configuration-${workspaceId}`
 
-export function openWorkspaceConfigurationDialog(workspaceId: Workspace.Id) {
+/** `currentPanel` opens straight onto one, for callers that already know which. */
+export function openWorkspaceConfigurationDialog(workspaceId: Workspace.Id, currentPanel?: ItemId) {
     const id = dialogId(workspaceId)
 
     DialogSDK.actions.push(id, (props) => (
         <DialogSDK.Template {...props} className={'sm:max-w-[680px] w-full'}>
-            <WorkspaceConfiguration workspaceId={workspaceId} dialogId={id} />
+            <WorkspaceConfiguration workspaceId={workspaceId} dialogId={id} currentPanel={currentPanel} />
         </DialogSDK.Template>
     ))
 }
 
-type ItemId = 'general' | 'domain' | 'lifecycle' | 'danger'
+export type ItemId = 'general' | 'domain' | 'plan' | 'lifecycle' | 'danger'
 
 type PanelProps = { workspaceId: Workspace.Id; dialogId: string }
 
 const ITEMS: { id: ItemId; icon: React.FC<React.SVGProps<SVGSVGElement>>; label: string }[] = [
     { id: 'general', icon: SystemIcons.Settings,      label: 'General' },
     { id: 'domain',  icon: SystemIcons.Globe,         label: 'Domain' },
+    { id: 'plan',    icon: SystemIcons.Receipt,       label: 'Plan' },
     { id: 'lifecycle', icon: SystemIcons.Power,       label: 'Lifecycle' },
     { id: 'danger',  icon: SystemIcons.AlertTriangle, label: 'Danger zone' },
 ]
@@ -37,6 +40,7 @@ const ITEMS: { id: ItemId; icon: React.FC<React.SVGProps<SVGSVGElement>>; label:
 const LABELS: Record<ItemId, string> = {
     general: 'General',
     domain:  'Domain',
+    plan:    'Plan',
     lifecycle: 'Lifecycle',
     danger:  'Danger zone',
 }
@@ -44,12 +48,13 @@ const LABELS: Record<ItemId, string> = {
 const PANELS: Record<ItemId, React.FC<PanelProps>> = {
     general: GeneralSettings,
     domain:  DomainSettings,
+    plan:    PlanSettings,
     lifecycle: LifecycleSettings,
     danger:  DangerSettings,
 }
 
-const WorkspaceConfiguration = ({ workspaceId, dialogId }: PanelProps) => {
-    const [activeId, setActiveId] = useState<ItemId | null>(null)
+const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel }: PanelProps & { currentPanel?: ItemId }) => {
+    const [activeId, setActiveId] = useState<ItemId | null>(currentPanel ?? null)
 
     const workspace   = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])
     const ActivePanel = activeId ? PANELS[activeId] : null
@@ -83,7 +88,7 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId }: PanelProps) => {
                 </div>
             </div>
 
-            <ScrollArea.Root className='flex-1 min-h-[460px] max-h-[460px] pr-2'>
+            <ScrollArea.Root className='flex-1 pr-2'>
                 <div className='inline-flex z-100 items-center absolute w-full top-0 left-0 gap-2 h-9 mt-2 shrink-0'>
                     <p className='text-sm font-medium'>{activeId && LABELS[activeId]}</p>
                 </div>

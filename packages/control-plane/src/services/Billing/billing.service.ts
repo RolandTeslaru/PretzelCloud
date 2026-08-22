@@ -1,9 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Principal } from '@/auth/principal';
 import { PortalDB } from '@/db/portal';
 import { requireEnv } from '@/db/table';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
+
+/** A subscription in one of these is being paid on; anything else has ended. */
+const LIVE_STATUSES: Stripe.Subscription.Status[] = ['active', 'trialing', 'past_due', 'unpaid'];
 
 /** Which price sells which plan. Free is not sold. */
 const PRICE_ENV: Record<Exclude<Workspace.Plan, 'free'>, string> = {
@@ -32,19 +36,78 @@ export class BillingService {
         return this.client ??= new Stripe(requireEnv('STRIPE_SECRET_KEY'));
     }
 
-    /** Where to send someone to pay for a workspace. */
-    async checkoutUrl(principal: { userId: User.Id }, workspace: Workspace, plan: Workspace.Plan, returnTo: string): Promise<string> {
+    /**
+     * Puts a workspace on a plan.
+     *
+     * A workspace already paying for one has its price swapped in place and the
+     * difference prorated — a second subscription would be a second bill for the
+     * same thing. Only a workspace paying for nothing is sent to a hosted page,
+     * and only then is there a url to return.
+     */
+    async changePlan(principal: Principal.User, workspace: Workspace, plan: Workspace.Plan, returnTo: string): Promise<{ url: string | null }> {
         if (plan === 'free')
             throw new Error('Free is not a purchasable plan');
 
-        const customer = await this.customerFor(principal.userId);
+        const existing = await this.getLiveSubscriptionForWorkspace(workspace.id);
+
+        if (existing) {
+            await this.swapPrice(existing, plan, workspace.id);
+
+            // The plan still moves through the webhook, so there is one path from
+            // "Stripe says so" to the machines being rebuilt.
+            return { url: null };
+        }
+
+        return { url: await this.getStripeCheckoutUrl(principal, workspace, plan, returnTo) };
+    }
+
+    /**
+     * The subscription a workspace is actually paying on, or null. A recorded id
+     * whose subscription has since ended is not one — that workspace may buy again.
+     */
+    private async getLiveSubscriptionForWorkspace(workspaceId: Workspace.Id): Promise<Stripe.Subscription | null> {
+        const row = await PortalDB.asService('read subscription for workspace', (db) =>
+            db.selectFrom('workspaces').select('stripe_subscription_id').where('id', '=', workspaceId).executeTakeFirst());
+
+        if (!row?.stripe_subscription_id)
+            return null;
+
+        const subscription = await this.stripe.subscriptions.retrieve(row.stripe_subscription_id).catch(() => null);
+
+        if (!subscription)
+            return null;
+
+        return LIVE_STATUSES.includes(subscription.status) ? subscription : null;
+    }
+
+    /** Moves an existing subscription onto another plan's price. */
+    private async swapPrice(subscription: Stripe.Subscription, plan: Exclude<Workspace.Plan, 'free'>, workspaceId: Workspace.Id): Promise<void> {
+        const item = subscription.items.data[0];
+
+        if (!item)
+            throw new Error(`Subscription ${subscription.id} has no item to move`);
+
+        await this.stripe.subscriptions.update(subscription.id, {
+            items: [{ id: item.id, price: this.getPriceForPlan(plan) }],
+            proration_behavior: 'create_prorations',
+            // Re-stated because a subscription begun outside checkout may carry none.
+            metadata: { workspaceId },
+        });
+    }
+
+    /** Where to send someone to pay for a workspace. */
+    private async getStripeCheckoutUrl(principal: Principal.User, workspace: Workspace, plan: Workspace.Plan, returnTo: string): Promise<string> {
+        if (plan === 'free')
+            throw new Error('Free is not a purchasable plan');
+
+        const customer = await this.getStripeCustomerForUser(principal.userId);
 
         const session = await this.stripe.checkout.sessions.create({
             mode:        'subscription',
             customer,
-            line_items:  [{ price: this.priceFor(plan), quantity: 1 }],
-            success_url: `${returnTo}?checkout=done`,
-            cancel_url:  `${returnTo}?checkout=cancelled`,
+            line_items:  [{ price: this.getPriceForPlan(plan), quantity: 1 }],
+            success_url: this.getCheckoutOutcomeUrl(returnTo, 'success', workspace.id),
+            cancel_url:  this.getCheckoutOutcomeUrl(returnTo, 'cancelled', workspace.id),
             // The only thing tying a payment back to a workspace. One person can
             // own several, on different plans.
             subscription_data: { metadata: { workspaceId: workspace.id } },
@@ -57,9 +120,14 @@ export class BillingService {
         return session.url;
     }
 
+    /** A page per outcome, so each can say its own thing. */
+    private getCheckoutOutcomeUrl(origin: string, outcome: 'success' | 'cancelled', workspaceId: Workspace.Id): string {
+        return new URL(`/checkout/${outcome}/${workspaceId}`, origin).toString();
+    }
+
     /** Where to send someone to change a card, see invoices, or cancel. */
-    async portalUrl(principal: { userId: User.Id }, returnTo: string): Promise<string> {
-        const customer = await this.customerFor(principal.userId);
+    async getStripeBillingPortalUrl(principal: Principal.User, returnTo: string): Promise<string> {
+        const customer = await this.getStripeCustomerForUser(principal.userId);
 
         const session = await this.stripe.billingPortal.sessions.create({
             customer,
@@ -115,7 +183,7 @@ export class BillingService {
     }
 
     private async onCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
-        const workspaceId = this.workspaceOf(session.metadata);
+        const workspaceId = this.getWorkspaceFromSubscriptionMeta(session.metadata);
 
         if (!workspaceId || typeof session.subscription !== 'string')
             return;
@@ -128,7 +196,7 @@ export class BillingService {
     }
 
     private async onSubscriptionChanged(subscription: Stripe.Subscription): Promise<void> {
-        const workspaceId = this.workspaceOf(subscription.metadata);
+        const workspaceId = this.getWorkspaceFromSubscriptionMeta(subscription.metadata);
 
         if (!workspaceId)
             return;
@@ -142,7 +210,7 @@ export class BillingService {
     }
 
     private async onSubscriptionEnded(subscription: Stripe.Subscription): Promise<void> {
-        const workspaceId = this.workspaceOf(subscription.metadata);
+        const workspaceId = this.getWorkspaceFromSubscriptionMeta(subscription.metadata);
 
         if (!workspaceId)
             return;
@@ -154,7 +222,7 @@ export class BillingService {
 
     /** Moves the workspace to the plan its subscription now pays for. */
     private async moveTo(workspaceId: Workspace.Id, subscription: Stripe.Subscription): Promise<void> {
-        const plan = this.planFor(subscription);
+        const plan = this.getPlanForSubscription(subscription);
 
         if (!plan) {
             this.logger.error(`No plan matches the price on ${subscription.id}`);
@@ -206,7 +274,7 @@ export class BillingService {
     }
 
     /** The customer this person is, creating one the first time they pay. */
-    private async customerFor(userId: User.Id): Promise<string> {
+    private async getStripeCustomerForUser(userId: User.Id): Promise<string> {
         const user = await PortalDB.asService('read user for billing', (db) =>
             db.selectFrom('users').select(['email', 'display_name', 'stripe_customer_id']).where('id', '=', userId).executeTakeFirstOrThrow());
 
@@ -225,12 +293,12 @@ export class BillingService {
         return customer.id;
     }
 
-    private priceFor(plan: Exclude<Workspace.Plan, 'free'>): string {
+    private getPriceForPlan(plan: Exclude<Workspace.Plan, 'free'>): string {
         return requireEnv(PRICE_ENV[plan]);
     }
 
     /** The plan a subscription's price sells, or null if it sells none of ours. */
-    private planFor(subscription: Stripe.Subscription): Exclude<Workspace.Plan, 'free'> | null {
+    private getPlanForSubscription(subscription: Stripe.Subscription): Exclude<Workspace.Plan, 'free'> | null {
         const priceId = subscription.items.data[0]?.price.id;
 
         if (!priceId)
@@ -243,7 +311,7 @@ export class BillingService {
         return null;
     }
 
-    private workspaceOf(metadata: Stripe.Metadata | null): Workspace.Id | null {
+    private getWorkspaceFromSubscriptionMeta(metadata: Stripe.Metadata | null): Workspace.Id | null {
         const parsed = Workspace.Id.safeParse(metadata?.workspaceId);
 
         if (!parsed.success)

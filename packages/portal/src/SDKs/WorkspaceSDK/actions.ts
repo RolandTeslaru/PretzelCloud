@@ -138,6 +138,9 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
 
                 if (event.type === 'provisioning:changed')
                     card.provisioningStatus = event.provisioningStatus
+
+                if (event.type === 'plan:changed')
+                    card.plan = event.plan
             })
         },
     }

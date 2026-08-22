@@ -19,7 +19,7 @@ const spinner = <Spinner className="size-2.5" />
 const IN_FLIGHT: Record<Fleet.Machine.LifecycleAction, Omit<Appearance, 'icon'>> = {
     start:   { label: 'Starting',   variant: 'success' },
     stop:    { label: 'Stopping',   variant: 'destructive' },
-    suspend: { label: 'Suspending', variant: 'destructive' },
+    suspend: { label: 'Suspending', variant: 'nightly' },
     resume:  { label: 'Resuming',   variant: 'success' },
     restart: { label: 'Restarting', variant: 'success' },
 }
@@ -47,23 +47,38 @@ export const displayStatus = (
 
     switch (workspace.state) {
         case 'running':   return { label: 'Running',   variant: 'success', icon: <SystemIcons.Check /> }
-        case 'suspended': return { label: 'Suspended', variant: "destructive", icon: <SystemIcons.Moon /> }
+        case 'suspended': return { label: 'Suspended', variant: 'nightly', icon: <SystemIcons.Moon /> }
         case 'stopped':   return { label: 'Stopped',   variant: "destructive", icon: <SystemIcons.Power /> }
         case 'creating':  return { label: 'Starting',  variant: 'active', icon: spinner }
         default:          return { label: 'Ready',     variant: 'success', icon: <SystemIcons.Check /> }
     }
 }
 
+/** Keyed by the enum, so a new plan fails to compile until it is named here. */
+const PLAN_LABEL: Record<Workspace.Plan, string> = {
+    free: 'Free',
+    base: 'Base',
+    pro:  'Pro',
+}
+
+/** The account's plan, not a state — quiet, so it never competes with the status. */
+export const PlanBadge = ({ plan }: { plan: Workspace.Plan }) => (
+    <Badge variant="outline" size="sm">
+        {PLAN_LABEL[plan]}
+    </Badge>
+)
+
 /**
- * Whether the workspace can be opened. Only a machine that is up answers, so a
- * card is a link exactly while its badge says Running.
+ * Whether the workspace can be opened. A machine that is down still answers —
+ * the editor shell is served while it boots, and the visit is what starts it —
+ * so only a workspace that has nothing to open yet, or one already moving, is
+ * not a link.
  */
 export const isReachable = (
     workspace:   Workspace,
     transition?: Fleet.Machine.LifecycleAction,
 ) =>
     workspace.provisioningStatus === 'ready'
-    && workspace.state === 'running'
     && !transition
 
 /** Reads the transition itself, so only the badge re-renders when one starts. */

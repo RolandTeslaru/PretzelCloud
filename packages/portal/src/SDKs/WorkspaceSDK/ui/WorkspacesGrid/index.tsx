@@ -1,18 +1,13 @@
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, DropdownMenu, SearchInput } from '@pretzel-graph/standard-ui/foundations'
-import { Card } from '@pretzel-graph/standard-ui/foundations/card'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { Workspace } from '@pretzel-cloud/shared/domain'
-import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { RealtimeSDK } from '@/SDKs/RealtimeSDK'
-import { StatusBadge, isReachable } from './status'
-import { cn } from '@pretzel-graph/standard-ui/utils/cn'
-import { WorkspaceSDK } from '../sdk'
-import { DEFAULT_SORT } from '../selectors'
+import { WorkspaceSDK } from '../../sdk'
+import { DEFAULT_SORT } from '../../selectors'
 import { openCreateWorkspaceDialog } from '@/SDKs/WorkspaceSDK/ui/create-dialogs'
-import { openWorkspaceConfigurationDialog } from '@/SDKs/WorkspaceSDK/ui/WorkspaceConfiguration'
-import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
+import { WorkspaceCard } from './card'
 
 const STALE_TIME = 30_000
 
@@ -23,20 +18,6 @@ export const workspacesQuery = {
     staleTime: STALE_TIME,
 }
 
-/**
- * Silent success is the wrong default for a copy: the whole point is pasting it
- * somewhere else, and the clipboard rejects outright without a secure context.
- */
-const copyWorkspaceId = async (id: Workspace.Id) => {
-    try {
-        await navigator.clipboard.writeText(id)
-
-        NotificationSDK.toast.success('Workspace ID copied')
-    }
-    catch {
-        NotificationSDK.toast.error('Could not reach the clipboard')
-    }
-}
 
 const SORT_FIELDS: { field: WorkspaceSDK.SortField; label: string }[] = [
     { field: 'name',    label: 'By name' },
@@ -90,63 +71,6 @@ const SortMenu = ({ sort, onChange }: {
     </DropdownMenu.Root>
 )
 
-/**
- * Its own component so it can read its own transition, and so only the card that
- * changed re-renders. Opens the workspace only while the machine behind it is
- * up — a card that cannot answer is not a link.
- */
-const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
-    const transition = WorkspaceSDK.useStore((s) => s.transitions[workspace.id])
-
-    const reachable = isReachable(workspace, transition)
-
-    return (
-        <Card.Root
-            className={cn('w-[340px] transition-shadow', reachable ? 'cursor-pointer' : 'cursor-default')}
-            aria-disabled={!reachable}
-            // A full navigation, not a route change: the editor is a
-            // separate origin with its own lifetime.
-            onClick={reachable ? () => { window.location.href = workspace.appUrl } : undefined}
-        >
-            <Card.Header>
-                {/* Dimmed while unreachable — but not the menu, which is how it gets started again. */}
-                <div className={cn('flex flex-row gap-2', !reachable && 'opacity-60')}>
-                    <ServerIllustration className='h-6'/>
-                    <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
-                </div>
-
-                <Card.Action onClick={(event) => event.stopPropagation()}>
-                    <DropdownMenu.Root>
-                        <DropdownMenu.Trigger asChild>
-                            <Button size="icon-xs" variant="ghost">
-                                <SystemIcons.Ellipsis />
-                            </Button>
-                        </DropdownMenu.Trigger>
-                        <DropdownMenu.Content align='start' side="right">
-                            <DropdownMenu.Item
-                                className='gap-2 text-xs'
-                                onClick={() => copyWorkspaceId(workspace.id)}
-                            >
-                                <SystemIcons.Copy />
-                                Copy Workspace ID
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                                className='gap-2 text-xs'
-                                onClick={() => openWorkspaceConfigurationDialog(workspace.id)}
-                            >
-                                <SystemIcons.Settings />
-                                Open Configuration
-                            </DropdownMenu.Item>
-                        </DropdownMenu.Content>
-                    </DropdownMenu.Root>
-                </Card.Action>
-            </Card.Header>
-            <Card.Content className='w-full flex'>
-                <StatusBadge workspace={workspace} />
-            </Card.Content>
-        </Card.Root>
-    )
-}
 
 /**
  * Every workspace the caller can reach. The query owns the request; the store

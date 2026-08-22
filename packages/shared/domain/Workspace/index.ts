@@ -75,6 +75,9 @@ export namespace Workspace {
         // The workspace's machine state — null while it has no machine yet.
         state:       MachineMod.State.nullable(),
         plan:        Plan,
+        // What the payment provider says about the subscription behind the plan.
+        // Null while nothing is paying for it.
+        subscriptionStatus: z.string().nullable(),
         ownerId:     User.Id,
         // Derived rather than stored, and assembled where the fleet domain is
         // known — a browser has no way to build it.
@@ -127,6 +130,13 @@ export namespace Workspace {
         })
         export type  ProvisioningChanged = z.infer<typeof ProvisioningChanged>
 
+        /** What the workspace is now paid for. Its machines follow separately. */
+        export const PlanChanged = Base.extend({
+            type: z.literal('plan:changed'),
+            plan: Plan,
+        })
+        export type  PlanChanged = z.infer<typeof PlanChanged>
+
         export const Destroyed = Base.extend({ type: z.literal('destroyed') })
         export type  Destroyed = z.infer<typeof Destroyed>
 
@@ -144,7 +154,7 @@ export namespace Workspace {
         })
         export type  TransitionStarted = z.infer<typeof TransitionStarted>
 
-        export const Schema = z.discriminatedUnion('type', [StateChanged, ProvisioningChanged, Destroyed, TransitionStarted])
+        export const Schema = z.discriminatedUnion('type', [StateChanged, ProvisioningChanged, PlanChanged, Destroyed, TransitionStarted])
 
         export type Any = z.infer<typeof Schema>
 

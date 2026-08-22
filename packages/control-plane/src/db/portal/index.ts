@@ -64,6 +64,7 @@ export namespace PortalDB {
             provisioningStatus: row.status,
             state,
             plan:        row.plan,
+            subscriptionStatus: row.subscription_status,
             ownerId:     row.owner_id,
             appUrl:      Fleet.Hostname.Host.getOrigin(WorkspaceD.Subdomain.canonical(row.id), 'app'),
             createdAt:   row.created_at,

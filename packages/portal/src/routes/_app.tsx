@@ -1,53 +1,56 @@
-import { createFileRoute, Link, redirect, useRouterState } from '@tanstack/react-router'
-import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-import { Button } from '@pretzel-graph/standard-ui/foundations/button'
-import { PretzelGraphDropdown } from '@/components/PretzelGraphDropdown'
-import { WorkspacesGrid, workspacesQuery } from '@/SDKs/WorkspaceSDK/ui/WorkspacesGrid'
-import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { ComponentType } from 'react'
+import { createFileRoute, Link, Outlet, redirect, useMatches, useRouterState } from '@tanstack/react-router'
+import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { BaseIconProps } from '@pretzel-graph/standard-ui/icons/baseIcon'
-import { SearchInput } from '@pretzel-graph/standard-ui/foundations'
+import { PretzelGraphDropdown } from '@/components/PretzelGraphDropdown'
 
-export const Route = createFileRoute('/workspaces/')({
+// What a page beneath this layout may declare about itself.
+declare module '@tanstack/react-router' {
+    interface StaticDataRouteOption {
+        title?: string
+    }
+}
+
+/**
+ * The signed-in shell: sidebar, title bar, and whatever page is beneath it.
+ *
+ * Pathless — the leading underscore means it wraps its children without adding a
+ * segment, so these pages keep their own addresses and the landing page at `/`
+ * stays outside it entirely.
+ */
+export const Route = createFileRoute('/_app')({
+    // One guard for everything inside, rather than one per page.
     beforeLoad: ({ context }) => {
         if (!context.auth.isAuthenticated) {
             throw redirect({ to: '/auth' })
         }
     },
-    // Fills the store before the grid renders. A failure is swallowed so the
-    // route still mounts; the grid reports it.
-    loader: async () => {
-        await QuerySDK.client.fetchQuery(workspacesQuery).catch(() => null)
-
-        return null
-    },
-    component: Workspaces,
+    component: AppLayout,
 })
 
-function Workspaces() {
+function AppLayout() {
+    const matches = useMatches()
 
+    // The deepest match that names itself wins, so a nested page can override
+    // the section it sits in.
+    const title = [...matches].reverse().find((m) => m.staticData?.title)?.staticData?.title
 
     return (
-
         <div className="w-fit relative z-10 flex flex-row bg-background/80 backdrop-blur-lg max-h-screen rounded-tr-2xl min-h-screen mr-auto">
 
             <Sidebar />
 
             <div className="flex flex-col">
-                <nav className="min-h-[60px] px-4 flex items-center ">
-                    <h1 className="text-xl font-semibold">
-                        Workspaces
-                    </h1>
+                <nav className="min-h-[60px] px-4 flex items-center">
+                    <h1 className="text-xl font-semibold">{title}</h1>
                 </nav>
 
-
-                <main className=" pl-3 w-6xl pr-10 pt-6">
-                    <WorkspacesGrid />
+                <main className="pl-3 w-6xl pr-10 pt-6">
+                    <Outlet />
                 </main>
             </div>
         </div>
     )
-
 }
 
 type NavEntry = {
@@ -63,7 +66,7 @@ const NAV_TOP: NavEntry[] = [
     { id: 'billing', label: 'Billing', to: '/billing', icon: SystemIcons.Receipt },
 ]
 
-export const Sidebar = () => (
+const Sidebar = () => (
     <aside className="w-56 shrink-0 flex flex-col">
         <div className="h-14 px-4 flex items-center">
             <PretzelGraphDropdown title="PretzelCloud" />

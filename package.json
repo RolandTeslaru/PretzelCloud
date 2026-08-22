@@ -6,11 +6,12 @@
         "packages/*"
     ],
     "scripts": {
-        "dev": "concurrently -n control-plane,portal -c cyan,magenta \"npm:dev:control-plane\" \"npm:dev:portal\"",
+        "dev": "concurrently -n control-plane,portal,stripe -c cyan,magenta,yellow \"npm:dev:control-plane\" \"npm:dev:portal\" \"npm:dev:stripe\"",
         "dev:control-plane": "npm run dev --workspace=packages/control-plane",
         "dev:portal": "npm run dev --workspace=packages/portal",
         "migrate": "npm run migrate --workspace=packages/control-plane",
-        "typecheck": "tsc -b packages/shared packages/control-plane && npm run typecheck --workspace=packages/portal"
+        "typecheck": "tsc -b packages/shared packages/control-plane && npm run typecheck --workspace=packages/portal",
+        "dev:stripe": "command -v stripe >/dev/null && stripe listen --forward-to localhost:4000/api/billing/webhook || echo 'stripe CLI not found - billing webhooks will not be delivered locally'"
     },
     "devDependencies": {
         "@types/node": "^25.2.0",

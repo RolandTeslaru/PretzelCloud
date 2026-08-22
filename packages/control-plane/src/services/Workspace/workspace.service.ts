@@ -404,6 +404,10 @@ export class WorkspaceService {
         await PortalDB.asService('set workspace plan', (db) =>
             db.updateTable('workspaces').set({ plan }).where('id', '=', workspaceId).execute());
 
+        // Announced before the rebuild, not after: what was bought is already
+        // true, and the machines catching up is its own sequence of events.
+        this.emit(workspaceId, Workspace.Event.create('plan:changed', { plan }));
+
         // A conversion rebuilds the machines, so the workspace goes down for it:
         // stopped first so executions end and pools close, started again once
         // the new topology exists.

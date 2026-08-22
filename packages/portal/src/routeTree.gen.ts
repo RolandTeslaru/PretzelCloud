@@ -10,53 +10,120 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AppBillingRouteImport } from './routes/_app/billing'
+import { Route as AppUsageRouteImport } from './routes/_app/usage'
+import { Route as AppWorkspacesRouteImport } from './routes/_app/workspaces'
 import { Route as AuthIndexRouteImport } from './routes/auth/index'
-import { Route as WorkspacesIndexRouteImport } from './routes/workspaces/index'
+import { Route as AppCheckoutCancelledWorkspaceIdRouteImport } from './routes/_app/checkout/cancelled.$workspaceId'
+import { Route as AppCheckoutSuccessWorkspaceIdRouteImport } from './routes/_app/checkout/success.$workspaceId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppUsageRoute = AppUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWorkspacesRoute = AppWorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => AppRoute,
+} as any)
 const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/auth/',
   path: '/auth/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WorkspacesIndexRoute = WorkspacesIndexRouteImport.update({
-  id: '/workspaces/',
-  path: '/workspaces/',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const AppCheckoutCancelledWorkspaceIdRoute =
+  AppCheckoutCancelledWorkspaceIdRouteImport.update({
+    id: '/checkout/cancelled/$workspaceId',
+    path: '/checkout/cancelled/$workspaceId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppCheckoutSuccessWorkspaceIdRoute =
+  AppCheckoutSuccessWorkspaceIdRouteImport.update({
+    id: '/checkout/success/$workspaceId',
+    path: '/checkout/success/$workspaceId',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/billing': typeof AppBillingRoute
+  '/usage': typeof AppUsageRoute
+  '/workspaces': typeof AppWorkspacesRoute
   '/auth/': typeof AuthIndexRoute
-  '/workspaces/': typeof WorkspacesIndexRoute
+  '/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
+  '/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/billing': typeof AppBillingRoute
+  '/usage': typeof AppUsageRoute
+  '/workspaces': typeof AppWorkspacesRoute
   '/auth': typeof AuthIndexRoute
-  '/workspaces': typeof WorkspacesIndexRoute
+  '/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
+  '/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/_app/billing': typeof AppBillingRoute
+  '/_app/usage': typeof AppUsageRoute
+  '/_app/workspaces': typeof AppWorkspacesRoute
   '/auth/': typeof AuthIndexRoute
-  '/workspaces/': typeof WorkspacesIndexRoute
+  '/_app/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
+  '/_app/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth/' | '/workspaces/'
+  fullPaths:
+    | '/'
+    | '/billing'
+    | '/usage'
+    | '/workspaces'
+    | '/auth/'
+    | '/checkout/cancelled/$workspaceId'
+    | '/checkout/success/$workspaceId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/workspaces'
-  id: '__root__' | '/' | '/auth/' | '/workspaces/'
+  to:
+    | '/'
+    | '/billing'
+    | '/usage'
+    | '/workspaces'
+    | '/auth'
+    | '/checkout/cancelled/$workspaceId'
+    | '/checkout/success/$workspaceId'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/_app/billing'
+    | '/_app/usage'
+    | '/_app/workspaces'
+    | '/auth/'
+    | '/_app/checkout/cancelled/$workspaceId'
+    | '/_app/checkout/success/$workspaceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
   AuthIndexRoute: typeof AuthIndexRoute
-  WorkspacesIndexRoute: typeof WorkspacesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,6 +135,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/billing': {
+      id: '/_app/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/usage': {
+      id: '/_app/usage'
+      path: '/usage'
+      fullPath: '/usage'
+      preLoaderRoute: typeof AppUsageRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/workspaces': {
+      id: '/_app/workspaces'
+      path: '/workspaces'
+      fullPath: '/workspaces'
+      preLoaderRoute: typeof AppWorkspacesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/auth/': {
       id: '/auth/'
       path: '/auth'
@@ -75,20 +170,45 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/workspaces/': {
-      id: '/workspaces/'
-      path: '/workspaces'
-      fullPath: '/workspaces/'
-      preLoaderRoute: typeof WorkspacesIndexRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/checkout/cancelled/$workspaceId': {
+      id: '/_app/checkout/cancelled/$workspaceId'
+      path: '/checkout/cancelled/$workspaceId'
+      fullPath: '/checkout/cancelled/$workspaceId'
+      preLoaderRoute: typeof AppCheckoutCancelledWorkspaceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/checkout/success/$workspaceId': {
+      id: '/_app/checkout/success/$workspaceId'
+      path: '/checkout/success/$workspaceId'
+      fullPath: '/checkout/success/$workspaceId'
+      preLoaderRoute: typeof AppCheckoutSuccessWorkspaceIdRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
 
+interface AppRouteChildren {
+  AppBillingRoute: typeof AppBillingRoute
+  AppUsageRoute: typeof AppUsageRoute
+  AppWorkspacesRoute: typeof AppWorkspacesRoute
+  AppCheckoutCancelledWorkspaceIdRoute: typeof AppCheckoutCancelledWorkspaceIdRoute
+  AppCheckoutSuccessWorkspaceIdRoute: typeof AppCheckoutSuccessWorkspaceIdRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppBillingRoute: AppBillingRoute,
+  AppUsageRoute: AppUsageRoute,
+  AppWorkspacesRoute: AppWorkspacesRoute,
+  AppCheckoutCancelledWorkspaceIdRoute: AppCheckoutCancelledWorkspaceIdRoute,
+  AppCheckoutSuccessWorkspaceIdRoute: AppCheckoutSuccessWorkspaceIdRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
   AuthIndexRoute: AuthIndexRoute,
-  WorkspacesIndexRoute: WorkspacesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

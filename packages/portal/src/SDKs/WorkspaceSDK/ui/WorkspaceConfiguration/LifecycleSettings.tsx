@@ -124,7 +124,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
             <div className="flex items-center justify-between rounded-lg ">
                 <div className="flex flex-col gap-1">
                     <p className="text-sm font-medium">Status</p>
-                    <p className="text-muted-foreground text-xs">The workspace's current machine state.</p>
                 </div>
 
                 <StatusBadge workspace={workspace} />
@@ -139,7 +138,7 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                 </div>
 
                 <Button
-                    variant="outline"
+                    variant="input"
                     size="sm"
                     className="mr-auto"
                     disabled={busy !== null}
@@ -160,7 +159,7 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                 </div>
 
                 <Button
-                    variant="outline"
+                    variant="input"
                     size="sm"
                     className="mr-auto"
                     disabled={rebuilding || busy !== null}
