@@ -5,7 +5,7 @@ import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/principal';
-import { WorkspaceRouter } from '@/services/WorkspaceRouter/router.service';
+import { Router } from '@/services/WorkspaceRouter/router.service';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 
 const PROVISION_ATTEMPTS = 3;
@@ -19,7 +19,7 @@ export class WorkspaceService {
         private readonly provisioning: ProvisioningService,
         private readonly hardware: HardwareService,
         private readonly hostnames: HostnameService,
-        private readonly router: WorkspaceRouter,
+        private readonly router: Router,
         private readonly realtime: RealtimeService,
     ) {}
 

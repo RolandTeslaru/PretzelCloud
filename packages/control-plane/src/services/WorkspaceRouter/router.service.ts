@@ -1,61 +1,64 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import type { IncomingMessage } from 'node:http';
 import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { FleetDB } from '@/db/fleet';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
+import { SiloActivityService } from '@/services/Workspace/silo-activity.service';
 
-/**
- * Hits are cheap to be wrong about for a moment — a machine that stopped is
- * caught by the forward failing. Misses are not: a workspace provisioned a
- * second ago would keep answering 404 for the whole window, so they expire
- * fast enough that a fresh workspace is reachable almost immediately.
- */
+// A stale hit is caught by the forward failing; a stale miss 404s a live
+// workspace, so misses expire fast.
 const HIT_TTL_MS  = 30_000;
 const MISS_TTL_MS = 2_000;
 
 const HIT_CACHE_MAX  = 10_000;
 const MISS_CACHE_MAX = 1_000;
 
-/** What one lookup produces: everything needed to forward, or to refuse. */
-export type Resolution = {
-    workspaceId: Workspace.Id;
-    kind:        Fleet.Hostname.Kind;
-    /** Stamped on forwarded traffic, so the silo can require it. */
-    routerSecret: string;
-    /** Where to forward. Null when the backend is not currently serving. */
-    target:      URL | null;
-};
-
-/**
- * Resolves an inbound Host header to the machine that should answer it.
- *
- * Every request passes through here, so the registry is read from memory and
- * only refreshed on a miss. Nothing here parses a path or a body: the answer is
- * which machine, or none.
- */
+/** Which machine answers a Host header, and what a path is for. */
 @Injectable()
-export class WorkspaceRouter {
+export class Router {
 
-    private readonly logger = new Logger(WorkspaceRouter.name);
+    private readonly logger = new Logger(Router.name);
 
-    constructor(private readonly hardware: HardwareService) {}
+    constructor(
+        private readonly hardware: HardwareService,
 
-    // Separate instances rather than one holding nullable values: the two want
-    // very different lifetimes, and the class takes a single TTL.
-    private readonly hits   = new TtlCache<Fleet.Hostname.Host, Resolution>(HIT_TTL_MS,  HIT_CACHE_MAX);
+        @Inject(forwardRef(() => SiloActivityService))
+        private readonly activity: SiloActivityService,
+    ) {}
+
+    /** Paths the workspace answers; everything else is the editor. */
+    static readonly SILO_PREFIXES = ['/api', '/socket', '/webhook', '/health'];
+
+    /** Answered by the control plane even on a workspace hostname. */
+    static readonly CONTROL_PLANE_PREFIXES = ['/api/session'];
+
+    /** All the hooks hostname serves; the app hostname serves them too. */
+    static readonly WEBHOOK_PREFIXES = ['/webhook', '/webhook-test'];
+
+    static isSiloPath(url: string | undefined): boolean {
+        return Router.matches(url, Router.SILO_PREFIXES);
+    }
+
+    static isControlPlanePath(url: string | undefined): boolean {
+        return Router.matches(url, Router.CONTROL_PLANE_PREFIXES);
+    }
+
+    static isWebhookPath(url: string | undefined): boolean {
+        return Router.matches(url, Router.WEBHOOK_PREFIXES);
+    }
+
+    /** A prefix matches the whole path, a segment under it, or it plus a query. */
+    private static matches(url: string | undefined, prefixes: readonly string[]): boolean {
+        return prefixes.some((prefix) =>
+            url === prefix || url?.startsWith(`${prefix}/`) || url?.startsWith(`${prefix}?`));
+    }
+
+    // Two instances, because hits and misses want different lifetimes.
+    private readonly hits   = new TtlCache<Fleet.Hostname.Host, Router.Resolution>(HIT_TTL_MS,  HIT_CACHE_MAX);
     private readonly misses = new TtlCache<Fleet.Hostname.Host, true>      (MISS_TTL_MS, MISS_CACHE_MAX);
 
-    /**
-     * Host headers arrive in whatever case the client sent, and DNS names are
-     * case-insensitive; the registry stores them lower case. The port stays —
-     * it is part of the name whenever it is not the scheme's default, and
-     * lookups match on equality.
-     *
-     * Parsed into the same branded type the registrar writes, so anything the
-     * schema rejects cannot be in the registry and is refused before the
-     * caches or the database see it.
-     */
+    /** Lower-cased, port kept, parsed into the type the registrar writes. */
     private normalize(host: string | undefined): Fleet.Hostname.Host | null {
         if (!host)
             return null;
@@ -66,11 +69,11 @@ export class WorkspaceRouter {
     }
 
     /**
-     * Resolution reads the Host header and nothing else about the request —
-     * which workspace a request belongs to must never depend on its path,
-     * cookies, or method.
+     * Reads the Host header and nothing else — never the path or cookies.
+     * Resolving is also what records the workspace as used, so no caller has to
+     * remember to.
      */
-    async resolve(req: IncomingMessage): Promise<Resolution | null> {
+    async resolve(req: IncomingMessage): Promise<Router.Resolution | null> {
         const host = this.normalize(req.headers.host);
 
         if (!host)
@@ -78,8 +81,11 @@ export class WorkspaceRouter {
 
         const cached = this.hits.get(host);
 
-        if (cached)
+        if (cached) {
+            this.activity.noteActivity(cached.workspaceId);
+
             return cached;
+        }
 
         if (this.misses.get(host))
             return null;
@@ -93,16 +99,14 @@ export class WorkspaceRouter {
 
         this.hits.set(host, found);
 
+        this.activity.noteActivity(found.workspaceId);
+
         return found;
     }
 
-    /**
-     * One query, because two would let a workspace be torn down between them and
-     * return a hostname for one that no longer exists. Its secrets are the test:
-     * they outlive the machines, which are given back while it goes unused, and
-     * go when the workspace itself does.
-     */
-    private async lookup(host: Fleet.Hostname.Host): Promise<Resolution | null> {
+    // One query, and joined on secrets rather than hardware: secrets outlive
+    // reclaimed machines and go when the workspace does.
+    private async lookup(host: Fleet.Hostname.Host): Promise<Router.Resolution | null> {
         const row = await FleetDB.asService('resolve host', (trx) =>
             trx
                 .selectFrom('hostnames')
@@ -122,18 +126,12 @@ export class WorkspaceRouter {
             workspaceId:  row.hostname_workspace_id,
             kind:         Fleet.Hostname.Kind.parse(row.hostname_kind),
             routerSecret: row.router_secret,
-            // Where the backend is reached — a published port here, internal DNS
-            // elsewhere. Null when there is no machine, which a request rebuilds.
+            // Null when there is no machine, which a request rebuilds.
             target: await this.hardware.getBackendAddress(row.hostname_workspace_id),
         };
     }
 
-    /**
-     * Called when a workspace's machines or hostnames change. The canonical
-     * names are derived, so they need no lookup; a custom subdomain is only
-     * known to the caller that changed it, and both its old and new values have
-     * to be passed for the entries to go.
-     */
+    /** Canonical names are derived; pass a custom subdomain's old and new values. */
     invalidate(workspaceId: Workspace.Id, subdomains: (Workspace.Subdomain | null)[] = []): void {
         const labels = [Workspace.Subdomain.canonical(workspaceId), ...subdomains];
 
@@ -150,7 +148,7 @@ export class WorkspaceRouter {
         this.logger.debug(`Invalidated routes for ${workspaceId}`);
     }
 
-    /** Drops everything. For a change too broad to name, such as a domain change. */
+    /** For a change too broad to name, such as a new domain. */
     invalidateAll(): void {
         this.hits.clear();
         this.misses.clear();
@@ -161,4 +159,18 @@ export class WorkspaceRouter {
     get stats() {
         return { hits: this.hits.size, misses: this.misses.size };
     }
+}
+
+// Merged with the class above: types only, so nothing is emitted.
+export namespace Router {
+
+    /** What one lookup produces: enough to forward, or to refuse. */
+    export type Resolution = {
+        workspaceId: Workspace.Id;
+        kind:        Fleet.Hostname.Kind;
+        /** Stamped on forwarded traffic, so the silo can require it. */
+        routerSecret: string;
+        /** Null when the backend is not serving. */
+        target:      URL | null;
+    };
 }

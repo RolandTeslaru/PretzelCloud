@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
@@ -41,6 +41,9 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
     private sweepTimer: NodeJS.Timeout | null = null;
 
     constructor(
+        // Circular by nature: resolving a request records activity, and acting
+        // on it drives the same lifecycle the router reads back.
+        @Inject(forwardRef(() => WorkspaceService))
         private readonly workspaces: WorkspaceService,
         private readonly hardware:   HardwareService,
     ) {}

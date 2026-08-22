@@ -4,7 +4,7 @@ import { PortalDB } from '@/db/portal';
 import { Principal } from '@/auth/principal';
 import { AuthenticatedUser } from '@/auth/principal.decorator';
 import { UserAuthGuard } from '@/auth/user-auth.guard';
-import { WorkspaceRouter } from '@/services/WorkspaceRouter/router.service';
+import { Router } from '@/services/WorkspaceRouter/router.service';
 import { WorkspaceTokenIssuer } from './token-issuer.service';
 
 /**
@@ -19,7 +19,7 @@ export class WorkspaceSessionController {
 
     constructor(
         private readonly tokenIssuer: WorkspaceTokenIssuer,
-        private readonly router: WorkspaceRouter,
+        private readonly router: Router,
     ) {}
 
     @Post('token')
