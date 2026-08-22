@@ -36,6 +36,25 @@ export class Router {
     /** All the hooks hostname serves; the app hostname serves them too. */
     static readonly WEBHOOK_PREFIXES = ['/webhook', '/webhook-test'];
 
+    /**
+     * Starting an execution, as opposed to asking about one. `internal/run` is
+     * a workflow calling another and is already paid for by the outer call;
+     * `webhook-test` signals a run that is already going rather than making one.
+     */
+    static readonly METERED = [
+        { method: 'POST', pattern: /^\/api\/execution\/(?!internal\/)[^/]+\/run(?:[?#]|$)/ },
+        { method: null,   pattern: /^\/webhook\/[^/]+\/[^/?#]+/ },
+    ] as const;
+
+    /** Whether a request, if it succeeds, is one execution against the plan. */
+    static isMeteredPath(method: string | undefined, url: string | undefined): boolean {
+        if (!url)
+            return false;
+
+        return Router.METERED.some((route) =>
+            (route.method === null || route.method === method) && route.pattern.test(url));
+    }
+
     static isSiloPath(url: string | undefined): boolean {
         return Router.matches(url, Router.SILO_PREFIXES);
     }

@@ -142,6 +142,33 @@ create index hostnames_workspace_id_idx on hostnames using btree (workspace_id);
 create index machines_state_idx on machines using btree (state);
 
 
+-- ── Usage ────────────────────────────────────────────────────────────────────
+
+-- One row per execution a workspace reported creating. Here rather than in the
+-- workspace's own database, which belongs to its customer.
+create table workspace_usage (
+    id           uuid default gen_random_uuid() not null,
+    workspace_id uuid not null,
+    -- The execution in the workspace's own database. Nothing can reference it:
+    -- that database is not this one. Null when the response was unreadable.
+    execution_id uuid,
+    -- What set it off, as the workspace reported it.
+    igniter      text,
+    created_at   timestamp with time zone default now() not null,
+
+    constraint workspace_usage_pkey primary key (id)
+);
+
+-- A client retrying a run with the same minted id must not count twice.
+create unique index workspace_usage_execution_key
+    on workspace_usage using btree (workspace_id, execution_id)
+    where execution_id is not null;
+
+-- Counting a month, and listing one workspace's runs newest first.
+create index workspace_usage_workspace_created_idx
+    on workspace_usage using btree (workspace_id, created_at desc);
+
+
 -- ── Triggers ─────────────────────────────────────────────────────────────────
 
 create function set_updated_at() returns trigger

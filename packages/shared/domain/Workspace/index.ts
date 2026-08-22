@@ -78,6 +78,9 @@ export namespace Workspace {
         // What the payment provider says about the subscription behind the plan.
         // Null while nothing is paying for it.
         subscriptionStatus: z.string().nullable(),
+        /** The window the provider bills over. Null while nothing pays for it. */
+        currentPeriodStart: z.coerce.date().nullable(),
+        currentPeriodEnd:   z.coerce.date().nullable(),
         ownerId:     User.Id,
         // Derived rather than stored, and assembled where the fleet domain is
         // known — a browser has no way to build it.
@@ -92,6 +95,145 @@ export namespace Workspace {
     // Inline for the same reason API is: these reference ProvisioningStatus
     // above, and a separate module importing back into this one would be a
     // cycle that leaves the zod schemas undefined at load.
+    /**
+     * What a workspace has used, as the fleet recorded it.
+     *
+     * Kept outside the workspace because its own database belongs to its
+     * customer: a count taken there is a count the payer could have written.
+     * Holds no workflow data — only that an execution happened, when, and what
+     * set it off.
+     */
+    export namespace Usage {
+
+        export const Id = z.uuid().brand("Workspace.Usage.Id")
+        export type  Id = z.infer<typeof Id>
+
+        export const Schema = z.object({
+            id:          Id,
+            workspaceId: WorkspaceId,
+            /**
+             * The execution in the workspace's own database. Null when the
+             * workspace answered with a shape the fleet did not recognise —
+             * the run still counted.
+             */
+            executionId: z.uuid().nullable(),
+            /** As the workspace reported it; unparsed by the fleet. */
+            igniter:     z.string().nullable(),
+            createdAt:   z.coerce.date(),
+        })
+
+        /** The stretch of time an allowance is measured over. */
+        export const Period = z.object({
+            start: z.coerce.date(),
+            /** Null while it is the one running now. */
+            end:   z.coerce.date().nullable(),
+        })
+        export type Period = z.infer<typeof Period>
+
+        /** How many executions are allowed, and the period that allowance runs over. */
+        export const Allowance = z.object({
+            limit:       z.number().int().nullable(),
+            periodStart: z.coerce.date().nullable(),
+            periodEnd:   z.coerce.date().nullable(),
+        })
+        export type Allowance = z.infer<typeof Allowance>
+
+        /** What one execution costs against a plan. One, always — for now. */
+        export const COST = 1
+
+        /** The calendar month, for a workspace with no subscription to bill from. */
+        const getCalendarMonth = (at: Date): Period => ({
+            start: new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)),
+            end:   null,
+        })
+
+        /**
+         * The period usage is counted over right now.
+         *
+         * A subscription bills from its own anniversary, so usage is counted from
+         * there. A stored period that has already ended is not the one running:
+         * the renewal is known before the provider's event arrives, so counting
+         * starts again at the moment it lapsed rather than including the period
+         * the customer has just paid for.
+         */
+        export const getCurrentPeriod = (
+            periodStart: Date | null,
+            periodEnd:   Date | null,
+            at:          Date = new Date(),
+        ): Period => {
+            if (!periodStart)
+                return getCalendarMonth(at)
+
+            if (periodEnd && at >= periodEnd)
+                return { start: periodEnd, end: null }
+
+            return { start: periodStart, end: periodEnd }
+        }
+
+        /** Whether another execution fits. A null limit is unlimited. */
+        export const isWithinLimit = (used: number, limit: number | null): boolean =>
+            limit === null || used + COST <= limit
+
+        /** What is left, or null when nothing bounds it. */
+        export const getRemaining = (used: number, limit: number | null): number | null =>
+            limit === null ? null : Math.max(0, limit - used)
+
+        /** The spans the usage rows can be looked at over. */
+        export const Window = z.enum(["today", "week", "month"])
+        export type  Window = z.infer<typeof Window>
+
+        const DAY_MS = 24 * 60 * 60 * 1000
+
+        /**
+         * What a window covers, ending now. `today` is the calendar day in UTC;
+         * the other two roll back 7 and 30 days from this moment.
+         */
+        export const getPeriodFromWindow = (window: Window, at: Date = new Date()): Period => {
+            if (window === "today")
+                return { start: new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate())), end: null }
+
+            const days = window === "week" ? 7 : 30
+
+            return { start: new Date(at.getTime() - days * DAY_MS), end: null }
+        }
+
+        /** One day's executions, for a series over a period. */
+        export const Point = z.object({
+            day:   z.coerce.date(),
+            count: z.number().int(),
+        })
+        export type Point = z.infer<typeof Point>
+
+        /** Every day in a period up to now, so days with nothing still get a slot. */
+        export const getDailySeries = (period: Period, points: Point[], at: Date = new Date()): Point[] => {
+            const counts = new Map(points.map((p) => [p.day.toISOString().slice(0, 10), p.count]))
+            const last   = period.end && period.end < at ? period.end : at
+            const series: Point[] = []
+
+            const day = new Date(Date.UTC(period.start.getUTCFullYear(), period.start.getUTCMonth(), period.start.getUTCDate()))
+
+            while (day <= last) {
+                series.push({ day: new Date(day), count: counts.get(day.toISOString().slice(0, 10)) ?? 0 })
+
+                day.setUTCDate(day.getUTCDate() + 1)
+            }
+
+            return series
+        }
+
+        /** A period's standing: what it allows, and how much of it is spent. */
+        export const Report = z.object({
+            period:    Period,
+            used:      z.number().int(),
+            /** Null is unlimited. */
+            limit:     z.number().int().nullable(),
+            /** `limit - used`, floored at zero. Null when nothing bounds it. */
+            remaining: z.number().int().nullable(),
+        })
+        export type Report = z.infer<typeof Report>
+    }
+    export type Usage = z.infer<typeof Usage.Schema>
+
     export namespace Event {
 
         export const Channel = Realtime.Channel.brand("Workspace.Event.Channel")
@@ -273,6 +415,38 @@ export namespace Workspace {
         export async function destroy(api: AxiosInstance, workspaceId: Id): Promise<Destroy.Response> {
             const { data } = await api.delete<Destroy.Response>(`/api/workspaces/${workspaceId}`)
             return Destroy.Response.parse(data)
+        }
+
+        export namespace GetUsageReport {
+            export const Response = Usage.Report
+            export type  Response = z.infer<typeof Response>
+        }
+
+        export async function getUsageReport(api: AxiosInstance, workspaceId: Id): Promise<GetUsageReport.Response> {
+            const { data } = await api.get<GetUsageReport.Response>(`/api/entitlements/workspaces/${workspaceId}/executions/report`)
+            return GetUsageReport.Response.parse(data)
+        }
+
+        /** Executions per day over the billing period, days with none included. */
+        export namespace GetUsageSeries {
+            export const Response = z.object({ points: z.array(Usage.Point) })
+            export type  Response = z.infer<typeof Response>
+        }
+
+        export async function getUsageSeries(api: AxiosInstance, workspaceId: Id): Promise<GetUsageSeries.Response> {
+            const { data } = await api.get<GetUsageSeries.Response>(`/api/entitlements/workspaces/${workspaceId}/executions/series`)
+            return GetUsageSeries.Response.parse(data)
+        }
+
+        /** The executions themselves, newest first, over a chosen window. */
+        export namespace ListUsage {
+            export const Response = z.object({ records: z.array(Usage.Schema) })
+            export type  Response = z.infer<typeof Response>
+        }
+
+        export async function listUsage(api: AxiosInstance, workspaceId: Id, window: Usage.Window): Promise<ListUsage.Response> {
+            const { data } = await api.get<ListUsage.Response>(`/api/entitlements/workspaces/${workspaceId}/executions`, { params: { window } })
+            return ListUsage.Response.parse(data)
         }
 
     }

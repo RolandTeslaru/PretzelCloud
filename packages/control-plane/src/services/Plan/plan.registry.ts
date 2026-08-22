@@ -16,12 +16,12 @@ export class PlanRegistry implements OnModuleInit {
 
     private plans = new Map<Plan.Id, Plan>();
 
-    async onModuleInit(): Promise<void> {
+    public async onModuleInit(): Promise<void> {
         await this.reload();
     }
 
     /** The plan, or a throw: a workspace on a plan that does not exist is a bug. */
-    get(planId: Plan.Id): Plan {
+    public get(planId: Plan.Id): Plan {
         const plan = this.plans.get(planId);
 
         if (!plan)
@@ -31,24 +31,24 @@ export class PlanRegistry implements OnModuleInit {
     }
 
     /** The plan, or nothing, for callers that can carry on without one. */
-    find(planId: Plan.Id): Plan | undefined {
+    public find(planId: Plan.Id): Plan | undefined {
         return this.plans.get(planId);
     }
 
     /** Everything on sale, in the order a pricing page should show it. */
-    list(): Plan[] {
+    public list(): Plan[] {
         return [...this.plans.values()]
             .filter((plan) => plan.purchasable)
             .sort((a, b) => a.sortOrder - b.sortOrder);
     }
 
     /** Everything, including plans written for one customer. */
-    listAll(): Plan[] {
+    public listAll(): Plan[] {
         return [...this.plans.values()].sort((a, b) => a.sortOrder - b.sortOrder);
     }
 
     /** Called after a plan is written. */
-    async reload(): Promise<void> {
+    public async reload(): Promise<void> {
         const rows = await PortalDB.asService('read plans', (db) =>
             db.selectFrom('plans').selectAll().execute());
 

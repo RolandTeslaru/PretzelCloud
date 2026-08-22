@@ -41,6 +41,8 @@ export namespace Plan {
         maxExecutionsMonthly:  z.number().int().nullable(),
         maxWorkspaceMembers:   z.number().int().nullable(),
         maxUptimeHoursMonthly: z.number().int().nullable(),
+        /** How long an execution's recorded session is kept. Null keeps it. */
+        executionSessionRetentionDays:         z.number().int().nullable(),
 
         purchasable: z.boolean(),
         sortOrder:   z.number().int(),

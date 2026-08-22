@@ -131,12 +131,32 @@ export namespace FleetDB {
         });
     }
 
+    export namespace Usage {
+        export const Row = z.object({
+            id:           WorkspaceD.Usage.Id,
+            workspace_id: WorkspaceD.Id,
+            execution_id: z.uuid().nullable(),
+            igniter:      z.string().nullable(),
+            created_at:   z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+
+        export const toDomain = (row: Row) => WorkspaceD.Usage.Schema.parse({
+            id:          row.id,
+            workspaceId: row.workspace_id,
+            executionId: row.execution_id,
+            igniter:     row.igniter,
+            createdAt:   row.created_at,
+        });
+    }
+
     export interface Tables {
         hardware:          Table<typeof Hardware.Row, 'id' | Stamps>;
         machines:          Table<typeof Machine.Row, 'id' | Stamps>;
         workspace_secrets: Table<typeof WorkspaceSecrets.Row, Stamps>;
         hostnames:         Table<typeof Hostname.Row, 'created_at'>;
         workspace_runtime: Table<typeof WorkspaceRuntime.Row, never>;
+        workspace_usage:   Table<typeof Usage.Row, 'id' | 'created_at'>;
     }
 
     let database: Kysely<Tables> | undefined;

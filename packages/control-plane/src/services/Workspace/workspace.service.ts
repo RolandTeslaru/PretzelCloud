@@ -7,6 +7,7 @@ import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/principal';
 import { Router } from '@/services/WorkspaceRouter/router.service';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
+import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 
 const PROVISION_ATTEMPTS = 3;
 
@@ -21,6 +22,7 @@ export class WorkspaceService {
         private readonly hostnames: HostnameService,
         private readonly router: Router,
         private readonly realtime: RealtimeService,
+        private readonly entitlements: EntitlementService,
     ) {}
 
     /**
@@ -407,6 +409,9 @@ export class WorkspaceService {
         // Announced before the rebuild, not after: what was bought is already
         // true, and the machines catching up is its own sequence of events.
         this.emit(workspaceId, Workspace.Event.create('plan:changed', { plan }));
+
+        // A bigger plan takes effect now, not at the next re-check.
+        this.entitlements.unlock(workspaceId);
 
         // A conversion rebuilds the machines, so the workspace goes down for it:
         // stopped first so executions end and pools close, started again once

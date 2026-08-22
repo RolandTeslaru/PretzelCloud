@@ -5,6 +5,7 @@ import httpProxy from 'http-proxy';
 import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
+import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 import { Router } from './router.service';
 
 const DEFAULT_PORT = 8080;
@@ -15,34 +16,30 @@ const TRUST_HEADER = 'x-trusted-proxy-token';
 /** How long a client is asked to wait while a machine boots. */
 const RETRY_AFTER_S = 3;
 
-/**
- * How long a webhook is held while its workspace comes up. A resume is about a
- * second and a cold start a couple; past this the sender's own timeout is the
- * next thing to fire, so it is given the retry instead.
- */
+// Past this the sender's own timeout fires anyway, so it gets the retry.
 const WEBHOOK_WAIT_MS = 10_000;
 
-/**
- * One wake per workspace at a time. A booting machine draws a burst of retries,
- * and every one of them would otherwise issue its own start.
- */
+// One wake per workspace at a time; a booting machine draws a burst of retries.
 const WAKE_LOCK_MS  = 15_000;
 const WAKE_LOCK_MAX = 1_000;
 
-/**
- * Reuse upstream sockets rather than opening one per request. Without this every
- * proxied request leaves a socket in TIME_WAIT, and a busy fleet exhausts the
- * local port range and starts dropping connections.
- */
+// On the request, so it survives the hop into the proxy's response event.
+const METERED = Symbol('pretzel.metered');
+
+type Metered = IncomingMessage & { [METERED]?: Workspace.Id };
+
+// A counted response past this is forwarded and counted without an id.
+const USAGE_BODY_CAP = 64 * 1024;
+
+// Without keep-alive every request leaves a socket in TIME_WAIT and a busy
+// fleet exhausts the local port range.
 const agent = new Agent({ keepAlive: true, maxSockets: 128, timeout: 30_000 });
 
 /**
- * The data path. Resolves the Host header to a machine and forwards bytes to it.
+ * The data path: Host header to a machine, then bytes.
  *
- * Deliberately not a Nest controller: this listens on its own port and never
- * parses a body. Reading the stream to build `req.body` would leave nothing to
- * forward, and would break webhook signatures, which are computed over the exact
- * bytes sent.
+ * Not a Nest controller — it has its own port and never parses a request body.
+ * Reading the stream would leave nothing to forward and break webhook signatures.
  */
 @Injectable()
 export class ProxyService implements OnModuleInit, OnModuleDestroy {
@@ -50,8 +47,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(ProxyService.name);
 
     private readonly proxy = httpProxy.createProxyServer({
-        // Byte-for-byte: no rewriting of the Host header, so the workspace sees
-        // the name the client asked for.
+        // The workspace sees the name the client asked for.
         changeOrigin: false,
         xfwd:         true,
         ws:           true,
@@ -68,12 +64,12 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         private readonly router: Router,
         @Inject(forwardRef(() => WorkspaceService))
         private readonly workspaces: WorkspaceService,
+
+        private readonly entitlements: EntitlementService,
     ) {}
 
     onModuleInit(): void {
-        // Upgrades have no per-call callback, so their failures land here. A
-        // socket has nowhere to put a status code; closing it is the whole
-        // vocabulary.
+        // Where upgrade failures land; a socket has no status code to send.
         this.proxy.on('error', (error, _req, socket) => {
             this.logger.warn(`Upstream failed: ${error.message}`);
 
@@ -81,10 +77,12 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                 socket.destroy();
         });
 
+        // Returns immediately for anything not on a counted route.
+        this.proxy.on('proxyRes', (proxyRes, req) => this.meter(proxyRes, req));
+
         const server = createServer((req, res) => void this.handle(req, res));
 
-        // Upgrades never reach the request handler — they arrive as their own
-        // event, and the editor's live connection is one.
+        // Upgrades arrive as their own event; the editor's live connection is one.
         server.on('upgrade', (req, socket, head) => void this.handleUpgrade(req, socket, head));
 
         const port = Number(process.env.FLEET_ROUTER_PORT ?? DEFAULT_PORT);
@@ -104,15 +102,13 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const resolution = await this.router.resolve(req);
 
-        // The hooks hostname is webhook delivery and nothing else — no editor,
-        // no API, no token mint. Policy attaches to the hostname.
+        // The hooks hostname serves webhooks and nothing else.
         if (resolution?.kind === 'hooks' && !Router.isWebhookPath(req.url)) {
             res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found\n');
             return;
         }
 
-        // The interface is served whether or not the machine behind it is
-        // awake: a booting screen has to be able to render.
+        // Served whether or not the machine is awake, so a booting screen renders.
         if (resolution && Router.isSiloPath(req.url) === false) {
             this.serveFrontend(req, res);
             return;
@@ -123,16 +119,21 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        // Before the target check: minting a token must work while the machine
-        // behind the hostname is asleep.
+        // Before the target check: a token must mint while the machine sleeps.
         if (Router.isControlPlanePath(req.url)) {
             this.serveControlPlane(req, res);
             return;
         }
 
+        // Out of executions: refused from memory, before anything is forwarded.
+        if (Router.isMeteredPath(req.method, req.url) && await this.entitlements.isLocked(resolution.workspaceId)) {
+            this.refuseOverLimit(res);
+
+            return;
+        }
+
         if (!resolution.target) {
-            // A webhook has no client watching and no promise of a retry, so it
-            // waits for the machine instead of being told to come back.
+            // A webhook has nobody watching and no promised retry, so it waits.
             const target = Router.isWebhookPath(req.url)
                 ? await this.awaitTarget(req, resolution)
                 : (this.wake(resolution), null);
@@ -156,7 +157,27 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         this.forward(req, res, resolution, resolution.target);
     }
 
+    /**
+     * Shaped like the workspace's own errors, so whatever reads one reads this:
+     * the editor takes its message from `error.message` and would otherwise show
+     * the bare status.
+     */
+    private refuseOverLimit(res: ServerResponse): void {
+        res.writeHead(402, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+            status: 402,
+            error: {
+                code:    'EXECUTION_LIMIT_REACHED',
+                message: 'This workspace has used all the executions its plan includes.',
+                detail:  'The allowance renews at the start of the next billing period. Changing plan raises it immediately.',
+            },
+        }));
+    }
+
     private forward(req: IncomingMessage, res: ServerResponse, resolution: Router.Resolution, target: URL): void {
+        // Read back on the response, the first word on whether anything was made.
+        if (Router.isMeteredPath(req.method, req.url))
+            (req as Metered)[METERED] = resolution.workspaceId;
+
         this.proxy.web(
             req,
             res,
@@ -168,11 +189,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
-    /**
-     * Waits for the workspace to serve, up to the webhook budget, and answers
-     * with where to reach it. Null when it did not make it in time — the wake
-     * carries on regardless, so a retry arrives to a machine already up.
-     */
+    /** Where to reach it once it serves, or null if it missed the budget. */
     private async awaitTarget(req: IncomingMessage, resolution: Router.Resolution): Promise<URL | null> {
         const { workspaceId } = resolution;
 
@@ -191,10 +208,81 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         if (!await Promise.race([started, expired]))
             return null;
 
-        // The resolution in hand was cached before the machine had an address.
+        // The cached resolution predates the machine having an address.
         this.router.invalidate(workspaceId);
 
         return (await this.router.resolve(req))?.target ?? null;
+    }
+
+    /**
+     * Counts an execution the workspace reported creating. Observed rather than
+     * taken over: forwarded bytes stay untouched, so signatures still verify.
+     */
+    private meter(proxyRes: IncomingMessage, req: IncomingMessage): void {
+        const workspaceId = (req as Metered)[METERED];
+
+        if (!workspaceId)
+            return;
+
+        const status = proxyRes.statusCode ?? 0;
+
+        // Only a success is an execution.
+        if (status < 200 || status >= 300)
+            return;
+
+        const chunks: Buffer[] = [];
+        let held = 0;
+        let overflowed = false;
+
+        proxyRes.on('data', (chunk: Buffer) => {
+            held += chunk.length;
+
+            if (held > USAGE_BODY_CAP) {
+                overflowed = true;
+
+                return;
+            }
+
+            chunks.push(chunk);
+        });
+
+        proxyRes.on('end', () => {
+            const encoded = proxyRes.headers['content-encoding'];
+            const readable = !overflowed && !encoded;
+            const found = readable ? this.readExecution(Buffer.concat(chunks)) : null;
+
+            if (!found)
+                this.logger.error(`Counted a run for ${workspaceId} without an execution id (${overflowed ? 'body too large' : encoded ? `encoded ${encoded}` : 'unrecognised shape'})`);
+
+            // Not awaited: a slow fleet database must not slow an execution.
+            void this.entitlements.executions.recordAndLockIfOver(workspaceId, found?.executionId ?? null, found?.igniter ?? null)
+                .catch((error: unknown) => this.logger.error(`Could not record usage for ${workspaceId}: ${error instanceof Error ? error.message : error}`));
+        });
+    }
+
+    /** Both shapes a workspace answers a started execution with. */
+    private readExecution(body: Buffer): { executionId: string; igniter: string | null } | null {
+        try {
+            const parsed = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
+
+            const execution = parsed.execution as Record<string, unknown> | undefined;
+
+            if (execution && typeof execution.id === 'string')
+                return {
+                    executionId: execution.id,
+                    igniter: typeof (execution.igniter as Record<string, unknown>)?.variant === 'string'
+                        ? (execution.igniter as Record<string, unknown>).variant as string
+                        : null,
+                };
+
+            if (typeof parsed.executionId === 'string')
+                return { executionId: parsed.executionId, igniter: 'webhook' };
+
+            return null;
+        }
+        catch {
+            return null;
+        }
     }
 
     /** This same process, on its HTTP port. */
@@ -209,12 +297,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /**
-     * The editor, which is identical across workspaces. In development this is
-     * the dev server, so the same hostname carries hot reload; in production it
-     * is a directory of built files, and unknown paths fall back to index.html
-     * for the router running inside the page.
-     */
+    /** The editor, identical across workspaces: dev server here, built files later. */
     private serveFrontend(req: IncomingMessage, res: ServerResponse): void {
         const origin = process.env.FRONTEND_ORIGIN;
 
@@ -234,11 +317,8 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * A cached route outlives the machine it points at, so a refused connection
-     * usually means the machine stopped since it was resolved — not a failure
-     * worth reporting as one. The entry is dropped and the request answered the
-     * way a stopped machine would have been, so the client's retry finds it
-     * waking rather than broken.
+     * A refused connection usually means the machine stopped since it was
+     * resolved, so the route is dropped and the client told to retry.
      */
     private async onUpstreamError(error: Error, resolution: Router.Resolution, res: ServerResponse): Promise<void> {
         const unreachable = ['ECONNREFUSED', 'EHOSTUNREACH', 'ENOTFOUND', 'ECONNRESET']
@@ -263,11 +343,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                 .end('Workspace is starting\n');
     }
 
-    /**
-     * A socket has nowhere to put a status code, so anything other than a
-     * successful forward closes it. A client that reconnects will meet the same
-     * 404 or 503 on its next plain request.
-     */
+    /** A socket has no status code, so anything but a clean forward closes it. */
     private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
         const resolution = await this.router.resolve(req);
 
@@ -291,17 +367,11 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /**
-     * Starts the workspace, once. Routed through the workspace rather than its
-     * hardware so a wake is bookkept like any other transition: the state is
-     * written and subscribers hear about it, instead of a machine quietly
-     * coming up behind a row that still says stopped.
-     */
+    /** Starts the workspace once, through the workspace so the state is recorded. */
     private wake(resolution: Router.Resolution): void {
         const { workspaceId } = resolution;
 
-        // A cooldown as well as a guard: a workspace that cannot come up must
-        // not be kicked again by every request that arrives meanwhile.
+        // A cooldown too: one that cannot come up must not be kicked repeatedly.
         if (this.waking.get(workspaceId))
             return;
 
@@ -309,9 +379,8 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
         this.logger.log(`Waking ${workspaceId}`);
 
-        // Not awaited: the client is told to retry, and the wake carries on
-        // behind it. Machines reclaimed while unused are rebuilt here, which is
-        // far longer than a request should be held open for.
+        // Not awaited: a reclaimed workspace is rebuilt here, far longer than a
+        // request should be held open.
         void this.workspaces.ensureStarted(workspaceId).catch((error) => {
             this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);
 

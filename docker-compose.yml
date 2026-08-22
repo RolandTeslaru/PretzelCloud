@@ -81,6 +81,19 @@ services:
       timeout: 5s
       retries: 20
 
+  # A browser over the cluster. Not pinned to one database: every workspace has
+  # its own, so the connection is chosen on the page.
+  pgweb:
+    image: sosedoff/pgweb:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGWEB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-pretzel}@postgres:5432/portal?sslmode=disable
+    ports:
+      - "${PGWEB_PORT:-8081}:8081"
+
 volumes:
   postgres-data:
 

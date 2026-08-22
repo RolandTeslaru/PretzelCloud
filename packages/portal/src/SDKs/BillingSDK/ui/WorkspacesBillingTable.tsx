@@ -11,9 +11,9 @@ import {
     tableFeatures,
     useTable,
 } from '@tanstack/react-table'
-import { Badge, Button, DropdownMenu, Table } from '@pretzel-graph/standard-ui/foundations'
-import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
+import { Badge, Button, Table } from '@pretzel-graph/standard-ui/foundations'
 import { Billing, type Workspace } from '@pretzel-cloud/shared/domain'
+import { FilterHeader, SortIcon, getFacets, includesSome } from '@/components/table-headers'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
 import { openWorkspaceConfigurationDialog } from '@/SDKs/WorkspaceSDK/ui/WorkspaceConfiguration'
 
@@ -41,15 +41,18 @@ const features = tableFeatures({
     filteredRowModel: createFilteredRowModel(),
 })
 
-const includesSome = (row: { getValue: (id: string) => unknown }, columnId: string, selected: unknown[]) =>
-    selected.length === 0 || selected.includes(row.getValue(columnId))
-
 // One definition per filterable column: the accessor the column reads through and
 // the facet counts are the same function, so the dropdown cannot drift from the
 // column it filters.
 const FILTERABLE: Record<string, (w: Workspace) => unknown> = {
     plan:   w => w.plan,
     status: w => w.subscriptionStatus ?? 'none',
+}
+
+/** How a facet value reads in the filter menu. */
+const FACET_LABEL: Record<string, (value: unknown) => string> = {
+    plan:   value => Billing.getOfferForPlan(value as Workspace.Plan).label,
+    status: value => value === 'none' ? 'Not subscribed' : String(value),
 }
 
 const columnHelper = createColumnHelper<typeof features, Workspace>()
@@ -158,38 +161,7 @@ export function WorkspacesBillingTable() {
     const filters    = table.state.columnFilters
     const hasFilters = filters.length > 0
 
-    // Counted from the rows rather than the table's faceting feature, which reads
-    // a render-phase snapshot and lags. Each column's counts honour every other
-    // column's filter.
-    const facets = useMemo(() => {
-        const byColumn: Record<string, Map<unknown, number>> = {}
-
-        for (const [columnId, accessor] of Object.entries(FILTERABLE)) {
-            const others = filters.filter(f => f.id !== columnId)
-            const counts = new Map<unknown, number>()
-
-            for (const workspace of workspaces) {
-                const passesOthers = others.every(f => {
-                    const otherAccessor = FILTERABLE[f.id]
-
-                    if (!otherAccessor)
-                        return true
-
-                    return (f.value as unknown[]).includes(otherAccessor(workspace))
-                })
-
-                if (!passesOthers)
-                    continue
-
-                const value = accessor(workspace)
-                counts.set(value, (counts.get(value) ?? 0) + 1)
-            }
-
-            byColumn[columnId] = counts
-        }
-
-        return byColumn
-    }, [workspaces, filters])
+    const facets = useMemo(() => getFacets(workspaces, FILTERABLE, filters), [workspaces, filters])
 
     const emptyMessage =
         workspaces.length === 0 ? 'No workspaces yet.'
@@ -229,6 +201,7 @@ export function WorkspacesBillingTable() {
                                             column={header.column}
                                             filters={filters}
                                             facets={facets[header.column.id] ?? EMPTY_FACETS}
+                                            format={FACET_LABEL[header.column.id]}
                                         />
                                         : header.column.getCanSort()
                                             ? (
@@ -274,94 +247,4 @@ export function WorkspacesBillingTable() {
 
         </div>
     )
-}
-
-type FilterColumn = {
-    id: string
-    columnDef: { header?: unknown }
-    setFilterValue: (value: unknown) => void
-}
-
-type ColumnFilter = { id: string, value: unknown }
-
-const FACET_LABEL: Record<string, (value: unknown) => string> = {
-    plan:   value => Billing.getOfferForPlan(value as Workspace.Plan).label,
-    status: value => value === 'none' ? 'Not subscribed' : String(value),
-}
-
-// Both `selected` and `facets` come from state the component subscribes to, never
-// read live off the table during render — those reads are served from a snapshot
-// that lags a frame behind.
-function FilterHeader({ column, filters, facets }: {
-    column: FilterColumn
-    filters: ColumnFilter[]
-    facets: Map<unknown, number>
-}) {
-    const selected = (filters.find(f => f.id === column.id)?.value as unknown[]) ?? []
-    const label    = String(column.columnDef.header ?? column.id)
-    const format   = FACET_LABEL[column.id] ?? String
-
-    const options = useMemo(
-        () => [...facets.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-        [facets],
-    )
-
-    const toggle = (value: unknown) => {
-        const next = selected.includes(value)
-            ? selected.filter(v => v !== value)
-            : [...selected, value]
-
-        column.setFilterValue(next.length > 0 ? next : undefined)
-    }
-
-    return (
-        <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-                <button
-                    data-filtered={selected.length > 0 || undefined}
-                    className='flex items-center gap-1 hover:text-foreground transition-colors data-[filtered]:text-foreground'
-                >
-                    {label}
-
-                    {selected.length > 0 && (
-                        <Badge variant='secondary' size='xs'>
-                            {selected.length}
-                        </Badge>
-                    )}
-
-                    <SystemIcons.ChevronDown size={12} className='opacity-40' />
-                </button>
-            </DropdownMenu.Trigger>
-
-            <DropdownMenu.Content align='start' className='min-w-[180px]'>
-                {options.length === 0 && (
-                    <div className='px-2 py-1.5 text-xs text-muted-foreground'>
-                        No values
-                    </div>
-                )}
-
-                {options.map(([value, count]) => (
-                    <DropdownMenu.CheckboxItem
-                        key={String(value)}
-                        checked={selected.includes(value)}
-                        onCheckedChange={() => toggle(value)}
-                        onSelect={e => e.preventDefault()}
-                        className='text-xs data-[state=checked]:text-foreground data-[state=checked]:font-medium'
-                    >
-                        <span>{format(value)}</span>
-                        <span className='ml-auto text-muted-foreground'>{count}</span>
-                    </DropdownMenu.CheckboxItem>
-                ))}
-            </DropdownMenu.Content>
-        </DropdownMenu.Root>
-    )
-}
-
-function SortIcon({ direction }: { direction: false | 'asc' | 'desc' }) {
-    if (!direction)
-        return null
-
-    return direction === 'asc'
-        ? <SystemIcons.ChevronUp size={12} className='opacity-70' />
-        : <SystemIcons.ChevronDown size={12} className='opacity-70' />
 }
