@@ -24,7 +24,7 @@ export namespace Workspace {
     export const ProvisioningStatus = z.enum(["provisioning", "ready", "suspended", "failed"])
     export type  ProvisioningStatus = z.infer<typeof ProvisioningStatus>
 
-    export const Plan = z.enum(["free", "starter", "pro"])
+    export const Plan = z.enum(["free", "base", "pro"])
     export type  Plan = z.infer<typeof Plan>
 
     /** Everything above free. Paid plans split their compute and may set a subdomain. */

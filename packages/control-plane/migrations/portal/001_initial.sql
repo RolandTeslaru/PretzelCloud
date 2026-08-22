@@ -49,6 +49,8 @@ create table users (
     username     text not null,
     display_name text not null,
     avatar_url   text,
+    -- The billing customer this person is, once they have one.
+    stripe_customer_id text unique,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null
 );
@@ -67,11 +69,15 @@ create table workspaces (
     status       text default 'provisioning' not null,
     plan         text default 'free' not null,
     owner_id     uuid not null,
+    -- The subscription paying for this workspace, and Stripe's view of it.
+    -- Mirrored for display; Stripe remains the record.
+    stripe_subscription_id text unique,
+    subscription_status    text,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null,
 
     constraint workspaces_status_check check (status in ('provisioning', 'ready', 'suspended', 'failed')),
-    constraint workspaces_plan_check   check (plan in ('free', 'starter', 'pro'))
+    constraint workspaces_plan_check   check (plan in ('free', 'base', 'pro'))
 );
 
 -- The user x workspace access index, and deliberately nothing more: no role.
@@ -233,3 +239,13 @@ $$;
 
 create trigger users_set_updated_at      before update on users      for each row execute function set_updated_at();
 create trigger workspaces_set_updated_at before update on workspaces for each row execute function set_updated_at();
+
+-- Every Stripe event that has been acted on. Stripe retries until it gets a
+-- 2xx, so the same event arrives more than once; acting twice would rebuild a
+-- running workspace for nothing.
+create table stripe_events (
+    id          text not null,
+    received_at timestamp with time zone default now() not null,
+
+    constraint stripe_events_pkey primary key (id)
+);

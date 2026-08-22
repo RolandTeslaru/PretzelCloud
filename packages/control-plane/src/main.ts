@@ -12,7 +12,9 @@ async function bootstrap(): Promise<void> {
     await migrateToLatest('portal', PortalDB.forMigrations(), migrationsDir('portal'));
     await migrateToLatest('fleet',  FleetDB.forMigrations(),  migrationsDir('fleet'));
 
-    const app = await NestFactory.create(AppModule);
+    // rawBody: Stripe signs the exact bytes it sent, and a parsed-then-
+    // re-serialised body no longer matches the signature.
+    const app = await NestFactory.create(AppModule, { rawBody: true });
 
     // ws rather than socket.io: the portal speaks the same protocol the editor does.
     app.useWebSocketAdapter(new WsAdapter(app));

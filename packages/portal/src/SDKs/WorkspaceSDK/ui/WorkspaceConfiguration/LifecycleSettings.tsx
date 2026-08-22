@@ -21,6 +21,7 @@ const DEV_CONTROLS =
 
 const PLANS: { plan: Workspace.Plan; label: string; machines: string }[] = [
     { plan: 'free', label: 'Free', machines: '1 machine'  },
+    { plan: 'base', label: 'Base', machines: '2 machines' },
     { plan: 'pro',  label: 'Pro',  machines: '2 machines' },
 ]
 

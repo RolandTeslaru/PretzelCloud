@@ -25,6 +25,7 @@ export namespace PortalDB {
             username:     z.string(),
             display_name: z.string(),
             avatar_url:   z.string().nullable(),
+            stripe_customer_id: z.string().nullable(),
             created_at:   z.coerce.date(),
             updated_at:   z.coerce.date(),
         });
@@ -49,6 +50,8 @@ export namespace PortalDB {
             status:       WorkspaceD.ProvisioningStatus,
             plan:         WorkspaceD.Plan,
             owner_id:     UserD.Id,
+            stripe_subscription_id: z.string().nullable(),
+            subscription_status:    z.string().nullable(),
             created_at:   z.coerce.date(),
             updated_at:   z.coerce.date(),
         });
@@ -79,10 +82,21 @@ export namespace PortalDB {
         export type Row = z.infer<typeof Row>;
     }
 
+    // Events already acted on. Stripe retries until it gets a 2xx, so the same
+    // one arrives more than once.
+    export namespace StripeEvent {
+        export const Row = z.object({
+            id:          z.string(),
+            received_at: z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+    }
+
     export interface Tables {
         users:             Table<typeof User.Row, Stamps>;
         workspaces:        Table<typeof Workspace.Row, Stamps>;
         workspace_members: Table<typeof Member.Row, 'created_at'>;
+        stripe_events:     Table<typeof StripeEvent.Row, 'received_at'>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {
