@@ -19,6 +19,9 @@ const RETRY_AFTER_S = 3;
 // Past this the sender's own timeout fires anyway, so it gets the retry.
 const WEBHOOK_WAIT_MS = 10_000;
 
+// The session's first chunk. Presence is all this file reads.
+const SESSION_COOKIE = 'pretzel.auth.token.0';
+
 // One wake per workspace at a time; a booting machine draws a burst of retries.
 const WAKE_LOCK_MS  = 15_000;
 const WAKE_LOCK_MAX = 1_000;
@@ -99,6 +102,16 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         agent.destroy();
     }
 
+    /**
+     * Whether anything about this request is worth spending a boot on. The
+     * cookie is not verified — forging one only wakes a workspace its holder
+     * still cannot enter, which the wake cooldown already bounds.
+     */
+    private static hasCredential(req: IncomingMessage): boolean {
+        return Boolean(req.headers.authorization)
+            || (req.headers.cookie ?? '').includes(`${SESSION_COOKIE}=`);
+    }
+
     // does the host resolve?         → 404
     // is it a frontend asset?        → serve, awake or not
     // is it a control-plane path?    → the control plane answers it, no machine needed
@@ -116,7 +129,12 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }
 
         // Served whether or not the machine is awake, so a booting screen renders.
+        // A signed-in visitor also starts it here, so the boot overlaps the
+        // download rather than beginning at the first request that fails.
         if (resolution && Router.isSiloPath(req.url) === false) {
+            if (ProxyService.hasCredential(req) && Workspace.isWakeable(resolution.lifecycleState))
+                this.wake(resolution);
+
             this.serveFrontend(req, res);
             return;
         }
@@ -149,6 +167,14 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (!resolution.target) {
+            // A webhook URL is itself the credential; anything else has to carry
+            // one, or a stranger who knows the hostname could spend a boot.
+            if (!Router.isWebhookPath(req.url) && !ProxyService.hasCredential(req)) {
+                res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Unauthorized\n');
+
+                return;
+            }
+
             // A webhook has nobody watching and no promised retry, so it waits.
             const target = Router.isWebhookPath(req.url)
                 ? await this.awaitTarget(req, resolution)
@@ -219,7 +245,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                 target:  target.toString(),
                 headers: { [TRUST_HEADER]: resolution.routerSecret },
             },
-            (error) => void this.onUpstreamError(error, resolution, res),
+            (error) => void this.onUpstreamError(error, req, resolution, res),
         );
     }
 
@@ -354,7 +380,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
      * A refused connection usually means the machine stopped since it was
      * resolved, so the route is dropped and the client told to retry.
      */
-    private async onUpstreamError(error: Error, resolution: Router.Resolution, res: ServerResponse): Promise<void> {
+    private async onUpstreamError(error: Error, req: IncomingMessage, resolution: Router.Resolution, res: ServerResponse): Promise<void> {
         const unreachable = ['ECONNREFUSED', 'EHOSTUNREACH', 'ENOTFOUND', 'ECONNRESET']
             .includes((error as NodeJS.ErrnoException).code ?? '');
 
@@ -369,7 +395,8 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        this.wake(resolution);
+        if (Router.isWebhookPath(req.url) || ProxyService.hasCredential(req))
+            this.wake(resolution);
 
         if (!res.headersSent)
             res

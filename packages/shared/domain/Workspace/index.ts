@@ -27,10 +27,8 @@ export namespace Workspace {
         // Parked to save money. Which rung — suspended, stopped, or given back
         // entirely — is the ladder's business; traffic brings it back either way.
         "sleeping",
-        // The owner turned it off. Traffic does not wake it.
-        "stopped",
-        // The fleet turned it off. The owner cannot undo it.
-        "frozen",
+        "stopped",       // The owner turned it off. Traffic does not wake it.
+        "frozen",        // The fleet turned it off. The owner cannot undo it.
         "provisioning_failed",
     ])
     export type LifecycleState = z.infer<typeof LifecycleState>
