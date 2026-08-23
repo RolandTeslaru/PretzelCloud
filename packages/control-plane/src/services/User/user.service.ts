@@ -1,7 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { User } from '@pretzel-cloud/shared/domain';
+import { ConflictException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { Principal } from '@/auth/principal';
+import { IdentityAdminService } from '@/auth/identity-admin.service';
+import { WorkspaceService } from '@/services/Workspace/workspace.service';
 
 const USERNAME_TAKEN = 'users_username_lower_key';
 const EMAIL_TAKEN    = 'users_email_lower_key';
@@ -11,6 +13,14 @@ const violates = (error: unknown, constraint: string) =>
 
 @Injectable()
 export class UserService {
+
+    private readonly logger = new Logger(UserService.name);
+
+    constructor(
+        private readonly identities: IdentityAdminService,
+        @Inject(forwardRef(() => WorkspaceService))
+        private readonly workspaces: WorkspaceService,
+    ) {}
 
     /**
      * Creates the profile row for the caller, or returns the existing one.
@@ -104,6 +114,48 @@ export class UserService {
         catch (error) {
             if (violates(error, USERNAME_TAKEN))
                 throw new ConflictException('That username is taken');
+
+            throw error;
+        }
+    }
+
+    /**
+     * Closes the account: the workspaces it owns, then the credential at the
+     * issuer, then the profile here.
+     *
+     * Each workspace goes through the ordinary destroy, so its subscription is
+     * cancelled and its machines are torn down rather than orphaned. One at a
+     * time and in order — a failure stops the rest, leaving an account that can
+     * still sign in to see what is left.
+     *
+     * The issuer goes before the profile. If that last delete fails, what is
+     * left cannot sign in; the other order leaves a credential whose next
+     * sign-in would build the profile again.
+     */
+    public async delete(principal: Principal.User): Promise<void> {
+        const owned = await PortalDB.asUser(principal, (trx) =>
+            trx
+                .selectFrom('workspaces')
+                .select('id')
+                .where('owner_id', '=', principal.userId)
+                .execute(),
+        );
+
+        for (const row of owned)
+            await this.workspaces.destroy(principal, Workspace.Id.parse(row.id));
+
+        await this.identities.deleteUser(principal.userId);
+
+        try {
+            await PortalDB.asService('delete user', (db) =>
+                db
+                    .deleteFrom('users')
+                    .where('id', '=', principal.userId)
+                    .execute(),
+            );
+        }
+        catch (error) {
+            this.logger.error(`issuer account ${principal.userId} is gone but its profile row is not`, error);
 
             throw error;
         }

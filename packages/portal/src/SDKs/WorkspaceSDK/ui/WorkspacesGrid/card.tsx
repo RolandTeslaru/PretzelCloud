@@ -7,7 +7,6 @@ import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge, PlanBadge, isReachable } from '../status'
-import { openWorkspaceConfigurationDialog } from '../WorkspaceConfiguration'
 
 /**
  * Silent success is the wrong default for a copy: the whole point is pasting it
@@ -66,14 +65,14 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 className='gap-2 text-xs'
-                                onClick={() => openWorkspaceConfigurationDialog(workspace.id)}
+                                onClick={() => WorkspaceSDK.openConfigurationDialog(workspace.id)}
                             >
                                 <SystemIcons.Settings />
                                 Open Configuration
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 className='gap-2 text-xs'
-                                onClick={() => openWorkspaceConfigurationDialog(workspace.id, 'plan')}
+                                onClick={() => WorkspaceSDK.openConfigurationDialog(workspace.id, 'plan')}
                             >
                                 <SystemIcons.Sparkles />
                                 Upgrade

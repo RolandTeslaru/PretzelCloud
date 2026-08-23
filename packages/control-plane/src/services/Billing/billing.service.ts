@@ -72,6 +72,22 @@ export class BillingService {
         return LIVE_STATUSES.includes(subscription.status) ? subscription : null;
     }
 
+    /**
+     * Ends what a workspace is paying, now rather than at the period's end —
+     * the thing being paid for is going away. Silent when nothing is live, so a
+     * free workspace and a lapsed one both simply pass through.
+     */
+    public async cancelSubscription(workspaceId: Workspace.Id): Promise<void> {
+        const subscription = await this.getLiveSubscriptionForWorkspace(workspaceId);
+
+        if (!subscription)
+            return;
+
+        await this.stripe.subscriptions.cancel(subscription.id);
+
+        this.logger.log(`cancelled ${subscription.id} for ${workspaceId}`);
+    }
+
     /** Moves an existing subscription onto another plan's price. */
     private async swapPrice(subscription: Stripe.Subscription, plan: Exclude<Workspace.Plan, 'free'>, workspaceId: Workspace.Id): Promise<void> {
         const item = subscription.items.data[0];
@@ -173,7 +189,7 @@ export class BillingService {
 
         await this.db.saveSubscription(workspaceId, subscription);
 
-        await this.moveTo(workspaceId, subscription);
+        await this.changeWorkspaceSubscription(workspaceId, subscription);
     }
 
     private async onSubscriptionChanged(subscription: Stripe.Subscription): Promise<void> {
@@ -186,7 +202,7 @@ export class BillingService {
 
         // A card being retried must not take a workspace down mid-fix.
         if (subscription.status === 'active' || subscription.status === 'trialing')
-            await this.moveTo(workspaceId, subscription);
+            await this.changeWorkspaceSubscription(workspaceId, subscription);
     }
 
     private async onSubscriptionEnded(subscription: Stripe.Subscription): Promise<void> {
@@ -201,7 +217,7 @@ export class BillingService {
     }
 
     /** Moves the workspace to the plan its subscription now pays for. */
-    private async moveTo(workspaceId: Workspace.Id, subscription: Stripe.Subscription): Promise<void> {
+    private async changeWorkspaceSubscription(workspaceId: Workspace.Id, subscription: Stripe.Subscription): Promise<void> {
         const plan = this.getPlanForSubscription(subscription);
 
         if (!plan) {

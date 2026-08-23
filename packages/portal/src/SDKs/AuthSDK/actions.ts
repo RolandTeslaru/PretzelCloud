@@ -94,6 +94,33 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
         },
 
         /**
+         * Ends the account. The control plane tears down every workspace it owns
+         * and removes the issuer's record of it, so the session that made the
+         * request no longer belongs to anyone — the local one is cleared here.
+         */
+        deleteAccount: async () => {
+            try {
+                await User.API.deleteAccount(api)
+            }
+            catch (error) {
+                NotificationSDK.toast.error(message(error))
+
+                return false
+            }
+
+            // The issuer no longer knows this account, so a failure to reach it
+            // is expected; what matters is that nothing is left on this device.
+            await sdk.client.signOut().catch(() => {})
+
+            sdk.setState(s => {
+                s.user = null
+                s.isAuthenticated = false
+            })
+
+            return true
+        },
+
+        /**
          * Creates the profile row if the account has none, and returns it either
          * way. The issuer holds the credentials; this row is the portal's own
          * record, and nothing creates it but this call.

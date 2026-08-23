@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
@@ -8,6 +8,7 @@ import { Principal } from '@/auth/principal';
 import { Router } from '@/services/WorkspaceRouter/router.service';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
+import { BillingService } from '@/services/Billing/billing.service';
 
 const PROVISION_ATTEMPTS = 3;
 
@@ -23,6 +24,8 @@ export class WorkspaceService {
         private readonly router: Router,
         private readonly realtime: RealtimeService,
         private readonly entitlements: EntitlementService,
+        @Inject(forwardRef(() => BillingService))
+        private readonly billing: BillingService,
     ) {}
 
     /**
@@ -428,7 +431,12 @@ export class WorkspaceService {
     }
 
     async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
-        // Infrastructure first: the row is the only record of what to tear down.
+        // Money first: the row carries the only pointer to the subscription, so
+        // anything that fails after this leaves something to retry rather than
+        // a charge nothing can be traced back to.
+        await this.billing.cancelSubscription(workspaceId);
+
+        // Infrastructure next: the row is the only record of what to tear down.
         await this.provisioning.deprovision(workspaceId);
 
         // Before the row goes: a cached route would otherwise keep answering for

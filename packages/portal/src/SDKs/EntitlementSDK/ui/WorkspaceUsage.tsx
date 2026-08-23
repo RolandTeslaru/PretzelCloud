@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import {
     columnFilteringFeature,
     createColumnHelper,
@@ -48,7 +49,7 @@ const columnHelper = createColumnHelper<typeof features, Workspace.Usage>()
 const columns: ColumnDef<typeof features, Workspace.Usage, any>[] = [
     columnHelper.accessor(row => new Date(row.createdAt), {
         id: 'createdAt',
-        header: 'When',
+        header: 'Date',
         sortFn: 'datetime',
         enableColumnFilter: false,
         cell: ({ getValue }) => (
@@ -58,7 +59,7 @@ const columns: ColumnDef<typeof features, Workspace.Usage, any>[] = [
 
     columnHelper.accessor(FILTERABLE.trigger, {
         id: 'trigger',
-        header: 'Trigger',
+        header: 'Igniter',
         enableSorting: false,
         filterFn: includesSome,
         cell: ({ getValue }) => {
@@ -73,7 +74,7 @@ const columns: ColumnDef<typeof features, Workspace.Usage, any>[] = [
 
     columnHelper.accessor(row => row.executionId, {
         id: 'execution',
-        header: 'Execution',
+        header: 'Execution Id',
         enableSorting: false,
         enableColumnFilter: false,
         cell: ({ getValue }) => {
@@ -82,7 +83,7 @@ const columns: ColumnDef<typeof features, Workspace.Usage, any>[] = [
             if (!id)
                 return <span className='text-xs text-muted-foreground'>—</span>
 
-            return <span className='text-xs font-mono text-muted-foreground'>{id.slice(0, 8)}</span>
+            return <span className='text-xs font-mono text-muted-foreground'>{id}</span>
         },
     }),
 ]
@@ -90,6 +91,11 @@ const columns: ColumnDef<typeof features, Workspace.Usage, any>[] = [
 const HEAD_WIDTH: Record<string, string> = {
     createdAt: 'w-[180px]',
     trigger: 'w-[140px]',
+}
+
+// Applied to the header and its cells alike, so a column stays one column.
+const COLUMN_ALIGN: Record<string, string> = {
+    execution: 'text-right',
 }
 
 const EMPTY_FACETS = new Map<unknown, number>()
@@ -146,7 +152,6 @@ export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
 
     return (
         <section className='flex flex-col gap-6'>
-
             <div className='flex items-stretch gap-10'>
 
                 <div className='flex w-1/2'>
@@ -163,6 +168,7 @@ export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
             </div>
 
             <div className='flex'>
+                <p className='font-light'>{workspace.displayName} history</p>
                 <Select.Root
                     value={window}
                     onValueChange={(value) => EntitlementSDK.actions.setWindow(workspace.id, value as Workspace.Usage.Window)}
@@ -184,7 +190,7 @@ export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
                     {table.getHeaderGroups().map(group => (
                         <Table.Row key={group.id}>
                             {group.headers.map(header => (
-                                <Table.Head key={header.id} className={HEAD_WIDTH[header.column.id]}>
+                                <Table.Head key={header.id} className={cn(HEAD_WIDTH[header.column.id], COLUMN_ALIGN[header.column.id])}>
                                     {header.column.getCanFilter()
                                         ? <FilterHeader
                                             column={header.column}
@@ -233,7 +239,7 @@ export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
                             : rows.map(row => (
                                 <Table.Row key={row.id}>
                                     {row.getAllCells().map(cell => (
-                                        <Table.Cell key={cell.id}>
+                                        <Table.Cell key={cell.id} className={COLUMN_ALIGN[cell.column.id]}>
                                             <table.FlexRender cell={cell} />
                                         </Table.Cell>
                                     ))}

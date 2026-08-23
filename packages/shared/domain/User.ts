@@ -78,6 +78,11 @@ export namespace User {
             const { data } = await api.patch<Update.Response>('/api/me', req)
             return Update.Response.parse(data)
         }
+
+        /** Closes the account at the issuer and here. Refuses while a workspace is owned. */
+        export async function deleteAccount(api: AxiosInstance): Promise<void> {
+            await api.delete('/api/me')
+        }
     }
 }
 export type User = z.infer<typeof User.Schema>

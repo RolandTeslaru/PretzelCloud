@@ -15,7 +15,6 @@ import { Badge, Button, Table } from '@pretzel-graph/standard-ui/foundations'
 import { Billing, type Workspace } from '@pretzel-cloud/shared/domain'
 import { FilterHeader, SortIcon, getFacets, includesSome } from '@/components/table-headers'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
-import { openWorkspaceConfigurationDialog } from '@/SDKs/WorkspaceSDK/ui/WorkspaceConfiguration'
 
 const PLAN_VARIANT: Record<Workspace.Plan, 'success' | 'secondary' | 'outline'> = {
     free: 'outline',
@@ -126,7 +125,7 @@ const columns: ColumnDef<typeof features, Workspace, any>[] = [
                 size='sm'
                 variant='ghost'
                 className='h-7 text-xs'
-                onClick={() => openWorkspaceConfigurationDialog(getValue() as Workspace.Id, 'plan')}
+                onClick={() => WorkspaceSDK.openConfigurationDialog(getValue() as Workspace.Id, 'plan')}
             >
                 Change plan
             </Button>

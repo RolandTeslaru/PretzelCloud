@@ -13,15 +13,15 @@ import { AuthSDK } from '../sdk'
 
 const DIALOG_ID = 'account'
 
-const ROW   = 'flex flex-row items-center justify-between gap-4 min-h-9'
+const ROW = 'flex flex-row items-center justify-between gap-4 min-h-9'
 const LABEL = 'text-sm text-muted-foreground font-normal'
 const FIELD = 'h-7 w-[220px]'
 
 const Schema = z.object({
-    username:    User.Username,
+    username: User.Username,
     displayName: User.DisplayName,
 })
-type Draft  = z.input<typeof Schema>
+type Draft = z.input<typeof Schema>
 type Values = z.output<typeof Schema>
 
 type SurfaceProps = { surfaceStyle: CSSProperties; blockTransparency: boolean }
@@ -110,10 +110,6 @@ function AccountContent({ surfaceStyle, blockTransparency }: SurfaceProps) {
                         <SystemIcons.User className='size-8 shrink-0' />
                         <p className='text-md font-semibold text-foreground'>Account</p>
                     </div>
-
-                    <p className='text-xs text-muted-foreground'>
-                        How this deployment shows you. The address you sign in with is held by the identity provider.
-                    </p>
                 </div>
             )}
 
@@ -167,11 +163,27 @@ function AccountContent({ surfaceStyle, blockTransparency }: SurfaceProps) {
                                 <Row label='Display name' value={user.displayName} />
                                 <Row label='Username' value={`@${user.username}`} />
                                 {staticRows}
+                                <div className='flex flex-row gap-2 pt-2'>
+                                    <Button variant={"destructive"}
+                                        onClick={() => AuthSDK.openLogOutDialog()}
+                                        className='w-1/2'
+                                    >
+                                        <SystemIcons.Logout />
+                                        Log Out
+                                    </Button>
+                                    <Button variant="destructive" className="w-1/2"
+                                        onClick={() => AuthSDK.openDeleteAccountDialog()}
+                                    >
+                                        <SystemIcons.OctagonX />
+                                        Delete Account
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </ScrollArea.Root>
 
-                    <div className='pointer-events-none absolute bottom-0 left-0 right-0 px-4 pb-4 pt-2 w-full flex'>
+                    <div className=' absolute bottom-0 left-0 right-0 px-4 pb-4 pt-2 w-full flex'>
+
                         <div className='ml-auto gap-2 flex'>
                             {isEditing ? (
                                 <>

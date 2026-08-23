@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Put, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Patch, Put, UseGuards } from '@nestjs/common';
 import { User } from '@pretzel-cloud/shared/domain';
 import { ZodBody } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
 import { UserAuthGuard } from '@/auth/user-auth.guard';
@@ -32,6 +32,15 @@ export class UserController {
         @AuthenticatedUser() principal: Principal.User,
     ): Promise<User.API.Get.Response> {
         return { user: await this.users.get(principal) };
+    }
+
+    /** Closes the account. Workspaces are not touched; one still owned refuses. */
+    @Delete()
+    @HttpCode(204)
+    async delete(
+        @AuthenticatedUser() principal: Principal.User,
+    ): Promise<void> {
+        await this.users.delete(principal);
     }
 
     @Patch()

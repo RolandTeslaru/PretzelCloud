@@ -1,7 +1,6 @@
 import type { CSSProperties } from 'react'
 import { SidebarTabs } from '@pretzel-graph/standard-ui/components/SidebarTabs'
 import { Illustrations, SystemIcons } from '@pretzel-graph/standard-ui/icons'
-import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
 import { GeneralSettings } from './GeneralSettings'
@@ -9,26 +8,6 @@ import { DomainSettings } from './DomainSettings'
 import { DangerSettings } from './DangerSettings'
 import { LifecycleSettings } from './LifecycleSettings'
 import { PlanSettings } from './PlanSettings'
-
-// Per workspace, so opening one from another card does not reuse its panel state.
-const dialogId = (workspaceId: Workspace.Id) => `workspace-configuration-${workspaceId}`
-
-/** `currentPanel` opens straight onto one, for callers that already know which. */
-export function openWorkspaceConfigurationDialog(workspaceId: Workspace.Id, currentPanel?: ItemId) {
-    const id = dialogId(workspaceId)
-
-    DialogSDK.actions.push(id, (props) => (
-        <DialogSDK.UnstyledTemplate {...props}>
-            <WorkspaceConfiguration
-                workspaceId={workspaceId}
-                dialogId={id}
-                currentPanel={currentPanel}
-                surfaceStyle={props.surfaceStyle}
-                blockTransparency={props.blockTransparency}
-            />
-        </DialogSDK.UnstyledTemplate>
-    ))
-}
 
 export type ItemId = 'general' | 'domain' | 'plan' | 'lifecycle' | 'danger'
 

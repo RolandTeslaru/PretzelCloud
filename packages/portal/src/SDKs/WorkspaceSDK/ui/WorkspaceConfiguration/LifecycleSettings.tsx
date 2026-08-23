@@ -33,15 +33,15 @@ const DEV_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
 ]
 
 // The SDK has a method per action; the map is only what the buttons render.
-const CALL: Record<Action, (workspaceId: Workspace.Id) => Promise<unknown>> = {
-    start:   WorkspaceSDK.actions.start,
-    stop:    WorkspaceSDK.actions.stop,
-    suspend: WorkspaceSDK.actions.suspend,
-    resume:  WorkspaceSDK.actions.resume,
-    restart: WorkspaceSDK.actions.restart,
-}
 
 export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialogId: string }) => {
+    const CALL: Record<Action, (workspaceId: Workspace.Id) => Promise<unknown>> = {
+        start:   WorkspaceSDK.actions.start,
+        stop:    WorkspaceSDK.actions.stop,
+        suspend: WorkspaceSDK.actions.suspend,
+        resume:  WorkspaceSDK.actions.resume,
+        restart: WorkspaceSDK.actions.restart,
+    }
     const workspace = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])
 
     const [busy, setBusy] = useState<Action | null>(null)

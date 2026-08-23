@@ -3,8 +3,14 @@ import { immer } from "zustand/middleware/immer";
 import type { User } from "@pretzel-cloud/shared/domain";
 import { BaseSDK } from "@pretzel-graph/standard-ui/SDKs/Base";
 import { SDK } from "@pretzel-graph/standard-ui/SDKs/SDKManager";
+import { DialogSDK } from "@pretzel-graph/standard-ui/SDKs/DialogSDK";
+import { AlertDialog } from "@pretzel-graph/standard-ui/foundations";
 import { authClient, getToken } from "./client";
 import { _createAuthActions_ } from "./actions";
+import { DeleteAccountDialog } from "./ui/DeleteAccountDialog";
+
+const LOGOUT_DIALOG_ID = 'logout'
+const DELETE_ACCOUNT_DIALOG_ID = 'delete-account'
 
 @SDK("Auth")
 export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
@@ -49,6 +55,41 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
         })
     }
 
+    /** Confirms first: signing out is one click from anywhere the menu opens. */
+    public openLogOutDialog = () => {
+        DialogSDK.actions.push(LOGOUT_DIALOG_ID, props => (
+            <DialogSDK.AlertTemplate
+                {...props}
+                type='warning'
+                approveLabel='Log out'
+                onApprove={async () => {
+                    await this.actions.logout()
+                    DialogSDK.actions.pop(LOGOUT_DIALOG_ID)
+                }}
+                onCancel={() => DialogSDK.actions.pop(LOGOUT_DIALOG_ID)}
+            >
+                <AlertDialog.Title>Log out?</AlertDialog.Title>
+                <AlertDialog.Description>
+                    You will need to sign in again to reach your workspaces.
+                </AlertDialog.Description>
+            </DialogSDK.AlertTemplate>
+        ))
+    }
+
+    /** Nothing here is recoverable, so the dialog asks for it in writing. */
+    public openDeleteAccountDialog = () => {
+        DialogSDK.actions.push(DELETE_ACCOUNT_DIALOG_ID, props => (
+            <DeleteAccountDialog
+                {...props}
+                onApprove={async () => {
+                    await this.actions.deleteAccount()
+                    DialogSDK.actions.pop(DELETE_ACCOUNT_DIALOG_ID)
+                }}
+                onCancel={() => DialogSDK.actions.pop(DELETE_ACCOUNT_DIALOG_ID)}
+            />
+        ))
+    }
+
     public readonly actions: AuthSDK.Actions = _createAuthActions_(this);
 }
 
@@ -63,6 +104,8 @@ export namespace AuthSDK {
         login:  (props: { email: string, password: string }) => Promise<boolean>
         signup: (props: { email: string, password: string, username: string, displayName: string }) => Promise<boolean>
         logout: () => Promise<boolean>
+        // Tears down every workspace it owns, then the account itself. Ends the session.
+        deleteAccount: () => Promise<boolean>
         // Creates the profile row. Throws on a taken username so the sign-up
         // form can map it onto the field.
         register: (profile: User.API.Register.Request) => Promise<void>
