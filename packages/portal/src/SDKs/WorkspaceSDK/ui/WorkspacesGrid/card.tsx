@@ -1,4 +1,4 @@
-import { Button, DropdownMenu } from '@pretzel-graph/standard-ui/foundations'
+import { Button, DropdownMenu, Tooltip } from '@pretzel-graph/standard-ui/foundations'
 import { Card } from '@pretzel-graph/standard-ui/foundations/card'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
@@ -7,6 +7,7 @@ import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge, PlanBadge, isReachable } from '../status'
+import { AlertTriangle } from '@pretzel-graph/standard-ui/icons/system'
 
 /**
  * Silent success is the wrong default for a copy: the whole point is pasting it
@@ -81,9 +82,22 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                     </DropdownMenu.Root>
                 </Card.Action>
             </Card.Header>
-            <Card.Content className='w-full flex gap-1.5'>
+            <Card.Content className='w-full flex gap-1.5 relative'>
                 <StatusBadge workspace={workspace} />
                 <PlanBadge plan={workspace.plan} />
+
+                {workspace.frozenReason && 
+                    <>
+                        <Tooltip.Root>
+                            <Tooltip.Trigger className='absolute right-4 -bottom-2'>
+                                <SystemIcons.AlertTriangleFill className=' text-destructive animate-pulse size-5'/>
+                            </Tooltip.Trigger>
+                            <Tooltip.Content className='max-w-[300px]'>
+                                {`This workspace has been suspended. ${workspace.frozenReason}`}
+                            </Tooltip.Content>
+                        </Tooltip.Root>
+                    </>
+                }
             </Card.Content>
         </Card.Root>
     )

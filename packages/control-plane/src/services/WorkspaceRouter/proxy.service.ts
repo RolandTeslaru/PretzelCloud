@@ -6,6 +6,7 @@ import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
+import { requireEnv } from '@/db/table';
 import { Router } from './router.service';
 
 const DEFAULT_PORT = 8080;
@@ -132,7 +133,15 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         // A signed-in visitor also starts it here, so the boot overlaps the
         // download rather than beginning at the first request that fails.
         if (resolution && Router.isSiloPath(req.url) === false) {
-            if (ProxyService.hasCredential(req) && Workspace.isWakeable(resolution.lifecycleState))
+            // Accounts live in the portal, so an unidentified visitor is sent
+            // there rather than handed a workspace's own sign-in page.
+            if (!ProxyService.hasCredential(req)) {
+                this.redirectToPortal(res);
+
+                return;
+            }
+
+            if (Workspace.isWakeable(resolution.lifecycleState))
                 this.wake(resolution);
 
             this.serveFrontend(req, res);
@@ -358,6 +367,10 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     }
 
     /** The editor, identical across workspaces: dev server here, built files later. */
+    private redirectToPortal(res: ServerResponse): void {
+        res.writeHead(302, { Location: requireEnv('PORTAL_URL'), 'Cache-Control': 'no-store' }).end();
+    }
+
     private serveFrontend(req: IncomingMessage, res: ServerResponse): void {
         const origin = process.env.FRONTEND_ORIGIN;
 

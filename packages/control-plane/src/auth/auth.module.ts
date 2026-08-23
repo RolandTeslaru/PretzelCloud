@@ -3,6 +3,7 @@ import { IdentityResolver, TokenIdentityResolver } from './identity';
 import { IdentityAdminService } from './identity-admin.service';
 import { UserAuthGuard } from './user-auth.guard';
 import { ScopedGuard } from './scoped.guard';
+import { OperatorGuard } from './operator.guard';
 
 @Global()
 @Module({
@@ -11,7 +12,8 @@ import { ScopedGuard } from './scoped.guard';
         IdentityAdminService,
         UserAuthGuard,
         ScopedGuard,
+        OperatorGuard,
     ],
-    exports: [IdentityResolver, IdentityAdminService, UserAuthGuard, ScopedGuard],
+    exports: [IdentityResolver, IdentityAdminService, UserAuthGuard, ScopedGuard, OperatorGuard],
 })
 export class AuthModule { }

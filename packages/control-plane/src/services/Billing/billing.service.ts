@@ -190,6 +190,10 @@ export class BillingService {
 
         await PortalDB.asService('save subscription', (trx) => this.billingDb.saveSubscription(trx, workspaceId, subscription));
 
+        // Buying again is how a frozen workspace comes back, so this path says
+        // so rather than leaving it to the subscription event that follows.
+        await this.workspaces.unfreeze(workspaceId);
+
         await this.changeWorkspaceSubscription(workspaceId, subscription);
     }
 
@@ -201,11 +205,22 @@ export class BillingService {
 
         await PortalDB.asService('save subscription', (trx) => this.billingDb.saveSubscription(trx, workspaceId, subscription));
 
-        // A card being retried must not take a workspace down mid-fix.
+        // `past_due` is deliberately absent: the card is still being retried,
+        // and taking a workspace down mid-retry is the wrong call.
         if (subscription.status === 'active' || subscription.status === 'trialing') {
             await this.workspaces.unfreeze(workspaceId);
 
             await this.changeWorkspaceSubscription(workspaceId, subscription);
+
+            return;
+        }
+
+        // Retries are exhausted. Which terminal action the account is set to
+        // decides whether a deletion follows, so this cannot wait for one.
+        if (subscription.status === 'unpaid') {
+            await this.workspaces.freeze(workspaceId, 'The last invoice for this workspace was not paid.');
+
+            this.logger.log(`Froze ${workspaceId}: its invoice went unpaid`);
         }
     }
 
