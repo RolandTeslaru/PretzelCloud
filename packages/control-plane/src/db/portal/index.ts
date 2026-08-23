@@ -48,7 +48,10 @@ export namespace PortalDB {
             id:           WorkspaceD.Id,
             subdomain:    z.string().nullable(),
             display_name: z.string(),
-            status:       WorkspaceD.ProvisioningStatus,
+            lifecycle_state: WorkspaceD.LifecycleState,
+            frozen_at:       z.coerce.date().nullable(),
+            frozen_reason:   z.string().nullable(),
+            abandoned_at:    z.coerce.date().nullable(),
             plan:         WorkspaceD.Plan,
             owner_id:     UserD.Id,
             stripe_subscription_id: z.string().nullable(),
@@ -60,12 +63,12 @@ export namespace PortalDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row, state: Fleet.Machine.State | null = null) => WorkspaceD.Schema.parse({
+        export const toDomain = (row: Row) => WorkspaceD.Schema.parse({
             id:          row.id,
             subdomain:   row.subdomain,
             displayName: row.display_name,
-            provisioningStatus: row.status,
-            state,
+            lifecycleState: row.lifecycle_state,
+            frozenReason:   row.frozen_reason,
             plan:        row.plan,
             subscriptionStatus: row.subscription_status,
             currentPeriodStart: row.current_period_start,
@@ -149,7 +152,7 @@ export namespace PortalDB {
 
     export interface Tables {
         users:             Table<typeof User.Row, Stamps>;
-        workspaces:        Table<typeof Workspace.Row, Stamps>;
+        workspaces:        Table<typeof Workspace.Row, Stamps | 'lifecycle_state' | 'frozen_at' | 'frozen_reason' | 'abandoned_at'>;
         workspace_members: Table<typeof Member.Row, 'created_at'>;
         stripe_events:     Table<typeof StripeEvent.Row, 'received_at'>;
         plans:             Table<typeof Plan.Row, Stamps>;

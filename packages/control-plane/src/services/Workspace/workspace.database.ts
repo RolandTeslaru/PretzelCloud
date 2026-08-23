@@ -1,0 +1,143 @@
+import { Injectable } from '@nestjs/common';
+import { User, Workspace } from '@pretzel-cloud/shared/domain';
+import { PortalDB } from '@/db/portal';
+import { AllowedDatabaseRoles, DatabaseClass } from '@/decorators/database';
+
+type UserTrx    = PortalDB.UserTransaction;
+type ServiceTrx = PortalDB.ServiceTransaction;
+
+@Injectable()
+@DatabaseClass
+export class WorkspaceDatabase {
+
+    @AllowedDatabaseRoles('service')
+    public async insert(trx: ServiceTrx, values: {
+        id:          Workspace.Id;
+        displayName: string;
+        ownerId:     User.Id;
+    }): Promise<void> {
+        await trx
+            .insertInto('workspaces')
+            .values({
+                id:              values.id,
+                subdomain:       null,
+                display_name:    values.displayName,
+                lifecycle_state: 'creating',
+                plan:            'free',
+                owner_id:        values.ownerId,
+            })
+            .execute();
+
+        await trx
+            .insertInto('workspace_members')
+            .values({ workspace_id: values.id, user_id: values.ownerId })
+            .execute();
+    }
+
+    @AllowedDatabaseRoles('service')
+    public async get(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<Workspace> {
+        const row = await trx
+            .selectFrom('workspaces')
+            .selectAll()
+            .where('id', '=', workspaceId)
+            .executeTakeFirstOrThrow();
+
+        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+    }
+
+    @AllowedDatabaseRoles('service')
+    public async getSpecInputs(trx: ServiceTrx, workspaceId: Workspace.Id) {
+        return trx
+            .selectFrom('workspaces')
+            .select(['owner_id', 'plan'])
+            .where('id', '=', workspaceId)
+            .executeTakeFirst();
+    }
+
+    @AllowedDatabaseRoles('user')
+    public async getAllForMember(trx: UserTrx, userId: User.Id): Promise<Workspace[]> {
+        const rows = await trx
+            .selectFrom('workspaces')
+            .innerJoin('workspace_members', 'workspace_members.workspace_id', 'workspaces.id')
+            .where('workspace_members.user_id', '=', userId)
+            .selectAll('workspaces')
+            .orderBy('workspaces.created_at', 'desc')
+            .execute();
+
+        return rows.map((row) => PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row)));
+    }
+
+    @AllowedDatabaseRoles('service')
+    public async setLifecycleState(trx: ServiceTrx, workspaceId: Workspace.Id, lifecycleState: Workspace.LifecycleState): Promise<Workspace> {
+        const row = await trx
+            .updateTable('workspaces')
+            .set({ lifecycle_state: lifecycleState })
+            .where('id', '=', workspaceId)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+
+        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+    }
+
+    @AllowedDatabaseRoles('service')
+    public async setFrozen(trx: ServiceTrx, workspaceId: Workspace.Id, reason: string): Promise<void> {
+        await trx
+            .updateTable('workspaces')
+            .set({ lifecycle_state: 'frozen', frozen_at: new Date(), frozen_reason: reason })
+            .where('id', '=', workspaceId)
+            .execute();
+    }
+
+    @AllowedDatabaseRoles('service')
+    public async clearFrozen(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<void> {
+        await trx
+            .updateTable('workspaces')
+            .set({ lifecycle_state: 'sleeping', frozen_at: null, frozen_reason: null })
+            .where('id', '=', workspaceId)
+            .execute();
+    }
+
+    @AllowedDatabaseRoles('service')
+    public async setAbandoned(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<void> {
+        await trx
+            .updateTable('workspaces')
+            .set({ abandoned_at: new Date() })
+            .where('id', '=', workspaceId)
+            .execute();
+    }
+
+    @AllowedDatabaseRoles('service')
+    public async setPlan(trx: ServiceTrx, workspaceId: Workspace.Id, plan: Workspace.Plan): Promise<void> {
+        await trx
+            .updateTable('workspaces')
+            .set({ plan })
+            .where('id', '=', workspaceId)
+            .execute();
+    }
+
+    @AllowedDatabaseRoles('user')
+    public async setDisplayName(trx: UserTrx, workspaceId: Workspace.Id, displayName: string): Promise<void> {
+        await trx
+            .updateTable('workspaces')
+            .set({ display_name: displayName })
+            .where('id', '=', workspaceId)
+            .execute();
+    }
+
+    @AllowedDatabaseRoles('user')
+    public async setSubdomain(trx: UserTrx, workspaceId: Workspace.Id, subdomain: Workspace.Subdomain | null): Promise<void> {
+        await trx
+            .updateTable('workspaces')
+            .set({ subdomain })
+            .where('id', '=', workspaceId)
+            .execute();
+    }
+
+    @AllowedDatabaseRoles('user')
+    public async delete(trx: UserTrx, workspaceId: Workspace.Id): Promise<void> {
+        await trx
+            .deleteFrom('workspaces')
+            .where('id', '=', workspaceId)
+            .execute();
+    }
+}

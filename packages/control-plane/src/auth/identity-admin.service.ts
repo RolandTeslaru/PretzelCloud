@@ -3,20 +3,17 @@ import { SignJWT } from 'jose';
 import { User } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
 
-// GoTrue's admin surface answers to a token it signed itself: the same secret it
-// verifies user tokens with, carrying the admin role. Nothing else is issued for
-// this, and the secret never leaves the control plane.
+// The admin surface answers to a token signed with the same secret it verifies with.
 const ADMIN_ROLE = 'service_role';
 const ALGORITHM  = 'HS256';
 const TOKEN_TTL  = 60;
 
-/** What the fleet issuer can be told to do. Identity only — no profile lives there. */
 @Injectable()
 export class IdentityAdminService {
 
     private readonly logger = new Logger(IdentityAdminService.name);
 
-    /** Removes the credential. The profile row and everything it owns are separate. */
+    /** Removes the credential only; the profile row is separate. */
     public async deleteUser(userId: User.Id): Promise<void> {
         const response = await this.call(`/admin/users/${userId}`, 'DELETE');
 
@@ -40,8 +37,7 @@ export class IdentityAdminService {
         });
     }
 
-    // Minted per call and short lived: it is cheaper than tracking an expiry,
-    // and a leaked one is worthless in a minute.
+    // Minted per call: cheaper than tracking an expiry, worthless in a minute.
     private async getAdminToken(): Promise<string> {
         return new SignJWT({ role: ADMIN_ROLE })
             .setProtectedHeader({ alg: ALGORITHM })

@@ -12,7 +12,6 @@ export type _WorkspaceSDKActions_ = {
     start:        (workspaceId: Workspace.Id) => Promise<Workspace>
     stop:         (workspaceId: Workspace.Id) => Promise<Workspace>
     suspend:      (workspaceId: Workspace.Id) => Promise<Workspace>
-    resume:       (workspaceId: Workspace.Id) => Promise<Workspace>
     restart:      (workspaceId: Workspace.Id) => Promise<Workspace>
     rebuild:      (workspaceId: Workspace.Id) => Promise<Workspace>
     setPlan:      (workspaceId: Workspace.Id, plan: Workspace.Plan) => Promise<Workspace>
@@ -97,7 +96,6 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
         start:   async (workspaceId) => { await Workspace.API.start(api, workspaceId);   return sdk.actions.refresh(workspaceId) },
         stop:    async (workspaceId) => { await Workspace.API.stop(api, workspaceId);    return sdk.actions.refresh(workspaceId) },
         suspend: async (workspaceId) => { await Workspace.API.suspend(api, workspaceId); return sdk.actions.refresh(workspaceId) },
-        resume:  async (workspaceId) => { await Workspace.API.resume(api, workspaceId);  return sdk.actions.refresh(workspaceId) },
         restart: async (workspaceId) => { await Workspace.API.restart(api, workspaceId); return sdk.actions.refresh(workspaceId) },
         rebuild: async (workspaceId) => { await Workspace.API.rebuild(api, workspaceId); return sdk.actions.refresh(workspaceId) },
 
@@ -130,14 +128,11 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 if (event.type === 'transition:started')
                     s.transitions[event.workspaceId] = event.action
 
-                if (event.type === 'state:changed') {
-                    card.state = event.state
+                if (event.type === 'lifecycle:changed') {
+                    card.lifecycleState = event.lifecycleState
 
                     delete s.transitions[event.workspaceId]
                 }
-
-                if (event.type === 'provisioning:changed')
-                    card.provisioningStatus = event.provisioningStatus
 
                 if (event.type === 'plan:changed')
                     card.plan = event.plan

@@ -3,12 +3,11 @@ import { AlertDialog, Button, Spinner } from '@pretzel-graph/standard-ui/foundat
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
-import { Fleet } from '@pretzel-cloud/shared/domain'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge } from '../status'
 
-type Action = Fleet.Machine.LifecycleAction
+type Action = Workspace.LifecycleAction
 
 const REBUILD_CONFIRM_ID = 'rebuild-workspace'
 
@@ -29,7 +28,6 @@ const DEV_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
     { action: 'start',   label: 'Start',   icon: <SystemIcons.Play /> },
     { action: 'stop',    label: 'Stop',    icon: <SystemIcons.Square /> },
     { action: 'suspend', label: 'Suspend', icon: <SystemIcons.Pause /> },
-    { action: 'resume',  label: 'Resume',  icon: <SystemIcons.Zap /> },
 ]
 
 // The SDK has a method per action; the map is only what the buttons render.
@@ -39,7 +37,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
         start:   WorkspaceSDK.actions.start,
         stop:    WorkspaceSDK.actions.stop,
         suspend: WorkspaceSDK.actions.suspend,
-        resume:  WorkspaceSDK.actions.resume,
         restart: WorkspaceSDK.actions.restart,
     }
     const workspace = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])

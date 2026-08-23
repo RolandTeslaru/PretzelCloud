@@ -55,9 +55,9 @@ create table users (
     updated_at   timestamp with time zone default now() not null
 );
 
--- `status` is the provisioning lifecycle. A workspace that never reaches 'ready'
--- is torn down and its row deleted, so the user simply retries; 'failed' is set
--- only when teardown itself failed and the reconciler still has work to do.
+-- `lifecycle_state` is what the workspace should be doing, and the authority for
+-- it: a machine that is down cannot say whether the ladder parked it, its owner
+-- stopped it, or the fleet froze it, and those wake differently.
 -- `subdomain` is the *custom* hostname label, and only paid plans set one. Every
 -- workspace also answers at a canonical label derived from its id, which is not
 -- stored: deriving it means it cannot drift from the id, cannot be edited, and
@@ -120,7 +120,17 @@ create table workspaces (
     id           uuid not null,
     subdomain    text,
     display_name text not null,
-    status       text default 'provisioning' not null,
+    -- What this workspace should be doing. Its machines follow; what they are
+    -- observed doing is the fleet's, and is not mirrored here.
+    lifecycle_state text default 'creating' not null,
+    -- Why the fleet turned it off. An unpaid invoice and an operator stop are
+    -- the same state and a different sentence. Both clear on unfreeze.
+    frozen_at       timestamp with time zone,
+    frozen_reason   text,
+    -- Teardown was asked for and threw, so the fleet may still owe cleanup.
+    -- Orthogonal to the lifecycle: teardown runs for a destroy and for a failed
+    -- provision alike.
+    abandoned_at    timestamp with time zone,
     plan         text default 'free' not null,
     owner_id     uuid not null,
     -- The subscription paying for this workspace, and Stripe's view of it.
@@ -134,7 +144,8 @@ create table workspaces (
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null,
 
-    constraint workspaces_status_check check (status in ('provisioning', 'ready', 'suspended', 'failed')),
+    constraint workspaces_lifecycle_state_check check (lifecycle_state in (
+        'creating', 'running', 'sleeping', 'stopped', 'frozen', 'provisioning_failed')),
     constraint workspaces_plan_fkey   foreign key (plan) references plans(id) on delete restrict
 );
 

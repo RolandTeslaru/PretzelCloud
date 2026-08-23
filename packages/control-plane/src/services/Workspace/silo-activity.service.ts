@@ -87,9 +87,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
             if (idle.length === 0)
                 return;
 
-            const ids    = idle.map(({ workspaceId }) => workspaceId);
-            const plans  = await this.getPlans(ids);
-            const states = await this.hardware.getStates(ids);
+            const ids        = idle.map(({ workspaceId }) => workspaceId);
+            const plans      = await this.getPlans(ids);
+            const states     = await this.hardware.getStates(ids);
+            const lifecycleStates = await this.getLifecycleStates(ids);
 
             const quietFor = new Map(idle.map(({ workspaceId, lastSeenAt }) => [workspaceId, Date.now() - lastSeenAt.getTime()]));
 
@@ -97,6 +98,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
                 const plan = plans.get(workspaceId);
 
                 if (!plan || Workspace.getIdlePolicy(plan) === 'none')
+                    continue;
+
+                // Stopped or frozen is where its owner or its billing put it.
+                if (!Workspace.acceptsTraffic(lifecycleStates.get(workspaceId) ?? 'creating'))
                     continue;
 
                 // Longest rung first: a workspace due to be reclaimed is past
@@ -126,7 +131,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
 
             await this.workspaces.suspend(workspaceId);
 
-            this.logger.log(`Suspended ${workspaceId} after an idle period`);
+            this.logger.log(`Slept ${workspaceId} after an idle period`);
         }
         catch (error) {
             this.logger.warn(`Could not suspend ${workspaceId}: ${error instanceof Error ? error.message : error}`);
@@ -154,5 +159,12 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
             db.selectFrom('workspaces').select(['id', 'plan']).where('id', 'in', ids).execute());
 
         return new Map(rows.map((row) => [Workspace.Id.parse(row.id), Workspace.Plan.parse(row.plan)]));
+    }
+
+    private async getLifecycleStates(ids: Workspace.Id[]): Promise<Map<Workspace.Id, Workspace.LifecycleState>> {
+        const rows = await PortalDB.asService('read lifecycles for activity sweep', (db) =>
+            db.selectFrom('workspaces').select(['id', 'lifecycle_state']).where('id', 'in', ids).execute());
+
+        return new Map(rows.map((row) => [Workspace.Id.parse(row.id), Workspace.LifecycleState.parse(row.lifecycle_state)]));
     }
 }

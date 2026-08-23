@@ -41,8 +41,8 @@ export class WorkspaceController {
     async get(
         @WorkspaceScope() workspace: Workspace,
     ): Promise<Workspace.API.Get.Response> {
-        // The scope object carries no machine state; re-read it with the live one.
-        return { workspace: await this.workspaces.withRuntime(workspace.id) };
+        // The guard already resolved it on this request.
+        return { workspace };
     }
 
     @Patch(':workspaceId')
@@ -106,15 +106,6 @@ export class WorkspaceController {
     @RequireOwner()
     async suspend(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         await this.workspaces.suspend(workspaceId);
-
-        return {};
-    }
-
-    @Post(':workspaceId/resume')
-    @Scoped('workspace')
-    @RequireOwner()
-    async resume(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaces.resume(workspaceId);
 
         return {};
     }

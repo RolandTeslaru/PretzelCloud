@@ -4,6 +4,7 @@ import { PortalDB } from '@/db/portal';
 import { Principal } from '@/auth/principal';
 import { IdentityAdminService } from '@/auth/identity-admin.service';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
+import { UserDatabase } from './user.database';
 
 const USERNAME_TAKEN = 'users_username_lower_key';
 const EMAIL_TAKEN    = 'users_email_lower_key';
@@ -18,17 +19,12 @@ export class UserService {
 
     constructor(
         private readonly identities: IdentityAdminService,
+        private readonly usersDb: UserDatabase,
         @Inject(forwardRef(() => WorkspaceService))
         private readonly workspaces: WorkspaceService,
     ) {}
 
-    /**
-     * Creates the profile row for the caller, or returns the existing one.
-     *
-     * Service credential: there is no insert policy for the app role,
-     * deliberately — a request cannot conjure users other than its own caller.
-     * The id and email come from the verified token, never the body.
-     */
+    /** The id and email come from the verified token, never the body. */
     async register(principal: Principal.User, body: User.API.Register.Request): Promise<User> {
         const existing = await this.find(principal);
 
@@ -36,18 +32,12 @@ export class UserService {
             return existing;
 
         try {
-            await PortalDB.asService('register user', (db) =>
-                db
-                    .insertInto('users')
-                    .values({
-                        id:           principal.userId,
-                        email:        principal.email,
-                        username:     body.username,
-                        display_name: body.displayName,
-                        avatar_url:   null,
-                    })
-                    .execute(),
-            );
+            await PortalDB.asService('register user', (trx) => this.usersDb.insert(trx, {
+                id:          principal.userId,
+                email:       principal.email,
+                username:    body.username,
+                displayName: body.displayName,
+            }));
         }
         catch (error) {
             if (violates(error, USERNAME_TAKEN))
@@ -75,15 +65,7 @@ export class UserService {
     }
 
     private async find(principal: Principal.User): Promise<User | null> {
-        const row = await PortalDB.asUser(principal, (trx) =>
-            trx
-                .selectFrom('users')
-                .selectAll()
-                .where('id', '=', principal.userId)
-                .executeTakeFirst(),
-        );
-
-        return row ? PortalDB.User.toDomain(PortalDB.User.Row.parse(row)) : null;
+        return PortalDB.asUser(principal, (trx) => this.usersDb.get(trx, principal.userId));
     }
 
     /** The names this deployment shows. The issuer holds no copy of them. */
@@ -97,19 +79,12 @@ export class UserService {
             return this.get(principal);
 
         try {
-            const row = await PortalDB.asUser(principal, (trx) =>
-                trx
-                    .updateTable('users')
-                    .set(changes)
-                    .where('id', '=', principal.userId)
-                    .returningAll()
-                    .executeTakeFirst(),
-            );
+            const user = await PortalDB.asUser(principal, (trx) => this.usersDb.update(trx, principal.userId, changes));
 
-            if (!row)
+            if (!user)
                 throw new NotFoundException('No profile yet');
 
-            return PortalDB.User.toDomain(PortalDB.User.Row.parse(row));
+            return user;
         }
         catch (error) {
             if (violates(error, USERNAME_TAKEN))
@@ -119,27 +94,9 @@ export class UserService {
         }
     }
 
-    /**
-     * Closes the account: the workspaces it owns, then the credential at the
-     * issuer, then the profile here.
-     *
-     * Each workspace goes through the ordinary destroy, so its subscription is
-     * cancelled and its machines are torn down rather than orphaned. One at a
-     * time and in order — a failure stops the rest, leaving an account that can
-     * still sign in to see what is left.
-     *
-     * The issuer goes before the profile. If that last delete fails, what is
-     * left cannot sign in; the other order leaves a credential whose next
-     * sign-in would build the profile again.
-     */
+    /** Workspaces, then the credential, then the profile. A failure stops the rest. */
     public async delete(principal: Principal.User): Promise<void> {
-        const owned = await PortalDB.asUser(principal, (trx) =>
-            trx
-                .selectFrom('workspaces')
-                .select('id')
-                .where('owner_id', '=', principal.userId)
-                .execute(),
-        );
+        const owned = await PortalDB.asUser(principal, (trx) => this.usersDb.getOwnedWorkspaceIds(trx, principal.userId));
 
         for (const row of owned)
             await this.workspaces.destroy(principal, Workspace.Id.parse(row.id));
@@ -147,12 +104,7 @@ export class UserService {
         await this.identities.deleteUser(principal.userId);
 
         try {
-            await PortalDB.asService('delete user', (db) =>
-                db
-                    .deleteFrom('users')
-                    .where('id', '=', principal.userId)
-                    .execute(),
-            );
+            await PortalDB.asService('delete user', (trx) => this.usersDb.delete(trx, principal.userId));
         }
         catch (error) {
             this.logger.error(`issuer account ${principal.userId} is gone but its profile row is not`, error);

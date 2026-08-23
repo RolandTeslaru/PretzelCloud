@@ -17,12 +17,45 @@ export namespace Workspace {
 
     export import Subdomain = SubdomainMod.Subdomain
 
-    // 'failed' is not a state the user sees. A workspace that cannot be
-    // provisioned is torn down and its row deleted, so they simply retry; the
-    // row survives only when teardown itself failed and the reconciler still
-    // has work to do.
-    export const ProvisioningStatus = z.enum(["provisioning", "ready", "suspended", "failed"])
-    export type  ProvisioningStatus = z.infer<typeof ProvisioningStatus>
+    /**
+     * What a workspace should be doing. Its machines follow; what they are
+     * observed doing is `Fleet.Machine.LifecycleState` and stays in the fleet.
+     */
+    export const LifecycleState = z.enum([
+        "creating",
+        "running",
+        // Parked to save money. Which rung — suspended, stopped, or given back
+        // entirely — is the ladder's business; traffic brings it back either way.
+        "sleeping",
+        // The owner turned it off. Traffic does not wake it.
+        "stopped",
+        // The fleet turned it off. The owner cannot undo it.
+        "frozen",
+        "provisioning_failed",
+    ])
+    export type LifecycleState = z.infer<typeof LifecycleState>
+
+    /** What can be asked of a workspace. The machines follow from where it lands. */
+    export const LifecycleAction = z.enum(["start", "stop", "suspend", "restart"])
+    export type  LifecycleAction = z.infer<typeof LifecycleAction>
+
+    const LANDS_ON: Record<LifecycleAction, LifecycleState> = {
+        start:   "running",
+        stop:    "stopped",
+        suspend: "sleeping",
+        restart: "running",
+    }
+
+    export const getLifecycleStateFromAction = (action: LifecycleAction): LifecycleState =>
+        LANDS_ON[action]
+
+    /** Whether traffic arriving may bring it up. */
+    export const isWakeable = (state: LifecycleState): boolean =>
+        state === "sleeping"
+
+    /** Whether a request arriving may be served, after a wake if need be. */
+    export const acceptsTraffic = (state: LifecycleState): boolean =>
+        state === "running" || state === "sleeping"
 
     export const Plan = z.enum(["free", "base", "pro"])
     export type  Plan = z.infer<typeof Plan>
@@ -31,21 +64,13 @@ export namespace Workspace {
     export const isPaid = (plan: Plan): boolean => plan !== "free"
 
     /**
-     * The machines a plan's compute is made of.
-     *
-     * Free runs one machine: it has a booting screen by design, so an
-     * always-warm backend buys it nothing and one machine halves the dormant
-     * floor. Paid splits, so the worker's memory sits on a usage clock instead
-     * of being paid for around the clock.
+     * The machines a plan's compute is made of. Free runs one — it has a booting
+     * screen by design — and paid splits, so the worker sits on a usage clock.
      */
     export const getTopology = (plan: Plan): MachineMod.Role[] =>
         isPaid(plan) ? ["backend", "worker"] : ["combined"]
 
-    /**
-     * What becomes of a workspace nobody has used for a while. Paid stays up —
-     * it is what the plan buys. Free is frozen in place, which costs nothing to
-     * hold and comes back without a boot.
-     */
+    /** What becomes of an idle workspace. Free freezes; staying up is what paid buys. */
     export const getIdlePolicy = (plan: Plan): "suspend" | "none" =>
         isPaid(plan) ? "none" : "suspend"
 
@@ -54,10 +79,8 @@ export namespace Workspace {
         .min(1, 'Workspace name is required')
         .max(64, 'Workspace name must be at most 64 characters')
 
-    // What this workspace's database and role are called in the cluster. Derived
-    // from the id rather than stored, so nothing can drift and a workspace whose
-    // row is lost is still locatable. Underscores because a uuid's dashes are not
-    // legal in an unquoted identifier.
+    // Derived rather than stored, so nothing can drift and a workspace whose row
+    // is lost is still locatable. Underscores: a uuid's dashes need quoting.
     const identifier = (id: Id) => id.replace(/-/g, '')
 
     export const getDatabaseName = (id: Id) =>
@@ -71,9 +94,9 @@ export namespace Workspace {
         // Null until a paid plan sets one; the canonical host is derived.
         subdomain:   Subdomain.Schema.nullable(),
         displayName: z.string(),
-        provisioningStatus: ProvisioningStatus,
-        // The workspace's machine state — null while it has no machine yet.
-        state:       MachineMod.State.nullable(),
+        lifecycleState: LifecycleState,
+        /** Why the fleet froze it, for the portal to render. Null unless frozen. */
+        frozenReason:   z.string().nullable(),
         plan:        Plan,
         // What the payment provider says about the subscription behind the plan.
         // Null while nothing is paying for it.
@@ -82,26 +105,15 @@ export namespace Workspace {
         currentPeriodStart: z.coerce.date().nullable(),
         currentPeriodEnd:   z.coerce.date().nullable(),
         ownerId:     User.Id,
-        // Derived rather than stored, and assembled where the fleet domain is
-        // known — a browser has no way to build it.
+        // Derived where the fleet domain is known; a browser cannot build it.
         appUrl:      z.url(),
         createdAt:   z.coerce.date(),
         updatedAt:   z.coerce.date(),
     })
 
-    // One channel per workspace: workspace:<id>. Outbound only — every command
-    // travels over the API below.
-    //
-    // Inline for the same reason API is: these reference ProvisioningStatus
-    // above, and a separate module importing back into this one would be a
-    // cycle that leaves the zod schemas undefined at load.
     /**
-     * What a workspace has used, as the fleet recorded it.
-     *
-     * Kept outside the workspace because its own database belongs to its
-     * customer: a count taken there is a count the payer could have written.
-     * Holds no workflow data — only that an execution happened, when, and what
-     * set it off.
+     * What a workspace has used, as the fleet recorded it. Counted here rather
+     * than in the workspace, whose database belongs to the payer.
      */
     export namespace Usage {
 
@@ -111,11 +123,7 @@ export namespace Workspace {
         export const Schema = z.object({
             id:          Id,
             workspaceId: WorkspaceId,
-            /**
-             * The execution in the workspace's own database. Null when the
-             * workspace answered with a shape the fleet did not recognise —
-             * the run still counted.
-             */
+            /** In the workspace's own database. Null when its answer was unreadable. */
             executionId: z.uuid().nullable(),
             /** As the workspace reported it; unparsed by the fleet. */
             igniter:     z.string().nullable(),
@@ -148,13 +156,9 @@ export namespace Workspace {
         })
 
         /**
-         * The period usage is counted over right now.
-         *
-         * A subscription bills from its own anniversary, so usage is counted from
-         * there. A stored period that has already ended is not the one running:
-         * the renewal is known before the provider's event arrives, so counting
-         * starts again at the moment it lapsed rather than including the period
-         * the customer has just paid for.
+         * The period usage is counted over right now. A subscription bills from its
+         * anniversary; a stored period that has lapsed restarts at its own end,
+         * since the renewal is known before the provider's event arrives.
          */
         export const getCurrentPeriod = (
             periodStart: Date | null,
@@ -234,6 +238,8 @@ export namespace Workspace {
     }
     export type Usage = z.infer<typeof Usage.Schema>
 
+    // One channel per workspace: workspace:<id>. Outbound only — commands travel
+    // over the API below.
     export namespace Event {
 
         export const Channel = Realtime.Channel.brand("Workspace.Event.Channel")
@@ -260,17 +266,12 @@ export namespace Workspace {
         })
         export type  Base = z.infer<typeof Base>
 
-        export const StateChanged = Base.extend({
-            type:  z.literal('state:changed'),
-            state: MachineMod.State.nullable(),
+        /** Where the workspace settled. Clears whatever transition was in flight. */
+        export const LifecycleChanged = Base.extend({
+            type:           z.literal('lifecycle:changed'),
+            lifecycleState: LifecycleState,
         })
-        export type  StateChanged = z.infer<typeof StateChanged>
-
-        export const ProvisioningChanged = Base.extend({
-            type:               z.literal('provisioning:changed'),
-            provisioningStatus: ProvisioningStatus,
-        })
-        export type  ProvisioningChanged = z.infer<typeof ProvisioningChanged>
+        export type  LifecycleChanged = z.infer<typeof LifecycleChanged>
 
         /** What the workspace is now paid for. Its machines follow separately. */
         export const PlanChanged = Base.extend({
@@ -283,20 +284,17 @@ export namespace Workspace {
         export type  Destroyed = z.infer<typeof Destroyed>
 
         /**
-         * A transition in flight. Not a machine state and never stored — the
-         * machine holds whatever it last settled on until this one finishes,
-         * and `state:changed` says what that turned out to be.
-         *
-         * The action rather than a state per action: the actions are already an
-         * enum, and what to call each one while it runs is the reader's choice.
+         * A transition in flight. Never stored — the row keeps saying what it
+         * last settled on until `lifecycle:changed` says what this turned out
+         * to be.
          */
         export const TransitionStarted = Base.extend({
             type:   z.literal('transition:started'),
-            action: MachineMod.LifecycleAction,
+            action: LifecycleAction,
         })
         export type  TransitionStarted = z.infer<typeof TransitionStarted>
 
-        export const Schema = z.discriminatedUnion('type', [StateChanged, ProvisioningChanged, PlanChanged, Destroyed, TransitionStarted])
+        export const Schema = z.discriminatedUnion('type', [LifecycleChanged, PlanChanged, Destroyed, TransitionStarted])
 
         export type Any = z.infer<typeof Schema>
 
@@ -309,9 +307,8 @@ export namespace Workspace {
         export const create = Realtime.Event.defineFactory(Schema, Stamped)
     }
 
-    // Inline rather than a sibling file: these reference Schema and Subdomain
-    // above, and a separate module importing back into this one would be a
-    // cycle that leaves the zod schemas undefined at load.
+    // Inline rather than a sibling file: a module importing back into this one
+    // would be a cycle that leaves the zod schemas undefined at load.
     export namespace API {
 
         export namespace List {
@@ -387,8 +384,7 @@ export namespace Workspace {
             return SetPlan.Response.parse(data)
         }
 
-        // One route per action rather than an action in a body: the verb is the
-        // request, and nothing has to be dispatched on the way down.
+        // One route per action: the verb is the request, nothing dispatches on it.
         export namespace Lifecycle {
             export const Response = z.object({})
             export type  Response = z.infer<typeof Response>
@@ -402,7 +398,6 @@ export namespace Workspace {
         export const start   = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'start')
         export const stop    = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'stop')
         export const suspend = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'suspend')
-        export const resume  = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'resume')
         export const restart = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'restart')
         /** Replaces the machines from the current spec; the data is untouched. */
         export const rebuild = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'rebuild')

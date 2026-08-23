@@ -1,7 +1,7 @@
 import { immer } from 'zustand/middleware/immer'
 import { createWithEqualityFn } from 'zustand/traditional'
 import { shallow } from 'zustand/shallow'
-import type { Fleet, Workspace } from '@pretzel-cloud/shared/domain'
+import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createWorkspaceSDKActions, type _WorkspaceSDKActions_ } from './actions'
@@ -96,7 +96,7 @@ export namespace WorkspaceSDK {
         // the workspaces rather than inside them: the machine is not in this
         // state, nothing stores it, and the next reading of the row would drop
         // it anyway.
-        transitions: Partial<Record<Workspace.Id, Fleet.Machine.LifecycleAction>>
+        transitions: Partial<Record<Workspace.Id, Workspace.LifecycleAction>>
         selectors: WorkspaceSDKSelectors
     }
 

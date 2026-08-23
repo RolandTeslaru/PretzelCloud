@@ -4,6 +4,7 @@ import { User, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/principal';
 import { requireEnv } from '@/db/table';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
+import { PortalDB } from '@/db/portal';
 import { BillingDatabase } from './billing.database';
 
 /** A subscription in one of these is being paid on; anything else has ended. */
@@ -28,7 +29,7 @@ export class BillingService {
 
     constructor(
         private readonly workspaces: WorkspaceService,
-        private readonly db: BillingDatabase,
+        private readonly billingDb: BillingDatabase,
     ) {}
 
     // Lazy so a control plane configured without billing still boots.
@@ -59,7 +60,7 @@ export class BillingService {
 
     /** What it is actually paying on. A recorded id that has ended is not one. */
     private async getLiveSubscriptionForWorkspace(workspaceId: Workspace.Id): Promise<Stripe.Subscription | null> {
-        const subscriptionId = await this.db.getSubscriptionId(workspaceId);
+        const subscriptionId = await PortalDB.asService('read subscription id', (trx) => this.billingDb.getSubscriptionId(trx, workspaceId));
 
         if (!subscriptionId)
             return null;
@@ -151,7 +152,7 @@ export class BillingService {
 
     /** What a verified event means. Safe to call twice with the same one. */
     public async apply(event: Stripe.Event): Promise<void> {
-        if (!await this.db.claimEvent(event.id))
+        if (!await PortalDB.asService('claim stripe event', (trx) => this.billingDb.claimEvent(trx, event.id)))
             return;
 
         try {
@@ -173,7 +174,7 @@ export class BillingService {
         }
         catch (error) {
             // The claim makes a retry a no-op, so a failure must give it back.
-            await this.db.releaseEvent(event.id);
+            await PortalDB.asService('release stripe event', (trx) => this.billingDb.releaseEvent(trx, event.id));
 
             throw error;
         }
@@ -187,7 +188,7 @@ export class BillingService {
 
         const subscription = await this.stripe.subscriptions.retrieve(session.subscription);
 
-        await this.db.saveSubscription(workspaceId, subscription);
+        await PortalDB.asService('save subscription', (trx) => this.billingDb.saveSubscription(trx, workspaceId, subscription));
 
         await this.changeWorkspaceSubscription(workspaceId, subscription);
     }
@@ -198,11 +199,14 @@ export class BillingService {
         if (!workspaceId)
             return;
 
-        await this.db.saveSubscription(workspaceId, subscription);
+        await PortalDB.asService('save subscription', (trx) => this.billingDb.saveSubscription(trx, workspaceId, subscription));
 
         // A card being retried must not take a workspace down mid-fix.
-        if (subscription.status === 'active' || subscription.status === 'trialing')
+        if (subscription.status === 'active' || subscription.status === 'trialing') {
+            await this.workspaces.unfreeze(workspaceId);
+
             await this.changeWorkspaceSubscription(workspaceId, subscription);
+        }
     }
 
     private async onSubscriptionEnded(subscription: Stripe.Subscription): Promise<void> {
@@ -211,9 +215,14 @@ export class BillingService {
         if (!workspaceId)
             return;
 
-        await this.db.saveSubscription(workspaceId, subscription);
+        await PortalDB.asService('save subscription', (trx) => this.billingDb.saveSubscription(trx, workspaceId, subscription));
 
-        this.logger.warn(`Subscription ended for ${workspaceId}; it keeps its plan until a freeze exists`);
+        // The plan stays on the row: what they bought is what they come back to,
+        // and dropping them to free here would silently rebuild their machines
+        // at a smaller size before anyone has decided that is what they want.
+        await this.workspaces.freeze(workspaceId, 'The subscription paying for this workspace has ended.');
+
+        this.logger.log(`Froze ${workspaceId}: its subscription ended`);
     }
 
     /** Moves the workspace to the plan its subscription now pays for. */
@@ -226,7 +235,7 @@ export class BillingService {
             return;
         }
 
-        const row = await this.db.getWorkspacePlan(workspaceId);
+        const row = await PortalDB.asService('read workspace plan', (trx) => this.billingDb.getWorkspacePlan(trx, workspaceId));
 
         if (!row)
             return;
@@ -240,7 +249,7 @@ export class BillingService {
 
     /** Created the first time they pay, then remembered. */
     private async getStripeCustomerForUser(userId: User.Id): Promise<string> {
-        const user = await this.db.getCustomerFields(userId);
+        const user = await PortalDB.asService('read user for billing', (trx) => this.billingDb.getCustomerFields(trx, userId));
 
         if (user.stripe_customer_id)
             return user.stripe_customer_id;
@@ -251,7 +260,7 @@ export class BillingService {
             metadata: { userId },
         });
 
-        await this.db.saveCustomerId(userId, customer.id);
+        await PortalDB.asService('save stripe customer', (trx) => this.billingDb.saveCustomerId(trx, userId, customer.id));
 
         return customer.id;
     }

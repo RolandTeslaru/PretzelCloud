@@ -99,6 +99,13 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         agent.destroy();
     }
 
+    // does the host resolve?         → 404
+    // is it a frontend asset?        → serve, awake or not
+    // is it a control-plane path?    → the control plane answers it, no machine needed
+    // is the workspace switched off? → 402 frozen / 503 stopped
+    // is it out of executions?       → 402 over limit
+    // is there a machine to reach?   → wake, or hold a webhook, or 503
+    //                                → forward
     private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const resolution = await this.router.resolve(req);
 
@@ -119,9 +126,18 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        // Before the target check: a token must mint while the machine sleeps.
+        // Only the control plane can mint a workspace token, and doing so needs
+        // no machine — so this is answered before asking whether one is up.
         if (Router.isControlPlanePath(req.url)) {
             this.serveControlPlane(req, res);
+            return;
+        }
+
+        // Turned off rather than parked: nothing arriving may bring it back, and
+        // which route it asked for makes no difference.
+        if (!Workspace.acceptsTraffic(resolution.lifecycleState)) {
+            this.refuseStoppedOrFrozen(res, resolution);
+
             return;
         }
 
@@ -162,6 +178,24 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
      * the editor takes its message from `error.message` and would otherwise show
      * the bare status.
      */
+    // No `Retry-After` on either: nothing is coming without a person.
+    private refuseStoppedOrFrozen(res: ServerResponse, resolution: Router.Resolution): void {
+        const frozen = resolution.lifecycleState === 'frozen';
+
+        res.writeHead(frozen ? 402 : 503, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+            status: frozen ? 402 : 503,
+            error: {
+                code:    frozen ? 'WORKSPACE_FROZEN' : 'WORKSPACE_STOPPED',
+                message: frozen
+                    ? 'This workspace has been suspended.'
+                    : 'This workspace has been turned off by its owner.',
+                detail: frozen
+                    ? resolution.frozenReason ?? 'Settle the account to bring it back.'
+                    : 'Start it again from the dashboard.',
+            },
+        }));
+    }
+
     private refuseOverLimit(res: ServerResponse): void {
         res.writeHead(402, { 'Content-Type': 'application/json' }).end(JSON.stringify({
             status: 402,
