@@ -28,12 +28,15 @@ export function openAccountDialog() {
         <DialogSDK.SplitTemplate
             {...props}
             className='w-[600px] h-[420px]'
-            sidebarClassName='w-[220px]'
+            sidebarClassName='w-[350px]'
             contentClassName='p-0!'
             sidebarRenderer={() => (
-                <div className='flex flex-row items-center gap-2'>
-                    <SystemIcons.User className='size-8 shrink-0' />
-                    <p className='text-md font-semibold text-foreground'>Account</p>
+                <div className='flex flex-col gap-2'>
+                    <div className='flex flex-row gap-2'>
+                        <SystemIcons.User className='size-8 shrink-0' />
+                        <p className='text-md font-semibold text-foreground'>Account</p>
+                    </div>
+                    <p className='text-xs text-muted-foreground'>Manage your account information</p>
                 </div>
             )}
         >
@@ -153,14 +156,14 @@ function AccountContent() {
                         <Row label='Username' value={`@${user.username}`} />
                         {staticRows}
                         <div className='flex flex-row gap-2 pt-2'>
-                            <Button variant={"destructive"}
+                            <Button variant="ghost-destructive"
                                 onClick={() => AuthSDK.openLogOutDialog()}
                                 className='w-1/2'
                             >
                                 <SystemIcons.Logout />
                                 Log Out
                             </Button>
-                            <Button variant="destructive" className="w-1/2"
+                            <Button variant="ghost-destructive" className="w-1/2"
                                 onClick={() => AuthSDK.openDeleteAccountDialog()}
                             >
                                 <SystemIcons.OctagonX />

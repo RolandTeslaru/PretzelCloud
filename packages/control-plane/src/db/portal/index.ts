@@ -157,6 +157,7 @@ export namespace PortalDB {
             workspace_id:     WorkspaceD.Id,
             publication_meta: ListingD.Data,
             workflow_data:    ListingD.Data,
+            blueprint_id:     z.string().nullable(),
             created_at:       z.coerce.date(),
             updated_at:       z.coerce.date(),
         });
@@ -167,6 +168,7 @@ export namespace PortalDB {
             workspaceId:     row.workspace_id,
             publicationMeta: row.publication_meta,
             workflowData:    row.workflow_data,
+            blueprintId:     row.blueprint_id,
             createdAt:       row.created_at,
             updatedAt:       row.updated_at,
         });
@@ -178,7 +180,7 @@ export namespace PortalDB {
         workspace_members: Table<typeof Member.Row, 'created_at'>;
         stripe_events:     Table<typeof StripeEvent.Row, 'received_at'>;
         plans:             Table<typeof Plan.Row, Stamps>;
-        listings:          Table<typeof Listing.Row, 'created_at' | 'updated_at'>;
+        listings:          Table<typeof Listing.Row, 'blueprint_id' | 'created_at' | 'updated_at'>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {

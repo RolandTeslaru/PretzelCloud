@@ -30,6 +30,7 @@ export namespace Listing {
         workspaceId:     Workspace.Id,
         publicationMeta: Data,
         workflowData:    Data,
+        blueprintId:     z.string().nullable(),
         createdAt:       z.coerce.date(),
         updatedAt:       z.coerce.date(),
     })

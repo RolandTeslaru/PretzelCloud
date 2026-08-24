@@ -327,10 +327,13 @@ create table listings (
     workspace_id         uuid not null,
     publication_meta     jsonb not null,
     workflow_data        jsonb not null,
+    -- Non-null puts the listing on the extended shelf, under this blueprint id.
+    blueprint_id         text,
     created_at           timestamp with time zone default now() not null,
     updated_at           timestamp with time zone default now() not null,
 
     constraint listings_pkey primary key (id),
+    constraint listings_blueprint_id_key unique (blueprint_id),
     constraint listings_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade
 );
 

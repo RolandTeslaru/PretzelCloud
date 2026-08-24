@@ -35,6 +35,29 @@ export class ListingDatabase {
         return Object.fromEntries(rows.map((row) => [row.id, row.publication_meta]));
     }
 
+    @AllowedDatabaseRoles('service')
+    public async getAllForWorkspace(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<Listing[]> {
+        const rows = await trx
+            .selectFrom('listings')
+            .selectAll()
+            .where('workspace_id', '=', workspaceId)
+            .execute();
+
+        return rows.map((row) => PortalDB.Listing.toDomain(PortalDB.Listing.Row.parse(row)));
+    }
+
+    // 0 rows updated means no such listing of this workspace.
+    @AllowedDatabaseRoles('silo')
+    public async setBlueprintId(trx: SiloTrx, id: Listing.Id, blueprintId: string | null): Promise<number> {
+        const result = await trx
+            .updateTable('listings')
+            .set({ blueprint_id: blueprintId })
+            .where('id', '=', id)
+            .executeTakeFirst();
+
+        return Number(result.numUpdatedRows);
+    }
+
     @AllowedDatabaseRoles('silo')
     public async insert(trx: SiloTrx, workspaceId: Workspace.Id, request: Listing.API.Put.Request): Promise<Listing.Id> {
         const id = Listing.createId();
