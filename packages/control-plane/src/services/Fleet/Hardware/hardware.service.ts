@@ -59,6 +59,7 @@ export class HardwareService {
                 env,
                 image: requireEnv('WORKSPACE_IMAGE'),
                 size:  process.env.WORKSPACE_SIZE ?? 'shared-1x-512',
+                cloudToken: inputs.cloudToken,
             };
 
         if (role === 'backend')
@@ -67,8 +68,7 @@ export class HardwareService {
                 env,
                 image:         requireEnv('WORKSPACE_IMAGE_BACKEND'),
                 size:          requireEnv('WORKSPACE_SIZE_BACKEND'),
-                backendToken:       inputs.backendToken,
-                workerLifecycleUrl: `${requireEnv('CONTROL_PLANE_INTERNAL_URL')}/api/workspaces/${workspaceId}/worker`,
+                cloudToken: inputs.cloudToken,
             };
 
         return {

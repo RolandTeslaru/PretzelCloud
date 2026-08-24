@@ -13,3 +13,15 @@ export const AuthenticatedUser = createParamDecorator(
         return principal;
     },
 );
+
+/** The calling workspace. Populated by SiloAuthGuard. */
+export const AuthenticatedSilo = createParamDecorator(
+    (_: unknown, context: ExecutionContext): Principal.Silo => {
+        const { principal } = context.switchToHttp().getRequest<Request>();
+
+        if (principal?.type !== 'silo')
+            throw new UnauthorizedException('Workspace principal required');
+
+        return principal;
+    },
+);

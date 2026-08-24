@@ -37,15 +37,12 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
         const id = configurationDialogId(workspaceId)
 
         DialogSDK.actions.push(id, (props) => (
-            <DialogSDK.UnstyledTemplate {...props}>
-                <WorkspaceConfiguration
-                    workspaceId={workspaceId}
-                    dialogId={id}
-                    currentPanel={currentPanel}
-                    surfaceStyle={props.surfaceStyle}
-                    blockTransparency={props.blockTransparency}
-                />
-            </DialogSDK.UnstyledTemplate>
+            <WorkspaceConfiguration
+                {...props}
+                workspaceId={workspaceId}
+                dialogId={id}
+                currentPanel={currentPanel}
+            />
         ))
     }
 

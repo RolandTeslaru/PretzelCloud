@@ -1,9 +1,9 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { UserAuthGuard } from '@/auth/user-auth.guard';
-import { ScopedGuard } from '@/auth/scoped.guard';
+import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
+import { ScopedGuard } from '@/auth/guards/scoped.guard';
 import { Scoped } from '@/auth/scopes';
-import { WorkspaceScope } from '@/auth/scope.decorator';
+import { WorkspaceScope } from '@/auth/guarded-params';
 import { EntitlementService } from './entitlement.service';
 
 /**

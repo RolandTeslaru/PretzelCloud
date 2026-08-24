@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { UserAuthGuard } from '@/auth/user-auth.guard';
-import { OperatorGuard } from '@/auth/operator.guard';
+import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
+import { OperatorGuard } from '@/auth/guards/operator.guard';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { PortalDB } from '@/db/portal';
 

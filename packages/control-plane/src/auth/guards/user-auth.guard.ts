@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { IdentityResolver } from './identity';
+import { IdentityResolver } from '../identity/identity';
 
 /**
  * Proves who is calling, and nothing else. Membership is per workspace and

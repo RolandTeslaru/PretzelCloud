@@ -318,3 +318,38 @@ create table stripe_events (
 
     constraint stripe_events_pkey primary key (id)
 );
+
+-- One row per listing: the owner's current active publication, verbatim and
+-- uninterpreted, under an id minted here. Going private deletes the row.
+create table listings (
+    -- Minted by Listing.createId: a fixed first group marks listing ids.
+    id                   uuid not null,
+    workspace_id         uuid not null,
+    publication_meta     jsonb not null,
+    workflow_data        jsonb not null,
+    created_at           timestamp with time zone default now() not null,
+    updated_at           timestamp with time zone default now() not null,
+
+    constraint listings_pkey primary key (id),
+    constraint listings_workspace_id_fkey foreign key (workspace_id) references workspaces(id) on delete cascade
+);
+
+create index listings_workspace_id_idx on listings (workspace_id);
+
+create trigger listings_set_updated_at before update on listings for each row execute function set_updated_at();
+
+-- Set by asSilo the way app.user_id is set by asUser. Unset raises.
+create function public.app_workspace_id() returns uuid
+    language sql stable
+    as $$ select current_setting('app.workspace_id')::uuid $$;
+
+-- Anyone reads; only the owning workspace writes. portal_service bypasses these.
+alter table listings enable row level security;
+
+create policy listings_read   on listings for select using (true);
+create policy listings_insert on listings for insert with check (workspace_id = public.app_workspace_id());
+create policy listings_update on listings for update using (workspace_id = public.app_workspace_id())
+                                              with check (workspace_id = public.app_workspace_id());
+create policy listings_delete on listings for delete using (workspace_id = public.app_workspace_id());
+
+grant select, insert, update, delete on listings to portal_app;

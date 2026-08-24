@@ -30,7 +30,7 @@ export class WorkspaceSecretsService {
                 router_secret:               randomBytes(32).toString('hex'),
                 internal_token:              randomBytes(32).toString('hex'),
                 redis_password:              randomBytes(32).toString('hex'),
-                backend_token:               randomBytes(32).toString('hex'),
+                cloud_token:                 randomBytes(32).toString('hex'),
             });
         });
     }
@@ -48,11 +48,11 @@ export class WorkspaceSecretsService {
      * separately from the machine env because only one role may hold it — the
      * worker runs workflow code and must not be able to reach the fleet.
      */
-    async getBackendToken(workspaceId: Workspace.Id): Promise<string | null> {
+    async getCloudToken(workspaceId: Workspace.Id): Promise<string | null> {
         return FleetDB.asService('read backend token', async (trx) => {
             const row = await this.db.read(trx, workspaceId);
 
-            return row ? FleetDB.WorkspaceSecrets.Row.parse(row).backend_token : null;
+            return row ? FleetDB.WorkspaceSecrets.Row.parse(row).cloud_token : null;
         });
     }
 

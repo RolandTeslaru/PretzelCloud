@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Headers, Post, RawBodyRequest, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { Logger } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { BillingService } from './billing.service';
 
 /**
@@ -10,6 +11,8 @@ import { BillingService } from './billing.service';
  * membership guards the user-facing one applies would reject it. Its signature
  * is the credential.
  */
+// Stripe retries on failure; a 429 would look like one.
+@SkipThrottle()
 @Controller('billing')
 export class BillingWebhookController {
 

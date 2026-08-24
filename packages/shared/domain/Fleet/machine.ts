@@ -36,7 +36,7 @@ export namespace Machine {
     export type  LifecycleAction = z.infer<typeof LifecycleAction>
 
     /**
-     * Everything a machine is built from. `backendToken` sits beside the env
+     * Everything a machine is built from. `cloudToken` sits beside the env
      * rather than inside it because only one role may receive it: the worker
      * runs workflow code, so the credential that reaches the fleet must not be
      * copied into every machine.
@@ -45,7 +45,7 @@ export namespace Machine {
      * What a machine is built from, by role. The roles differ in what they need
      * to know — the backend holds a fleet credential, the worker holds its
      * sibling's address — so they differ in the type rather than by convention:
-     * a worker spec cannot carry the credential that reaches the control plane.
+     * a worker spec cannot carry the credential that reaches the cloud.
      */
     export namespace Spec {
 
@@ -57,15 +57,16 @@ export namespace Machine {
         })
 
         /** Backend and worker in one machine: nothing to find, nothing to wake. */
-        export const Combined = Base.extend({ role: z.literal("combined") })
+        export const Combined = Base.extend({
+            role:         z.literal("combined"),
+            cloudToken: z.string(),
+        })
         export type  Combined = z.infer<typeof Combined>
 
         /** Answers HTTP and holds the queue. The only role that may call the fleet. */
         export const Backend = Base.extend({
             role:         z.literal("backend"),
-            backendToken: z.string(),
-            /** Base of the worker lifecycle routes; the action is the path under it. */
-            workerLifecycleUrl: z.string(),
+            cloudToken: z.string(),
         })
         export type Backend = z.infer<typeof Backend>
 
@@ -90,8 +91,10 @@ export namespace Machine {
             publicKey:   string
             /** Where a browser reaches this workspace. */
             appOrigin:   string
-            /** Reaches the control plane. Only the backend role is given it. */
-            backendToken: string
+            /** Proves this workspace to the cloud. Never given to a worker. */
+            cloudToken: string
+            /** Where the cloud is reached from inside the fleet. */
+            cloudUrl:   string
         }
 
         /** The env every role receives. Each variant adds its own on top. */
@@ -100,13 +103,15 @@ export namespace Machine {
             // The issuer as reached from inside the container, not the URL a
             // browser is given.
             AUTH_URL:                   inputs.authUrl,
-            // Verifies, cannot mint. The signing key never leaves the control plane.
+            // Verifies, cannot mint. The signing key never leaves the cloud.
             WORKSPACE_TOKEN_PUBLIC_KEY: inputs.publicKey,
             TOKEN_ISSUER:               inputs.tokenIssuer,
             // Names the owner up front, so ownership is not won by arriving first.
             WORKSPACE_OWNER_ID:         inputs.ownerId,
             // The origin a browser reaches this workspace at.
             CORS_ORIGIN:                inputs.appOrigin,
+            // Every route the workspace asks of the cloud hangs off this.
+            PRETZEL_CLOUD_URL:          inputs.cloudUrl,
         })
 
         /**
@@ -117,15 +122,17 @@ export namespace Machine {
         export const toEnv = (spec: Spec): Record<string, string> => {
             switch (spec.role) {
                 case "combined":
-                    return spec.env;
+                    return {
+                        ...spec.env,
+                        PRETZEL_CLOUD_TOKEN: spec.cloudToken,
+                    };
 
                 case "backend":
                     return {
                         ...spec.env,
-                        // Its own credential, and where it drives the machine
-                        // that drains the queue.
-                        CONTROL_PLANE_TOKEN:  spec.backendToken,
-                        WORKER_LIFECYCLE_URL: spec.workerLifecycleUrl,
+                        // Its own credential. Where to spend it is built from
+                        // PRETZEL_CLOUD_URL and the workspace id it already has.
+                        PRETZEL_CLOUD_TOKEN: spec.cloudToken,
                     };
 
                 case "worker":

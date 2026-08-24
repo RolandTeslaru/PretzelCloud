@@ -56,7 +56,7 @@ create table workspace_secrets (
     redis_password text not null,
     -- The backend's own credential for calling the control plane. Never given to
     -- the worker: that machine runs workflow code.
-    backend_token text not null,
+    cloud_token text not null,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null
 );

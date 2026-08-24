@@ -1,12 +1,13 @@
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { ZodBody } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
-import { UserAuthGuard } from '@/auth/user-auth.guard';
-import { ScopedGuard } from '@/auth/scoped.guard';
+import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
+import { ScopedGuard } from '@/auth/guards/scoped.guard';
 import { Scoped, RequireOwner } from '@/auth/scopes';
-import { WorkspaceScope, WorkspaceIdParam } from '@/auth/scope.decorator';
-import { AuthenticatedUser } from '@/auth/principal.decorator';
-import { Principal } from '@/auth/principal';
+import { WorkspaceScope, WorkspaceIdParam } from '@/auth/guarded-params';
+import { AuthenticatedUser } from '@/auth/identity/principal.decorator';
+import { Principal } from '@/auth/identity/principal';
+import { Throttle } from '@nestjs/throttler';
 import { WorkspaceService } from './workspace.service';
 
 const API = Workspace.API;
@@ -28,6 +29,8 @@ export class WorkspaceController {
         return { workspaces: await this.workspaces.list(principal) };
     }
 
+    // A database, a role, containers and hostnames per call, with retries.
+    @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
     @Post()
     async create(
         @AuthenticatedUser() principal: Principal.User,

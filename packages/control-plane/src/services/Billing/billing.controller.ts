@@ -1,17 +1,19 @@
 import { Controller, Post, UseGuards } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { ZodBody } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
-import { UserAuthGuard } from '@/auth/user-auth.guard';
-import { ScopedGuard } from '@/auth/scoped.guard';
+import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
+import { ScopedGuard } from '@/auth/guards/scoped.guard';
 import { Scoped, RequireOwner } from '@/auth/scopes';
-import { WorkspaceScope } from '@/auth/scope.decorator';
-import { AuthenticatedUser } from '@/auth/principal.decorator';
-import { Principal } from '@/auth/principal';
+import { WorkspaceIdParam } from '@/auth/guarded-params';
+import { AuthenticatedUser } from '@/auth/identity/principal.decorator';
+import { Principal } from '@/auth/identity/principal';
+import { Throttle } from '@nestjs/throttler';
 import { BillingService } from './billing.service';
 
 const getPortalAppOrigin = () => process.env.PORTAL_URL ?? 'http://localhost:5174';
 
-/** Paying for a workspace. Only its owner may. */
+/** Paying for a workspace. Only its owner may. Each route reaches the provider. */
+@Throttle({ default: { limit: 20, ttl: 60_000 } })
 @Controller('billing')
 @UseGuards(UserAuthGuard, ScopedGuard)
 export class BillingController {
@@ -23,10 +25,10 @@ export class BillingController {
     @RequireOwner()
     async changePlan(
         @AuthenticatedUser() principal: Principal.User,
-        @WorkspaceScope() workspace: Workspace,
+        @WorkspaceIdParam() workspaceId: Workspace.Id,
         @ZodBody(Workspace.API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
     ): Promise<{ url: string | null }> {
-        return this.billing.changePlan(principal, workspace, body.plan, getPortalAppOrigin());
+        return this.billing.changePlan(principal, workspaceId, body.plan, getPortalAppOrigin());
     }
 
     @Post('portal')

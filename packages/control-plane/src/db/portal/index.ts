@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import {
     Fleet,
     Plan      as PlanD,
+    Listing as ListingD,
     User      as UserD,
     Workspace as WorkspaceD,
 } from '@pretzel-cloud/shared/domain';
@@ -150,12 +151,34 @@ export namespace PortalDB {
         export type Row = z.infer<typeof Row>;
     }
 
+    export namespace Listing {
+        export const Row = z.object({
+            id:               ListingD.Id,
+            workspace_id:     WorkspaceD.Id,
+            publication_meta: ListingD.Data,
+            workflow_data:    ListingD.Data,
+            created_at:       z.coerce.date(),
+            updated_at:       z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+
+        export const toDomain = (row: Row) => ListingD.Schema.parse({
+            id:              row.id,
+            workspaceId:     row.workspace_id,
+            publicationMeta: row.publication_meta,
+            workflowData:    row.workflow_data,
+            createdAt:       row.created_at,
+            updatedAt:       row.updated_at,
+        });
+    }
+
     export interface Tables {
         users:             Table<typeof User.Row, Stamps>;
         workspaces:        Table<typeof Workspace.Row, Stamps | 'lifecycle_state' | 'frozen_at' | 'frozen_reason' | 'abandoned_at'>;
         workspace_members: Table<typeof Member.Row, 'created_at'>;
         stripe_events:     Table<typeof StripeEvent.Row, 'received_at'>;
         plans:             Table<typeof Plan.Row, Stamps>;
+        listings:          Table<typeof Listing.Row, 'created_at' | 'updated_at'>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {
@@ -174,7 +197,7 @@ export namespace PortalDB {
     const app     = () => (appDb     ??= connect('PORTAL_DATABASE_URL_APP'));
     const service = () => (serviceDb ??= connect('PORTAL_DATABASE_URL_SERVICE'));
 
-    export const Role = { User: 'user', Service: 'service' } as const;
+    export const Role = { User: 'user', Silo: 'silo', Service: 'service' } as const;
     export type  Role = typeof Role[keyof typeof Role];
 
     /**
@@ -184,8 +207,9 @@ export namespace PortalDB {
      */
     export type Transaction<R extends Role> = KyselyTransaction<Tables> & { readonly __as: R };
 
-    export type UserTransaction    = Transaction<typeof Role.User>;
-    export type ServiceTransaction = Transaction<typeof Role.Service>;
+    export type UserTransaction      = Transaction<typeof Role.User>;
+    export type SiloTransaction = Transaction<typeof Role.Silo>;
+    export type ServiceTransaction   = Transaction<typeof Role.Service>;
 
     const ROLE = Symbol.for('pretzel.cloud.portal.role');
 
@@ -212,6 +236,20 @@ export namespace PortalDB {
             await sql`select set_config('app.user_id', ${principal.userId}, true)`.execute(trx);
 
             return fn(tag(trx, Role.User));
+        });
+    }
+
+    type ActingSilo = { workspaceId: WorkspaceD.Id };
+
+    /** Runs `fn` as the silo SiloAuthGuard proved; RLS bounds it to that workspace's rows. */
+    export async function asSilo<T>(
+        principal: ActingSilo,
+        fn: (trx: SiloTransaction) => Promise<T>,
+    ): Promise<T> {
+        return app().transaction().execute(async (trx) => {
+            await sql`select set_config('app.workspace_id', ${principal.workspaceId}, true)`.execute(trx);
+
+            return fn(tag(trx, Role.Silo));
         });
     }
 

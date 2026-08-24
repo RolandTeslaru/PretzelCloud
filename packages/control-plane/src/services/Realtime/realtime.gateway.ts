@@ -4,8 +4,8 @@ import { WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 import { Realtime, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
-import { IdentityResolver } from '@/auth/identity';
-import { Principal } from '@/auth/principal';
+import { IdentityResolver } from '@/auth/identity/identity';
+import { Principal } from '@/auth/identity/principal';
 import { createRedisSubscriber } from '@/utils/redis';
 
 /**

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SignJWT, importJWK, type JWK } from 'jose';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { Principal } from '@/auth/principal';
+import { Principal } from '@/auth/identity/principal';
 import { requireEnv } from '@/db/table';
 
 /** Short on purpose: expiry is the only revocation these tokens have. */

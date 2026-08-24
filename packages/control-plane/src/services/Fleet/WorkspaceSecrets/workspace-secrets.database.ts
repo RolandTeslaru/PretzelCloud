@@ -34,7 +34,7 @@ export class WorkspaceSecretsDatabase {
         router_secret: string;
         internal_token: string;
         redis_password: string;
-        backend_token: string;
+        cloud_token: string;
     }) {
         return trx.insertInto('workspace_secrets').values(values).execute();
     }

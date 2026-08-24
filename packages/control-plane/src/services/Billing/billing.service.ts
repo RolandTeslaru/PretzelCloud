@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { User, Workspace } from '@pretzel-cloud/shared/domain';
-import { Principal } from '@/auth/principal';
+import { Principal } from '@/auth/identity/principal';
 import { requireEnv } from '@/db/table';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { PortalDB } from '@/db/portal';
@@ -41,21 +41,21 @@ export class BillingService {
      * Puts a workspace on a plan. One already paying has its price swapped in
      * place and prorated; a second subscription would be a second bill.
      */
-    public async changePlan(principal: Principal.User, workspace: Workspace, plan: Workspace.Plan, returnTo: string): Promise<{ url: string | null }> {
+    public async changePlan(principal: Principal.User, workspaceId: Workspace.Id, plan: Workspace.Plan, returnTo: string): Promise<{ url: string | null }> {
         if (plan === 'free')
             throw new Error('Free is not a purchasable plan');
 
-        const existing = await this.getLiveSubscriptionForWorkspace(workspace.id);
+        const existing = await this.getLiveSubscriptionForWorkspace(workspaceId);
 
         if (existing) {
-            await this.swapPrice(existing, plan, workspace.id);
+            await this.swapPrice(existing, plan, workspaceId);
 
             // The plan still moves through the webhook, so there is one path from
             // "Stripe says so" to the machines being rebuilt.
             return { url: null };
         }
 
-        return { url: await this.getStripeCheckoutUrl(principal, workspace, plan, returnTo) };
+        return { url: await this.getStripeCheckoutUrl(principal, workspaceId, plan, returnTo) };
     }
 
     /** What it is actually paying on. A recorded id that has ended is not one. */
@@ -105,7 +105,7 @@ export class BillingService {
     }
 
     /** For a first subscription only; a change never reaches here. */
-    private async getStripeCheckoutUrl(principal: Principal.User, workspace: Workspace, plan: Workspace.Plan, returnTo: string): Promise<string> {
+    private async getStripeCheckoutUrl(principal: Principal.User, workspaceId: Workspace.Id, plan: Workspace.Plan, returnTo: string): Promise<string> {
         if (plan === 'free')
             throw new Error('Free is not a purchasable plan');
 
@@ -115,11 +115,11 @@ export class BillingService {
             mode:        'subscription',
             customer,
             line_items:  [{ price: this.getPriceForPlan(plan), quantity: 1 }],
-            success_url: this.getCheckoutOutcomeUrl(returnTo, 'success', workspace.id),
-            cancel_url:  this.getCheckoutOutcomeUrl(returnTo, 'cancelled', workspace.id),
+            success_url: this.getCheckoutOutcomeUrl(returnTo, 'success', workspaceId),
+            cancel_url:  this.getCheckoutOutcomeUrl(returnTo, 'cancelled', workspaceId),
             // The only thing tying a payment back to a workspace.
-            subscription_data: { metadata: { workspaceId: workspace.id } },
-            metadata:          { workspaceId: workspace.id },
+            subscription_data: { metadata: { workspaceId } },
+            metadata:          { workspaceId },
         });
 
         if (!session.url)

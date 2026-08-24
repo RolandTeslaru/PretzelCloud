@@ -1,6 +1,7 @@
 import './load-env';
 
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { PortalDB } from './db/portal';
@@ -14,7 +15,10 @@ async function bootstrap(): Promise<void> {
 
     // rawBody: Stripe signs the exact bytes it sent, and a parsed-then-
     // re-serialised body no longer matches the signature.
-    const app = await NestFactory.create(AppModule, { rawBody: true });
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+    // A listing carries a whole graph; the default limit is far below one.
+    app.useBodyParser('json', { limit: '2mb' });
 
     // ws rather than socket.io: the portal speaks the same protocol the editor does.
     app.useWebSocketAdapter(new WsAdapter(app));

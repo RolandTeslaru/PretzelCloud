@@ -45,6 +45,19 @@ export class WorkspaceDatabase {
         return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
     }
 
+    // Null covers both "no such workspace" and "not theirs to see": the row
+    // policy filters it out, and telling those apart would leak membership.
+    @AllowedDatabaseRoles('user')
+    public async getForUser(trx: UserTrx, workspaceId: Workspace.Id): Promise<Workspace | null> {
+        const row = await trx
+            .selectFrom('workspaces')
+            .selectAll()
+            .where('id', '=', workspaceId)
+            .executeTakeFirst();
+
+        return row ? PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row)) : null;
+    }
+
     @AllowedDatabaseRoles('service')
     public async getSpecInputs(trx: ServiceTrx, workspaceId: Workspace.Id) {
         return trx
@@ -52,19 +65,6 @@ export class WorkspaceDatabase {
             .select(['owner_id', 'plan'])
             .where('id', '=', workspaceId)
             .executeTakeFirst();
-    }
-
-    @AllowedDatabaseRoles('user')
-    public async getAllForMember(trx: UserTrx, userId: User.Id): Promise<Workspace[]> {
-        const rows = await trx
-            .selectFrom('workspaces')
-            .innerJoin('workspace_members', 'workspace_members.workspace_id', 'workspaces.id')
-            .where('workspace_members.user_id', '=', userId)
-            .selectAll('workspaces')
-            .orderBy('workspaces.created_at', 'desc')
-            .execute();
-
-        return rows.map((row) => PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row)));
     }
 
     @AllowedDatabaseRoles('service')

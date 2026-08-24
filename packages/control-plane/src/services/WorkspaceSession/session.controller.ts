@@ -1,9 +1,9 @@
 import { Controller, ForbiddenException, Get, HttpCode, NotFoundException, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { PortalDB } from '@/db/portal';
-import { Principal } from '@/auth/principal';
-import { AuthenticatedUser } from '@/auth/principal.decorator';
-import { UserAuthGuard } from '@/auth/user-auth.guard';
+import { Principal } from '@/auth/identity/principal';
+import { AuthenticatedUser } from '@/auth/identity/principal.decorator';
+import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
 import { Router } from '@/services/WorkspaceRouter/router.service';
 import { WorkspaceTokenIssuer } from './token-issuer.service';
 

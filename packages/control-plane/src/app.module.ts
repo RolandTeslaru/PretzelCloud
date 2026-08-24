@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { FleetModule } from './services/Fleet/fleet.module';
 import { RouterModule } from './services/WorkspaceRouter/router.module';
@@ -7,16 +8,21 @@ import { BillingModule } from './services/Billing/billing.module';
 import { PlanModule } from './services/Plan/plan.module';
 import { EntitlementModule } from './services/Entitlement/entitlement.module';
 import { AdminModule } from './services/Admin/admin.module';
+import { PermissionModule } from './services/Permission/permission.module';
 import { WorkspaceSessionModule } from './services/WorkspaceSession/session.module';
 import { UserModule } from './services/User/user.module';
 import { WorkspaceModule } from './services/Workspace/workspace.module';
 import { RealtimeModule } from './services/Realtime/realtime.module';
+import { ListingModule } from './services/Listing/listing.module';
 import { ZodExceptionFilter } from './filters/zod-exception.filter';
 
+// A ceiling for every route, raised or lowered where a route earns it. The
+// silos carry their own; this is the control plane's own surface.
 @Module({
-    imports: [AdminModule, EntitlementModule, PlanModule, BillingModule, AuthModule, FleetModule, RouterModule, WorkspaceSessionModule, UserModule, WorkspaceModule, RealtimeModule],
+    imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 120 }] }), PermissionModule, AdminModule, EntitlementModule, PlanModule, BillingModule, AuthModule, FleetModule, RouterModule, WorkspaceSessionModule, UserModule, WorkspaceModule, RealtimeModule, ListingModule],
     providers: [
         { provide: APP_FILTER, useClass: ZodExceptionFilter },
+        { provide: APP_GUARD,  useClass: ThrottlerGuard },
     ],
 })
 export class AppModule { }

@@ -1,9 +1,9 @@
 import { Controller, Delete, Get, HttpCode, Patch, Put, UseGuards } from '@nestjs/common';
 import { User } from '@pretzel-cloud/shared/domain';
 import { ZodBody } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
-import { UserAuthGuard } from '@/auth/user-auth.guard';
-import { AuthenticatedUser } from '@/auth/principal.decorator';
-import { Principal } from '@/auth/principal';
+import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
+import { AuthenticatedUser } from '@/auth/identity/principal.decorator';
+import { Principal } from '@/auth/identity/principal';
 import { UserService } from './user.service';
 
 const API = User.API;

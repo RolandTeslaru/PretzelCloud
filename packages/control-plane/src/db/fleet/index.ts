@@ -54,7 +54,7 @@ export namespace FleetDB {
             router_secret:  z.string(),
             internal_token: z.string(),
             redis_password: z.string(),
-            backend_token:  z.string(),
+            cloud_token:    z.string(),
             execution_token_signing_key: z.string(),
             created_at:     z.coerce.date(),
             updated_at:     z.coerce.date(),

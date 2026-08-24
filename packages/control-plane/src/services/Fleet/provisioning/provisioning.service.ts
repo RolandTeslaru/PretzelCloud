@@ -109,12 +109,13 @@ export class ProvisioningService {
     ): Promise<Fleet.Machine.Spec.Inputs> {
         return {
             ownerId,
-            backendToken: await this.secrets.getBackendToken(workspaceId) ?? '',
+            cloudToken: await this.secrets.getCloudToken(workspaceId) ?? '',
             secrets:      env,
             authUrl:      requireEnv('WORKSPACE_AUTH_URL'),
             tokenIssuer:  this.workspaceTokenIssuer.issuer(),
             publicKey:    JSON.stringify(await this.workspaceTokenIssuer.publicJwk()),
             appOrigin:    Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
+            cloudUrl:     requireEnv('PRETZEL_CLOUD_URL'),
         };
     }
 

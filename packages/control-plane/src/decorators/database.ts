@@ -10,7 +10,7 @@ import {
 import { NoResultError } from 'kysely';
 import type { ZodType } from 'zod';
 
-export type DatabaseRole = 'user' | 'service';
+export type DatabaseRole = 'user' | 'silo' | 'service';
 
 const ROLE_SYMBOLS = [
     Symbol.for('pretzel.cloud.portal.role'),

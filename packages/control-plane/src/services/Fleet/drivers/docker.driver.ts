@@ -118,6 +118,27 @@ export class DockerDriver extends AbstractHardwareDriver {
         return 'stopped';
     }
 
+    /**
+     * Development only. With `WORKSPACE_DEV_REPO` set, a machine runs the built
+     * output on the host instead of the copy baked into its image, so a rebuild
+     * is `npm run build` and a restart rather than a new image.
+     *
+     * Only `dist` is mounted: `node_modules` in the image is installed for the
+     * container's platform and must not be replaced by the host's.
+     */
+    private devMounts(role: Fleet.Machine.Role): string[] {
+        const repo = process.env.WORKSPACE_DEV_REPO;
+
+        if (!repo)
+            return [];
+
+        const packages = role === 'worker'
+            ? ['worker', 'nodes']
+            : role === 'combined' ? ['backend', 'worker', 'nodes'] : ['backend', 'nodes'];
+
+        return packages.flatMap((name) => ['--volume', `${repo}/packages/${name}/dist:/app/packages/${name}/dist:ro`]);
+    }
+
     async create(options: AbstractHardwareDriver.CreateOptions): Promise<AbstractHardwareDriver.Handle> {
         // Idempotency: the name is derived from the workspace id, so a re-run
         // finds the container the killed run left behind.
@@ -143,6 +164,7 @@ export class DockerDriver extends AbstractHardwareDriver {
             '--env-file', envFile,
             '--restart', 'unless-stopped',
             '--stop-timeout', String(STOP_TIMEOUT_SECONDS),
+            ...this.devMounts(options.role),
             options.image,
         ]));
 

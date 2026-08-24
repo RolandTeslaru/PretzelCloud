@@ -1,5 +1,4 @@
-import type { CSSProperties } from 'react'
-import { SidebarTabs } from '@pretzel-graph/standard-ui/components/SidebarTabs'
+import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { Illustrations, SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
@@ -13,14 +12,12 @@ export type ItemId = 'general' | 'domain' | 'plan' | 'lifecycle' | 'danger'
 
 type PanelProps = { workspaceId: Workspace.Id; dialogId: string }
 
-type SurfaceProps = { surfaceStyle: CSSProperties; blockTransparency: boolean }
-
-const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel, surfaceStyle, blockTransparency }: PanelProps & { currentPanel?: ItemId } & SurfaceProps) => {
+const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel, ...templateProps }: PanelProps & { currentPanel?: ItemId } & DialogSDK.TemplateProps) => {
     const workspace = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])
 
     const panelProps = { workspaceId, dialogId }
 
-    const items: SidebarTabs.Item[] = [
+    const items: DialogSDK.TabsTemplate.Item[] = [
         { id: 'general',   label: 'General',     icon: SystemIcons.Settings,      panel: <GeneralSettings {...panelProps} /> },
         { id: 'domain',    label: 'Domain',      icon: SystemIcons.Globe,         panel: <DomainSettings {...panelProps} /> },
         { id: 'plan',      label: 'Plan',        icon: SystemIcons.Receipt,       panel: <PlanSettings {...panelProps} /> },
@@ -29,14 +26,14 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel, surfaceSt
     ]
 
     return (
-        <SidebarTabs
-            surfaceStyle={surfaceStyle}
-            blockTransparency={blockTransparency}
+        <DialogSDK.TabsTemplate
+            {...templateProps}
+            className='sm:max-w-[700px] w-full'
             header={{ icon: SystemIcons.Server, title: workspace?.displayName ?? 'Workspace' }}
             items={items}
             defaultValue={currentPanel}
             empty={{
-                icon: <Illustrations.GearIllustration className='size-15 text-muted-foreground/50' />,
+                icon: <SystemIcons.Cog className='size-8 text-muted-foreground/50' />,
                 title: 'Workspace Settings',
                 description: 'Rename this workspace, give it an address of its own, or tear it down.',
             }}

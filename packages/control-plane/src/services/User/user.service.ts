@@ -1,8 +1,8 @@
 import { ConflictException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
-import { Principal } from '@/auth/principal';
-import { IdentityAdminService } from '@/auth/identity-admin.service';
+import { Principal } from '@/auth/identity/principal';
+import { IdentityAdminService } from '@/auth/identity/identity-admin.service';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { UserDatabase } from './user.database';
 

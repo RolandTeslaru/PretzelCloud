@@ -1,12 +1,14 @@
 import { ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
+import { PermissionService } from '@/services/Permission/permission.service';
+import { ListingService } from '@/services/Listing/listing.service';
 import { WorkspaceDatabase } from './workspace.database';
 import { UserDatabase } from '@/services/User/user.database';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
-import { Principal } from '@/auth/principal';
+import { Principal } from '@/auth/identity/principal';
 import { Router } from '@/services/WorkspaceRouter/router.service';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
@@ -28,6 +30,8 @@ export class WorkspaceService {
         private readonly entitlements: EntitlementService,
         private readonly workspacesDb: WorkspaceDatabase,
         private readonly usersDb: UserDatabase,
+        private readonly permissions: PermissionService,
+        private readonly listings: ListingService,
         @Inject(forwardRef(() => BillingService))
         private readonly billing: BillingService,
     ) {}
@@ -113,9 +117,8 @@ export class WorkspaceService {
         await this.setLifecycleState(id, 'provisioning_failed');
     }
 
-    /** RLS scopes this — there is no membership filter to forget. */
     public async list(principal: Principal.User): Promise<Workspace[]> {
-        return PortalDB.asUser(principal, (trx) => this.workspacesDb.getAllForMember(trx, principal.userId));
+        return this.permissions.getWorkspacesForMember(principal);
     }
 
     public async get(workspaceId: Workspace.Id): Promise<Workspace> {
@@ -350,12 +353,17 @@ export class WorkspaceService {
         // Money first: the row carries the only pointer to the subscription.
         await this.billing.cancelSubscription(workspaceId);
 
+        // Its token dies with it; the cache must not outlive the workspace.
+        this.permissions.invalidateCloudToken(workspaceId);
+
         // Infrastructure next: the row is the only record of what to tear down.
         await this.provisioning.deprovision(workspaceId);
 
         // Before the row goes: a cached route would otherwise keep answering for
         // a machine that no longer exists.
         this.router.invalidate(workspaceId);
+
+        await this.listings.deleteAllForWorkspace(workspaceId);
 
         await PortalDB.asUser(principal, (trx) => this.workspacesDb.delete(trx, workspaceId));
 

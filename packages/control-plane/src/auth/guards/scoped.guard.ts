@@ -2,8 +2,8 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, NotFound
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { PortalDB } from '@/db/portal';
-import { ScopeName, Scopes, SCOPE, REQUIRE_OWNER } from './scopes';
+import { PermissionService } from '@/services/Permission/permission.service';
+import { ScopeName, Scopes, SCOPE, REQUIRE_OWNER } from '../scopes';
 
 export type ScopedRequest = Request & { scopes?: Partial<Scopes> };
 
@@ -19,7 +19,10 @@ export type ScopedRequest = Request & { scopes?: Partial<Scopes> };
 @Injectable()
 export class ScopedGuard implements CanActivate {
 
-    constructor(private readonly reflector: Reflector) {}
+    constructor(
+        private readonly reflector: Reflector,
+        private readonly permissions: PermissionService,
+    ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const name = this.reflector.getAllAndOverride<ScopeName | undefined>(
@@ -32,7 +35,8 @@ export class ScopedGuard implements CanActivate {
 
         const request = context.switchToHttp().getRequest<ScopedRequest>();
 
-        if (!request.principal)
+        // The session path only: a machine or service principal has no membership.
+        if (request.principal?.type !== 'user')
             throw new ForbiddenException('Not authenticated');
 
         const workspace = await this.resolveWorkspace(request);
@@ -52,21 +56,16 @@ export class ScopedGuard implements CanActivate {
         if (!parsed.success)
             throw new NotFoundException('No such workspace');
 
-        const row = await PortalDB.asUser(request.principal!, (trx) =>
-            trx
-                .selectFrom('workspaces')
-                .innerJoin('workspace_members', 'workspace_members.workspace_id', 'workspaces.id')
-                .where('workspaces.id', '=', parsed.data)
-                .where('workspace_members.user_id', '=', request.principal!.userId)
-                .selectAll('workspaces')
-                .executeTakeFirst(),
-        );
+        if (request.principal?.type !== 'user')
+            throw new ForbiddenException('Not authenticated');
+
+        const workspace = await this.permissions.getWorkspaceForMember(request.principal, parsed.data);
 
         // Not a member and not existing are the same answer on purpose: a
         // membership probe should not distinguish them.
-        if (!row)
+        if (!workspace)
             throw new NotFoundException('No such workspace');
 
-        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+        return workspace;
     }
 }

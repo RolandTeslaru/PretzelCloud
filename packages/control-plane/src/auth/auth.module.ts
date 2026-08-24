@@ -1,9 +1,9 @@
 import { Global, Module } from '@nestjs/common';
-import { IdentityResolver, TokenIdentityResolver } from './identity';
-import { IdentityAdminService } from './identity-admin.service';
-import { UserAuthGuard } from './user-auth.guard';
-import { ScopedGuard } from './scoped.guard';
-import { OperatorGuard } from './operator.guard';
+import { IdentityResolver, TokenIdentityResolver } from './identity/identity';
+import { IdentityAdminService } from './identity/identity-admin.service';
+import { UserAuthGuard } from './guards/user-auth.guard';
+import { ScopedGuard } from './guards/scoped.guard';
+import { OperatorGuard } from './guards/operator.guard';
 
 @Global()
 @Module({
