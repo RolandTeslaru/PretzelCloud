@@ -366,11 +366,11 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /** The editor, identical across workspaces: dev server here, built files later. */
     private redirectToPortal(res: ServerResponse): void {
         res.writeHead(302, { Location: requireEnv('PORTAL_URL'), 'Cache-Control': 'no-store' }).end();
     }
 
+    /** The editor, identical across workspaces: dev server here, built files later. */
     private serveFrontend(req: IncomingMessage, res: ServerResponse): void {
         const origin = process.env.FRONTEND_ORIGIN;
 

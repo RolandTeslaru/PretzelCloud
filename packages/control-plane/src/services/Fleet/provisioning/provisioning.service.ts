@@ -117,6 +117,9 @@ export class ProvisioningService {
             publicKey:    JSON.stringify(await this.workspaceTokenIssuer.publicJwk()),
             appOrigin:    Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
             cloudUrl:     requireEnv('PRETZEL_CLOUD_URL'),
+            publicAuthUrl:       requireEnv('GOTRUE_EXTERNAL_URL'),
+            publicCloudUrl:      requireEnv('PORTAL_URL'),
+            sessionCookieDomain: Fleet.Hostname.Host.getCookieDomain(),
         };
     }
 

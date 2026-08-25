@@ -59,6 +59,9 @@ export namespace Hostname {
 
             return `${scheme}://${host}`
         }
+
+        /** The parent the portal and every workspace share, so one cookie covers them. */
+        export const getCookieDomain = (): string => getDomain().split(':')[0]!
     }
     export type Host = z.infer<typeof Host.Schema>
 

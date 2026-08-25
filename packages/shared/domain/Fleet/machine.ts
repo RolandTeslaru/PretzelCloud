@@ -95,6 +95,12 @@ export namespace Machine {
             cloudToken: string
             /** Where the cloud is reached from inside the fleet. */
             cloudUrl:   string
+            /** Where a browser reaches the issuer. */
+            publicAuthUrl: string
+            /** Where a browser reaches the portal. */
+            publicCloudUrl: string
+            /** The parent the session cookie is scoped to. */
+            sessionCookieDomain: string
         }
 
         /** The env every role receives. Each variant adds its own on top. */
@@ -112,6 +118,10 @@ export namespace Machine {
             CORS_ORIGIN:                inputs.appOrigin,
             // Every route the workspace asks of the cloud hangs off this.
             PRETZEL_CLOUD_URL:          inputs.cloudUrl,
+            // Placed on the page it serves, rather than used by the machine.
+            PUBLIC_AUTH_URL:              inputs.publicAuthUrl,
+            PUBLIC_CLOUD_URL:             inputs.publicCloudUrl,
+            PUBLIC_SESSION_COOKIE_DOMAIN: inputs.sessionCookieDomain,
         })
 
         /**
