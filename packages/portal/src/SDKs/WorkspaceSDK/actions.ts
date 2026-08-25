@@ -1,4 +1,4 @@
-import { Fleet, Workspace } from '@pretzel-cloud/shared/domain'
+import { Workspace } from '@pretzel-cloud/shared/domain'
 import { api } from '../api'
 import type { WorkspaceSDKImpl } from './sdk'
 

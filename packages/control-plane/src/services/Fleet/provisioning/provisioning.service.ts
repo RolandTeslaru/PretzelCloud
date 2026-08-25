@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
 import { ClusterService } from '../cluster/cluster.service';
 import { WorkspaceSecretsService } from '../WorkspaceSecrets/workspace-secrets.service';
 import { HardwareService } from '../Hardware/hardware.service';
@@ -37,8 +38,8 @@ export class ProvisioningService {
         // The workspace decides what its database and role are called; the
         // cluster service only creates what it is told to.
         const spec = {
-            databaseName: Workspace.getDatabaseName(workspaceId),
-            roleName:     Workspace.getRoleName(workspaceId),
+            databaseName: Provisioning.getDatabaseName(workspaceId),
+            roleName:     Provisioning.getRoleName(workspaceId),
         };
 
         const databaseUrl = await this.step('database', () => this.cluster.createDatabase(spec));
@@ -129,8 +130,8 @@ export class ProvisioningService {
         await this.secrets.delete(workspaceId);
 
         await this.cluster.dropDatabase({
-            databaseName: Workspace.getDatabaseName(workspaceId),
-            roleName:     Workspace.getRoleName(workspaceId),
+            databaseName: Provisioning.getDatabaseName(workspaceId),
+            roleName:     Provisioning.getRoleName(workspaceId),
         });
     }
 

@@ -1,8 +1,6 @@
 import { z } from "zod"
 import type { AxiosInstance } from "axios"
 import { User } from "../User"
-import { Cluster } from "../Fleet/cluster"
-import { Machine as MachineMod } from "../Fleet/machine"
 import { WorkspaceId, createId as createWorkspaceId } from "./ids"
 import * as SubdomainMod from "./subdomain"
 import { Realtime } from "../Realtime"
@@ -61,31 +59,10 @@ export namespace Workspace {
     /** Everything above free. Paid plans split their compute and may set a subdomain. */
     export const isPaid = (plan: Plan): boolean => plan !== "free"
 
-    /**
-     * The machines a plan's compute is made of. Free runs one — it has a booting
-     * screen by design — and paid splits, so the worker sits on a usage clock.
-     */
-    export const getTopology = (plan: Plan): MachineMod.Role[] =>
-        isPaid(plan) ? ["backend", "worker"] : ["combined"]
-
-    /** What becomes of an idle workspace. Free freezes; staying up is what paid buys. */
-    export const getIdlePolicy = (plan: Plan): "suspend" | "none" =>
-        isPaid(plan) ? "none" : "suspend"
-
 
     export const DisplayName = z.string().trim()
         .min(1, 'Workspace name is required')
         .max(64, 'Workspace name must be at most 64 characters')
-
-    // Derived rather than stored, so nothing can drift and a workspace whose row
-    // is lost is still locatable. Underscores: a uuid's dashes need quoting.
-    const identifier = (id: Id) => id.replace(/-/g, '')
-
-    export const getDatabaseName = (id: Id) =>
-        Cluster.Database.Name.parse(`wspace_${identifier(id)}`)
-
-    export const getRoleName = (id: Id) =>
-        Cluster.Role.Name.parse(`wspace_role_${identifier(id)}`)
 
     export const Schema = z.object({
         id:          Id,

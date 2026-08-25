@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
+import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
 import { FleetDB } from '@/db/fleet';
 import { requireEnv } from '@/db/table';
 import { AbstractHardwareDriver } from '../drivers/driver';
@@ -37,7 +38,7 @@ export class HardwareService {
     ): Promise<void> {
         const hardware = await FleetDB.asService('build hardware', (trx) => this.db.insert(trx, workspaceId, this.driver.kind));
 
-        for (const role of Workspace.getTopology(plan))
+        for (const role of Provisioning.getTopology(plan))
             await this.machines.create(hardware.id, workspaceId, this.specFor(role, workspaceId, inputs));
     }
 
@@ -116,7 +117,7 @@ export class HardwareService {
             throw new Error(`No hardware to convert for ${workspaceId}`);
 
         const current = await this.machines.getAll(workspaceId);
-        const desired = new Set(Workspace.getTopology(plan));
+        const desired = new Set(Provisioning.getTopology(plan));
         const have    = new Set(current.map((machine) => machine.role));
 
         // Outgoing first. The caller has already stopped the hardware, so

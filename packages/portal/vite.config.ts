@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import tailwindcss from '@tailwindcss/vite'
+import { stripBrandLabels } from './plugins/strip-brand-labels'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -44,5 +45,6 @@ export default defineConfig({
             },
         }),
         tailwindcss(),
+        stripBrandLabels('packages/shared'),
     ],
 })

@@ -1,5 +1,6 @@
 import { forwardRef, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
+import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
 import { PortalDB } from '@/db/portal';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { WorkspaceService } from './workspace.service';
@@ -97,7 +98,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
             for (const workspaceId of ids) {
                 const plan = plans.get(workspaceId);
 
-                if (!plan || Workspace.getIdlePolicy(plan) === 'none')
+                if (!plan || Provisioning.getIdlePolicy(plan) === 'none')
                     continue;
 
                 // Stopped or frozen is where its owner or its billing put it.
