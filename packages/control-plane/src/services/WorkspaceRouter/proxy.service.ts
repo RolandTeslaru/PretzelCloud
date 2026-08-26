@@ -17,6 +17,25 @@ const TRUST_HEADER = 'x-trusted-proxy-token';
 /** How long a client is asked to wait while a machine boots. */
 const RETRY_AFTER_S = 3;
 
+// What a browser is given meanwhile. Refreshes itself until the machine answers.
+const STARTING_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Starting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="${RETRY_AFTER_S}">
+<style>
+  :root { color-scheme: light dark }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+         font: 500 14px/1.5 ui-sans-serif, system-ui, sans-serif }
+  p { opacity: .6 }
+</style>
+</head>
+<body><p>Starting this workspace…</p></body>
+</html>
+`;
+
 // Past this the sender's own timeout fires anyway, so it gets the retry.
 const WEBHOOK_WAIT_MS = 10_000;
 
@@ -113,38 +132,31 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             || (req.headers.cookie ?? '').includes(`${SESSION_COOKIE}=`);
     }
 
-    // does the host resolve?         → 404
-    // is it a frontend asset?        → serve, awake or not
-    // is it a control-plane path?    → the control plane answers it, no machine needed
-    // is the workspace switched off? → 402 frozen / 503 stopped
-    // is it out of executions?       → 402 over limit
-    // is there a machine to reach?   → wake, or hold a webhook, or 503
-    //                                → forward
+    /** A browser opening the page, as opposed to anything the page then calls. */
+    private static isPageRequest(req: IncomingMessage): boolean {
+        if (req.method !== 'GET' && req.method !== 'HEAD')
+            return false;
+
+        // Every current browser sends it, and says `document` only on a navigation.
+        if (req.headers['sec-fetch-dest'])
+            return req.headers['sec-fetch-dest'] === 'document';
+
+        return (req.headers.accept ?? '').includes('text/html');
+    }
+
+    // does the host resolve?           → 404
+    // is it a control-plane path?      → the control plane answers it, no machine needed
+    // a page load carrying no session? → the portal
+    // is the workspace switched off?   → the portal, or 402 frozen / 503 stopped
+    // is it out of executions?         → 402 over limit
+    // is the machine asleep or gone?   → wake, or hold a webhook, or ask for a retry
+    //                                  → forward
     private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const resolution = await this.router.resolve(req);
 
         // The hooks hostname serves webhooks and nothing else.
         if (resolution?.kind === 'hooks' && !Router.isWebhookPath(req.url)) {
             res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found\n');
-            return;
-        }
-
-        // Served whether or not the machine is awake, so a booting screen renders.
-        // A signed-in visitor also starts it here, so the boot overlaps the
-        // download rather than beginning at the first request that fails.
-        if (resolution && Router.isSiloPath(req.url) === false) {
-            // Accounts live in the portal, so an unidentified visitor is sent
-            // there rather than handed a workspace's own sign-in page.
-            if (!ProxyService.hasCredential(req)) {
-                this.redirectToPortal(res);
-
-                return;
-            }
-
-            if (Workspace.isWakeable(resolution.lifecycleState))
-                this.wake(resolution);
-
-            this.serveFrontend(req, res);
             return;
         }
 
@@ -160,10 +172,23 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        // Accounts live in the portal, so an unidentified visitor is sent there
+        // rather than handed a workspace's own sign-in page.
+        if (ProxyService.isPageRequest(req) && !ProxyService.hasCredential(req)) {
+            this.redirectToPortal(res);
+
+            return;
+        }
+
         // Turned off rather than parked: nothing arriving may bring it back, and
         // which route it asked for makes no difference.
         if (!Workspace.acceptsTraffic(resolution.lifecycleState)) {
-            this.refuseStoppedOrFrozen(res, resolution);
+            // A person gets the workspace's card, which says why; a program gets
+            // the reason in the shape it already reads errors in.
+            if (ProxyService.isPageRequest(req))
+                this.redirectToPortal(res);
+            else
+                this.refuseStoppedOrFrozen(res, resolution);
 
             return;
         }
@@ -175,7 +200,9 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        if (!resolution.target) {
+        // A suspended machine still has an address, so asleep is asked about
+        // separately: forwarding into one hangs until the proxy gives up.
+        if (!resolution.target || Workspace.isWakeable(resolution.lifecycleState)) {
             // A webhook URL is itself the credential; anything else has to carry
             // one, or a stranger who knows the hostname could spend a boot.
             if (!Router.isWebhookPath(req.url) && !ProxyService.hasCredential(req)) {
@@ -190,8 +217,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                 : (this.wake(resolution), null);
 
             if (!target) {
-                res.writeHead(503, { 'Retry-After': String(RETRY_AFTER_S), 'Content-Type': 'text/plain' })
-                   .end('Workspace is starting\n');
+                this.refuseStarting(req, res);
 
                 return;
             }
@@ -370,23 +396,17 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         res.writeHead(302, { Location: requireEnv('PORTAL_URL'), 'Cache-Control': 'no-store' }).end();
     }
 
-    /** The editor, identical across workspaces: dev server here, built files later. */
-    private serveFrontend(req: IncomingMessage, res: ServerResponse): void {
-        const origin = process.env.FRONTEND_ORIGIN;
+    /** Asked to come back once the machine is up; a browser is given a page that does. */
+    private refuseStarting(req: IncomingMessage, res: ServerResponse): void {
+        const headers = { 'Retry-After': String(RETRY_AFTER_S), 'Cache-Control': 'no-store' };
 
-        if (origin) {
-            this.proxy.web(req, res, { target: origin }, (error) => {
-                this.logger.warn(`Frontend origin failed: ${error.message}`);
-
-                if (!res.headersSent)
-                    res.writeHead(502, { 'Content-Type': 'text/plain' }).end('Editor unavailable\n');
-            });
+        if (!ProxyService.isPageRequest(req)) {
+            res.writeHead(503, { ...headers, 'Content-Type': 'text/plain' }).end('Workspace is starting\n');
 
             return;
         }
 
-        res.writeHead(501, { 'Content-Type': 'text/plain' })
-            .end('No editor configured. Set FRONTEND_ORIGIN.\n');
+        res.writeHead(503, { ...headers, 'Content-Type': 'text/html; charset=utf-8' }).end(STARTING_PAGE);
     }
 
     /**

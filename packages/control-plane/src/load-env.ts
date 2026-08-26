@@ -5,4 +5,11 @@ import 'reflect-metadata';
 import dotenv from 'dotenv';
 import * as path from 'node:path';
 
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+const root = (file: string) => path.resolve(__dirname, '../../../', file);
+
+// Loaded first, so its keys win: dotenv never overwrites one already set. A
+// variable given on the command line still beats both, for the same reason.
+if (process.env.ENV_FILE)
+    dotenv.config({ path: root(process.env.ENV_FILE) });
+
+dotenv.config({ path: root('.env') });

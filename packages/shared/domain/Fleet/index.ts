@@ -4,6 +4,7 @@ import * as HardwareMod from "./hardware"
 import * as SecretsMod from "./secrets"
 import * as HostnameMod from "./hostname"
 import * as RuntimeMod from "./runtime"
+import * as DriverMod from "./driver"
 
 // Actual state: what has been materialized for a workspace. Desired state is
 // Workspace, in the portal database. Nothing here can reference it — separate
@@ -17,4 +18,5 @@ export namespace Fleet {
     export import WorkspaceSecrets = SecretsMod.WorkspaceSecrets
     export import Hostname         = HostnameMod.Hostname
     export import WorkspaceRuntime = RuntimeMod.WorkspaceRuntime
+    export import Driver           = DriverMod.Driver
 }

@@ -73,15 +73,19 @@ create table hardware (
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null,
 
-    constraint hardware_driver_check check (driver in ('docker', 'fly'))
+    constraint hardware_driver_check check (driver in ('docker', 'fly')),
+    -- What the machines below point at, so the two cannot disagree.
+    constraint hardware_id_driver_key unique (id, driver)
 );
 
 create table machines (
     id           uuid default gen_random_uuid() not null,
     workspace_id uuid not null,
-    -- The hardware this machine backs. Nullable until provisioning creates the
-    -- hardware row that owns it.
-    hardware_id  uuid,
+    -- The hardware this machine backs, created before it.
+    hardware_id  uuid not null,
+    -- Copied from that hardware so acting on a machine needs no second read. The
+    -- composite key below refuses a row whose driver disagrees with it.
+    driver       text not null,
     external_id  text not null,
     role         text not null,
     size         text not null,
@@ -124,7 +128,7 @@ alter table only workspace_runtime add constraint workspace_runtime_pkey primary
 -- creating a second machine nobody is tracking.
 create unique index hardware_workspace_key on hardware using btree (workspace_id);
 create unique index machines_workspace_role_key on machines using btree (workspace_id, role);
-alter table only machines add constraint machines_hardware_fkey foreign key (hardware_id) references hardware(id) on delete cascade;
+alter table only machines add constraint machines_hardware_driver_fkey foreign key (hardware_id, driver) references hardware(id, driver) on delete cascade;
 
 -- No uniqueness on (workspace_id, kind): a workspace answers at its canonical
 -- host and, on paid plans, an additional custom one. A host still resolves to

@@ -1,0 +1,246 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
+import { requireEnv } from '@/db/table';
+import { AbstractHardwareDriver } from './driver';
+
+const API = 'https://api.machines.dev/v1';
+
+// Metadata rather than labels, and keys may not contain dots.
+export const WORKSPACE_METADATA = 'pretzel_workspace';
+export const ROLE_METADATA      = 'pretzel_role';
+
+// The port the workspace image serves on.
+const SERVICE_PORT = 3001;
+
+// Seconds between the stop signal and the kill, matching the image's own bound.
+const STOP_TIMEOUT_SECONDS = 15;
+
+// No `services` block: machines are reached over the private network, so nothing
+// is published and the platform proxy is never in front of one.
+const CHECKS = {
+    serving: {
+        type:         'http',
+        port:         SERVICE_PORT,
+        method:       'GET',
+        path:         '/health',
+        interval:     '5s',
+        timeout:      '3s',
+        grace_period: '45s',
+    },
+};
+
+
+
+type FlyMachine = {
+    id:     string;
+    name:   string;
+    state:  string;
+    checks?: { name: string; status: string }[];
+};
+
+@Injectable()
+export class FlyDriver extends AbstractHardwareDriver {
+
+    readonly kind = 'fly' as const;
+
+    private readonly logger = new Logger(FlyDriver.name);
+
+    // Read on use, not at construction: a deployment that never provisions onto
+    // Fly still holds one of these and must not be made to configure it.
+    private get app(): string {
+        return requireEnv('FLY_APP');
+    }
+
+    private get token(): string {
+        return requireEnv('FLY_API_TOKEN');
+    }
+
+    private get region(): string {
+        return process.env.FLY_REGION ?? 'ams';
+    }
+
+    /**
+     * A macaroon is itself the authorization scheme, so it is sent verbatim.
+     * Older personal access tokens are bearer tokens and are not.
+     */
+    private authorization(): string {
+        return this.token.startsWith('FlyV1') ? this.token : `Bearer ${this.token}`;
+    }
+
+    private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+        const response = await fetch(`${API}/apps/${this.app}${path}`, {
+            method,
+            headers: {
+                Authorization:  this.authorization(),
+                'Content-Type': 'application/json',
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
+        });
+
+        if (!response.ok)
+            throw new Error(`Fly ${method} ${path} failed: ${response.status} ${await response.text()}`);
+
+        return response.status === 204 ? undefined as T : await response.json() as T;
+    }
+
+    /** Null where the target may legitimately be gone; anything else propagates. */
+    private async callTolerating404<T>(method: string, path: string, body?: unknown): Promise<T | null> {
+        try {
+            return await this.call<T>(method, path, body);
+        }
+        catch (error) {
+            if (error instanceof Error && / 404 /.test(error.message))
+                return null;
+
+            throw error;
+        }
+    }
+
+    private toState(state: string): Fleet.Machine.State {
+        if (state === 'started')
+            return 'running';
+
+        // Reported while the snapshot is still being taken, and it resumes from
+        // there — a stop it is not.
+        if (state === 'suspended' || state === 'suspending')
+            return 'suspended';
+
+        if (state === 'created' || state === 'starting' || state === 'replacing')
+            return 'creating';
+
+        if (state === 'destroyed' || state === 'destroying')
+            return 'destroyed';
+
+        return 'stopped';
+    }
+
+    /** `shared-1x-512` and `performance-2x-4096` are cpu kind, count and memory. */
+    private toGuest(size: string): { cpu_kind: string; cpus: number; memory_mb: number } {
+        const parsed = /^(shared|performance)-(\d+)x-(\d+)$/.exec(size);
+
+        if (!parsed)
+            throw new Error(`Unrecognised machine size: ${size}`);
+
+        return { cpu_kind: parsed[1]!, cpus: Number(parsed[2]), memory_mb: Number(parsed[3]) };
+    }
+
+    private async findByName(name: string): Promise<FlyMachine | undefined> {
+        const machines = await this.call<FlyMachine[]>('GET', '/machines');
+
+        return machines.find((machine) => machine.name === name);
+    }
+
+    async create(options: AbstractHardwareDriver.CreateOptions): Promise<AbstractHardwareDriver.Handle> {
+        // Idempotency: the name is derived from the workspace id, so a re-run
+        // finds what the killed run left behind.
+        const existing = await this.findByName(options.name);
+
+        if (existing) {
+            this.logger.log(`Reusing ${options.name}`);
+
+            return { resourceId: Fleet.Machine.ResourceId.parse(existing.id), state: this.toState(existing.state) };
+        }
+
+        const created = await this.call<FlyMachine>('POST', '/machines', {
+            name:   options.name,
+            region: this.region,
+            config: {
+                image:    options.image,
+                env:      options.env,
+                guest:    this.toGuest(options.size),
+                checks:   CHECKS,
+                restart:  { policy: 'on-failure' },
+                metadata: {
+                    [WORKSPACE_METADATA]: options.workspaceId,
+                    [ROLE_METADATA]:      options.role,
+                },
+            },
+        });
+
+        this.logger.log(`Created ${options.name}`);
+
+        return { resourceId: Fleet.Machine.ResourceId.parse(created.id), state: this.toState(created.state) };
+    }
+
+    /**
+     * The private name the platform gives every machine. Resolvable only from
+     * inside the organization's network, which is where the router runs.
+     */
+    async address(resourceId: Fleet.Machine.ResourceId): Promise<URL | null> {
+        const machine = await this.callTolerating404<FlyMachine>('GET', `/machines/${resourceId}`);
+
+        if (!machine)
+            return null;
+
+        const state = this.toState(machine.state);
+
+        // A stopped machine has no address; a suspended one answers as soon as
+        // it is resumed, and the caller decides whether to.
+        if (state === 'stopped' || state === 'destroyed')
+            return null;
+
+        return new URL(`http://${resourceId}.vm.${this.app}.internal:${SERVICE_PORT}`);
+    }
+
+    async start(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.call('POST', `/machines/${resourceId}/start`);
+    }
+
+    async stop(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.call('POST', `/machines/${resourceId}/stop`, {
+            signal:  'SIGTERM',
+            timeout: `${STOP_TIMEOUT_SECONDS}s`,
+        });
+    }
+
+    // Memory is snapshotted and the machine stays scheduled nowhere, so a resume
+    // skips the boot.
+    async suspend(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.call('POST', `/machines/${resourceId}/suspend`);
+    }
+
+    // The same call that starts a stopped one; the platform knows which it is.
+    async resume(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.start(resourceId);
+    }
+
+    async destroy(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.callTolerating404('DELETE', `/machines/${resourceId}?force=true`);
+    }
+
+    async status(resourceId: Fleet.Machine.ResourceId): Promise<Fleet.Machine.State> {
+        const machine = await this.callTolerating404<FlyMachine>('GET', `/machines/${resourceId}`);
+
+        // Gone from the platform is the terminal state, not an error.
+        return machine ? this.toState(machine.state) : 'destroyed';
+    }
+
+    async health(resourceId: Fleet.Machine.ResourceId): Promise<AbstractHardwareDriver.Health> {
+        const machine = await this.callTolerating404<FlyMachine>('GET', `/machines/${resourceId}`);
+
+        if (!machine?.checks?.length)
+            return 'unknown';
+
+        if (machine.checks.some((check) => check.status === 'critical'))
+            return 'unhealthy';
+
+        return machine.checks.every((check) => check.status === 'passing') ? 'healthy' : 'starting';
+    }
+
+    async findByWorkspace(workspaceId: Workspace.Id): Promise<AbstractHardwareDriver.Handle[]> {
+        const machines = await this.call<FlyMachine[]>('GET', `/machines?metadata.${WORKSPACE_METADATA}=${workspaceId}`);
+
+        return machines.map((machine) => ({
+            resourceId: Fleet.Machine.ResourceId.parse(machine.id),
+            state:      this.toState(machine.state),
+        }));
+    }
+
+    // Machine names are not registered; the id is the only name that resolves.
+    async getInternalHostForMachine(resourceId: Fleet.Machine.ResourceId): Promise<string> {
+        return `${resourceId}.vm.${this.app}.internal`;
+    }
+
+    /** Nothing beyond the machines: the network belongs to the app, not a workspace. */
+    async destroyScope(): Promise<void> {}
+}

@@ -28,9 +28,6 @@ export class Router {
         private readonly activity: SiloActivityService,
     ) {}
 
-    /** Paths the workspace answers; everything else is the editor. */
-    static readonly SILO_PREFIXES = ['/api', '/socket', '/webhook', '/health'];
-
     /** Answered by the control plane even on a workspace hostname. */
     static readonly CONTROL_PLANE_PREFIXES = ['/api/session'];
 
@@ -54,10 +51,6 @@ export class Router {
 
         return Router.METERED.some((route) =>
             (route.method === null || route.method === method) && route.pattern.test(url));
-    }
-
-    static isSiloPath(url: string | undefined): boolean {
-        return Router.matches(url, Router.SILO_PREFIXES);
     }
 
     static isControlPlanePath(url: string | undefined): boolean {

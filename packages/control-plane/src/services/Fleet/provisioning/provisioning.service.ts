@@ -14,13 +14,7 @@ export class ProvisioningError extends Error {
     }
 }
 
-/**
- * Materializes a workspace. The caller has already written the intent — a
- * `workspaces` row and its owner — so every step here is re-runnable under the
- * same id and no-ops until it reaches the one that did not finish.
- *
- * Nothing unwinds on failure. The caller decides whether to retry or tear down.
- */
+/** Materializes an already-written workspace; every step re-runs under the same id and nothing unwinds on failure. */
 @Injectable()
 export class ProvisioningService {
 
@@ -35,107 +29,95 @@ export class ProvisioningService {
     ) {}
 
     async provision(workspaceId: Workspace.Id, owner: User, plan: Workspace.Plan): Promise<void> {
-        // The workspace decides what its database and role are called; the
-        // cluster service only creates what it is told to.
-        const spec = {
-            databaseName: Provisioning.getDatabaseName(workspaceId),
-            roleName:     Provisioning.getRoleName(workspaceId),
-        };
+        // The workspace names its database and role; the cluster only creates what it is told.
+        const databaseName = Provisioning.getDatabaseName(workspaceId);
+        const dbRoleName   = Provisioning.getRoleName(workspaceId);
 
-        const databaseUrl = await this.step('database', () => this.cluster.createDatabase(spec));
+        const databaseUrl = await this.step('database', () => this.cluster.createDatabase(databaseName, dbRoleName));
 
         await this.step('secrets', () => this.secrets.ensure(workspaceId, databaseUrl));
 
-        const env = await this.step('secrets', () => this.secrets.get(workspaceId));
+        const secrets = await this.step('secrets', () => this.secrets.get(workspaceId));
 
-        if (!env)
+        if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
 
-        const specInputs = await this.specInputs(workspaceId, owner.id, env);
+        const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, owner.id, secrets);
 
-        await this.step('hardware', () => this.hardware.build(workspaceId, plan, specInputs));
+        await this.step('hardware', () => this.hardware.build(workspaceId, plan, baseEnvKeys, backendEnvKeys));
 
         // Before hostnames: a machine that never serves should not be published.
         await this.step('health', () => this.hardware.awaitHealthy(workspaceId));
 
         // After health, which is what says the workspace has run its migrations.
-        await this.step('owner', () => this.cluster.seedOwner(spec.databaseName, owner));
+        await this.step('owner', () => this.cluster.seedOwner(databaseName, owner));
 
         await this.step('hostnames', () => this.hostnames.registerCanonical(workspaceId));
 
         this.logger.log(`Provisioned ${workspaceId}`);
     }
 
-    /**
-     * Moves a workspace's compute to a different plan's topology. The machines
-     * are rebuilt to match; the database is in the cluster, so nothing it holds
-     * is touched.
-     */
+    /** Rebuilds the machines for another plan's topology; the database is untouched. */
     async convert(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
-        const env = await this.secrets.get(workspaceId);
+        const secrets = await this.secrets.get(workspaceId);
 
-        if (!env)
+        if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
-        const specInputs = await this.specInputs(workspaceId, ownerId, env);
-
-        // No health wait here: the caller stops the hardware around a conversion
-        // and starts it after, so nothing is serving until it does.
-        await this.step('convert', () => this.hardware.convertTo(workspaceId, plan, specInputs));
+        const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, ownerId, secrets);
+        // No health wait: the caller stops the hardware around a conversion and starts it after.
+        await this.step('convert', () => this.hardware.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
     /** Rebuilds a workspace's machines from the current spec, keeping its data. */
     async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
-        const env = await this.secrets.get(workspaceId);
+        const secrets = await this.secrets.get(workspaceId);
 
-        if (!env)
+        if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
-        const specInputs = await this.specInputs(workspaceId, ownerId, env);
-
-        // No health wait here: the caller stops the hardware around a rebuild
-        // and starts it after, so nothing is serving until it does.
-        await this.step('rebuild', () => this.hardware.rebuild(workspaceId, plan, specInputs));
+        const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, ownerId, secrets);
+        // No health wait: the caller stops the hardware around a rebuild and starts it after.
+        await this.step('rebuild', () => this.hardware.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
-    /**
-     * What a machine is built from, shared by the first build and later
-     * conversions. Which image and size each role runs is the hardware's own
-     * decision, so nothing here names one.
-     */
-    private async specInputs(
+    /** The two env shapes a machine is built from; both need what only provisioning knows — owner, issuer, key material. */
+    private async getMachineEnvKeys(
         workspaceId: Workspace.Id,
         ownerId:     User.Id,
-        env:         Fleet.WorkspaceSecrets.MachineEnv,
-    ): Promise<Fleet.Machine.Spec.Inputs> {
+        secrets:     Fleet.WorkspaceSecrets.MachineEnv,
+    ): Promise<{ baseEnvKeys: Fleet.Machine.EnvKeys.Base; backendEnvKeys: Fleet.Machine.EnvKeys.Backend }> {
         return {
-            ownerId,
-            cloudToken: await this.secrets.getCloudToken(workspaceId) ?? '',
-            secrets:      env,
-            authUrl:      requireEnv('WORKSPACE_AUTH_URL'),
-            tokenIssuer:  this.workspaceTokenIssuer.issuer(),
-            publicKey:    JSON.stringify(await this.workspaceTokenIssuer.publicJwk()),
-            appOrigin:    Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
-            cloudUrl:     requireEnv('PRETZEL_CLOUD_URL'),
-            publicAuthUrl:       requireEnv('GOTRUE_EXTERNAL_URL'),
-            publicCloudUrl:      requireEnv('PORTAL_URL'),
-            sessionCookieDomain: Fleet.Hostname.Host.getCookieDomain(),
+            baseEnvKeys: Fleet.Machine.EnvKeys.Base.parse(secrets),
+
+            backendEnvKeys: Fleet.Machine.EnvKeys.Backend.parse({
+                ...secrets,
+                PRETZEL_CLOUD_TOKEN:        await this.secrets.getCloudToken(workspaceId) ?? '',
+                AUTH_URL:                   requireEnv('WORKSPACE_AUTH_URL'),
+                TOKEN_ISSUER:               this.workspaceTokenIssuer.issuer(),
+                WORKSPACE_TOKEN_PUBLIC_KEY: JSON.stringify(await this.workspaceTokenIssuer.publicJwk()),
+                WORKSPACE_OWNER_ID:         ownerId,
+                CORS_ORIGIN:                Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
+                PRETZEL_CLOUD_URL:          requireEnv('PRETZEL_CLOUD_URL'),
+                PUBLIC_AUTH_URL:            requireEnv('GOTRUE_EXTERNAL_URL'),
+                PUBLIC_CLOUD_URL:           requireEnv('PORTAL_URL'),
+                PUBLIC_SESSION_COOKIE_DOMAIN: Fleet.Hostname.Host.getCookieDomain(),
+            }),
         };
     }
 
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
-        // Stopped before removed: removal is a kill, and a killed machine
-        // abandons its customer database connections instead of closing them.
+        // Stopped before removed: a killed machine abandons its database connections instead of closing them.
         await this.hardware.stopAll(workspaceId);
         await this.hardware.destroy(workspaceId);
         await this.hostnames.delete(workspaceId);
         await this.secrets.delete(workspaceId);
 
-        await this.cluster.dropDatabase({
-            databaseName: Provisioning.getDatabaseName(workspaceId),
-            roleName:     Provisioning.getRoleName(workspaceId),
-        });
+        const databaseName = Provisioning.getDatabaseName(workspaceId)
+        const dbRoleName = Provisioning.getRoleName(workspaceId)
+
+        await this.cluster.dropDatabase(databaseName, dbRoleName);
     }
 
     private async step<T>(name: string, fn: () => Promise<T>): Promise<T> {

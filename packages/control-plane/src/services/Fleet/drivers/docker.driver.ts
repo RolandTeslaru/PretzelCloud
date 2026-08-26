@@ -149,7 +149,7 @@ export class DockerDriver extends AbstractHardwareDriver {
 
             this.logger.log(`Reusing ${options.name}`);
 
-            return { externalId: Fleet.Machine.ExternalId.parse(id), state: this.toState(status!) };
+            return { resourceId: Fleet.Machine.ResourceId.parse(id), state: this.toState(status!) };
         }
 
         const network = await this.ensureNetwork(options.workspaceId);
@@ -168,26 +168,26 @@ export class DockerDriver extends AbstractHardwareDriver {
             options.image,
         ]));
 
-        const externalId = Fleet.Machine.ExternalId.parse(created);
+        const resourceId = Fleet.Machine.ResourceId.parse(created);
 
         // A second network, so the workspace resolves `postgres` and `gotrue` by
         // name. `docker run` takes only one, hence the separate attach.
         const infra = process.env.FLEET_INFRA_NETWORK;
 
         if (infra)
-            await this.dockerTolerating(ALREADY_ATTACHED, ['network', 'connect', infra, externalId]);
+            await this.dockerTolerating(ALREADY_ATTACHED, ['network', 'connect', infra, resourceId]);
 
         this.logger.log(`Created ${options.name}`);
 
-        return { externalId, state: 'running' };
+        return { resourceId, state: 'running' };
     }
 
     /**
      * The host port Docker assigned, which is chosen at `create` and changes if
      * the container is recreated — so it is read each time rather than stored.
      */
-    async address(externalId: Fleet.Machine.ExternalId): Promise<URL | null> {
-        const published = await this.dockerTolerating(NOT_PUBLISHED, ['port', externalId, String(SERVICE_PORT)]);
+    async address(resourceId: Fleet.Machine.ResourceId): Promise<URL | null> {
+        const published = await this.dockerTolerating(NOT_PUBLISHED, ['port', resourceId, String(SERVICE_PORT)]);
 
         if (!published)
             return null;
@@ -200,40 +200,40 @@ export class DockerDriver extends AbstractHardwareDriver {
         return port ? new URL(`http://127.0.0.1:${port}`) : null;
     }
 
-    async start(externalId: Fleet.Machine.ExternalId): Promise<void> {
-        await this.docker(['start', externalId]);
+    async start(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.docker(['start', resourceId]);
     }
 
-    async stop(externalId: Fleet.Machine.ExternalId): Promise<void> {
+    async stop(resourceId: Fleet.Machine.ResourceId): Promise<void> {
         // Also passed here, not just at create: machines made before the
         // container-level setting existed still carry the daemon's default.
-        await this.docker(['stop', '--timeout', String(STOP_TIMEOUT_SECONDS), externalId]);
+        await this.docker(['stop', '--timeout', String(STOP_TIMEOUT_SECONDS), resourceId]);
     }
 
     // The cgroup freezer: processes stop being scheduled and stay resident, the
     // closest Docker comes to a VM snapshot.
-    async suspend(externalId: Fleet.Machine.ExternalId): Promise<void> {
-        await this.docker(['pause', externalId]);
+    async suspend(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.docker(['pause', resourceId]);
     }
 
-    async resume(externalId: Fleet.Machine.ExternalId): Promise<void> {
-        await this.docker(['unpause', externalId]);
+    async resume(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.docker(['unpause', resourceId]);
     }
 
-    async destroy(externalId: Fleet.Machine.ExternalId): Promise<void> {
-        await this.dockerTolerating(ABSENT, ['rm', '-f', externalId]);
+    async destroy(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+        await this.dockerTolerating(ABSENT, ['rm', '-f', resourceId]);
     }
 
-    async status(externalId: Fleet.Machine.ExternalId): Promise<Fleet.Machine.State> {
-        const status = await this.dockerTolerating(ABSENT, ['inspect', '-f', '{{.State.Status}}', externalId]);
+    async status(resourceId: Fleet.Machine.ResourceId): Promise<Fleet.Machine.State> {
+        const status = await this.dockerTolerating(ABSENT, ['inspect', '-f', '{{.State.Status}}', resourceId]);
 
         // Gone from the daemon is the terminal state, not an error.
         return status ? this.toState(status) : 'destroyed';
     }
 
-    async health(externalId: Fleet.Machine.ExternalId): Promise<AbstractHardwareDriver.Health> {
+    async health(resourceId: Fleet.Machine.ResourceId): Promise<AbstractHardwareDriver.Health> {
         const status = await this.dockerTolerating(ABSENT, [
-            'inspect', '-f', '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', externalId,
+            'inspect', '-f', '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', resourceId,
         ]);
 
         if (status === 'healthy' || status === 'starting' || status === 'unhealthy')
@@ -254,12 +254,19 @@ export class DockerDriver extends AbstractHardwareDriver {
 
         return output.split('\n').map((line) => {
             const [id, state] = line.split('|');
-            return { externalId: Fleet.Machine.ExternalId.parse(id), state: this.toState(state!) };
+            return { resourceId: Fleet.Machine.ResourceId.parse(id), state: this.toState(state!) };
         });
     }
 
-    /** Removes the per-workspace network once its containers are gone. */
-    async destroyNetwork(workspaceId: Workspace.Id): Promise<void> {
+    // The container name, which the workspace network's own resolver answers for.
+    async getInternalHostForMachine(resourceId: Fleet.Machine.ResourceId): Promise<string> {
+        const name = await this.docker(['inspect', '-f', '{{.Name}}', resourceId]);
+
+        return name.replace(/^\//, '');
+    }
+
+    /** The per-workspace network, removed once its containers are gone. */
+    async destroyScope(workspaceId: Workspace.Id): Promise<void> {
         await this.dockerTolerating(ABSENT, ['network', 'rm', this.networkName(workspaceId)]);
     }
 }

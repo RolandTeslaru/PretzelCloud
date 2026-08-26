@@ -6,11 +6,6 @@ import { WorkspaceDB } from '@/db/workspace';
 
 const Cluster = Fleet.Cluster;
 
-export type DatabaseSpec = {
-    databaseName: Fleet.Cluster.Database.Name;
-    roleName:     Fleet.Cluster.Role.Name;
-};
-
 /**
  * A Postgres cluster: creates a database with a single role that may reach it,
  * and drops them again.
@@ -106,7 +101,10 @@ export class ClusterService {
      * Idempotent. A re-run against a half-created pair resets the password and
      * returns a usable connection URL rather than failing.
      */
-    async createDatabase({ databaseName, roleName }: DatabaseSpec): Promise<Fleet.Cluster.Database.ConnectionURL> {
+    async createDatabase(
+        databaseName: Fleet.Cluster.Database.Name,
+        roleName:     Fleet.Cluster.Role.Name,
+    ): Promise<Fleet.Cluster.Database.ConnectionURL> {
         const password = Cluster.Role.Password.create();
 
         await this.admin(async (client) => {
@@ -141,7 +139,10 @@ export class ClusterService {
     }
 
     /** Idempotent. Open sessions are closed first — CONNECT is checked at connect time only. */
-    async dropDatabase({ databaseName, roleName }: DatabaseSpec): Promise<void> {
+    async dropDatabase(
+        databaseName: Fleet.Cluster.Database.Name,
+        roleName:     Fleet.Cluster.Role.Name,
+    ): Promise<void> {
         await this.admin(async (client) => {
             await client.query(
                 'select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()',

@@ -1,6 +1,7 @@
 import z from "zod";
 import { WorkspaceId } from "../Workspace/ids";
 import { Machine } from "./machine";
+import { Driver as DriverSchema } from "./driver";
 
 /**
  * A workspace's compute, agnostic to how many machines back it. One workspace
@@ -16,10 +17,9 @@ export namespace Hardware {
     export const Id = z.uuid().brand("Fleet.Hardware.Id")
     export type  Id = z.infer<typeof Id>
 
-    // The substrate a workspace's machines all run on. One per hardware — a
-    // workspace never mixes a Docker backend with a Fly worker.
-    export const Driver = z.enum(["docker", "fly"])
-    export type  Driver = z.infer<typeof Driver>
+    // One per hardware — a workspace never mixes a Docker backend with a Fly worker.
+    export const Driver = DriverSchema
+    export type  Driver = DriverSchema
 
     export const Schema = z.object({
         id:          Id,

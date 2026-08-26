@@ -47,7 +47,8 @@ export class MachineDatabase {
     insert(trx: Trx, values: {
         workspace_id: Workspace.Id;
         hardware_id:  Fleet.Hardware.Id;
-        external_id:  Fleet.Machine.ExternalId;
+        driver:       Fleet.Driver;
+        external_id:  Fleet.Machine.ResourceId;
         role:         Fleet.Machine.Role;
         size:         string;
         state:        Fleet.Machine.State;
@@ -59,7 +60,7 @@ export class MachineDatabase {
             // rather than creating a second machine.
             .onConflict((oc) => oc
                 .columns(['workspace_id', 'role'])
-                .doUpdateSet({ external_id: values.external_id, state: values.state, hardware_id: values.hardware_id }))
+                .doUpdateSet({ external_id: values.external_id, state: values.state, hardware_id: values.hardware_id, driver: values.driver }))
             .execute();
     }
 

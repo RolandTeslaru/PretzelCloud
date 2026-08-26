@@ -12,13 +12,18 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 // this project root.
 const standardUi = path.resolve(here, '../../../PretzelGraph/packages/standard-ui')
 
+// Overridable so a second control plane can be developed against without
+// moving the one this normally talks to.
+const CONTROL_PLANE_PORT = process.env.CONTROL_PLANE_PORT ?? '4000';
+const PORTAL_PORT        = Number(process.env.PORTAL_PORT ?? 5174);
+
 export default defineConfig({
     envDir: '../../',
     server: {
-        port: 5174,
+        port: PORTAL_PORT,
         proxy: {
-            '/api': { target: 'http://localhost:4000', changeOrigin: true },
-            '/socket': { target: 'ws://localhost:4000', ws: true },
+            '/api': { target: `http://localhost:${CONTROL_PLANE_PORT}`, changeOrigin: true },
+            '/socket': { target: `ws://localhost:${CONTROL_PLANE_PORT}`, ws: true },
         },
         fs: {
             allow: [here, standardUi],

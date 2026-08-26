@@ -1,12 +1,14 @@
 import { z } from "zod"
 import { WorkspaceId } from "../Workspace/ids"
+import { WorkspaceSecrets } from "./secrets"
+import { Driver } from "./driver"
 
 /**
  * Three identifiers, because three parties name a machine at three different
  * times:
  *
  *   Name        ours, derived from the workspace — known before anything exists
- *   ExternalId  the driver's, handed back by create — known only after
+ *   ResourceId  the driver's, handed back by create — known only after
  *   Id          this table's own row key — assigned on insert, last of all
  *
  * The name is what makes provisioning re-runnable: a run killed between `create`
@@ -47,114 +49,104 @@ export namespace Machine {
      * sibling's address — so they differ in the type rather than by convention:
      * a worker spec cannot carry the credential that reaches the cloud.
      */
+    /**
+     * Exactly what a machine starts with. Built once, above the layer that knows
+     * about roles — the base needs the owner, and nothing under provisioning
+     * knows who that is — then narrowed to the role that will receive it.
+     */
+    export namespace EnvKeys {
+
+        const Secrets = WorkspaceSecrets.MachineEnv
+
+        /** What both processes read, however the workspace is split up. */
+        export const Base = Secrets.pick({
+            WORKSPACE_ID: true,
+            // The worker decrypts a credential before the node that needs it runs.
+            PRETZEL_ENCRYPTION_KEY: true,
+            // The backend starts Redis with it; the worker authenticates with it.
+            REDIS_PASSWORD: true,
+            // How the two prove themselves to each other.
+            WORKER_SERVICE_INTERNAL_TOKEN: true,
+        })
+        export type Base = z.infer<typeof Base>
+
+        /**
+         * Answers HTTP. Everything a workspace holds that is worth stealing is
+         * here, and none of it reaches the role that runs workflow code.
+         */
+        export const Backend = Base.extend({
+            ...Secrets.pick({
+                DATABASE_URL: true,
+                EXECUTION_TOKEN_SIGNING_KEY: true,
+                TRUSTED_PROXY_TOKEN: true,
+            }).shape,
+            /** The issuer as reached from inside the fleet, not the URL a browser is given. */
+            AUTH_URL:                     z.string(),
+            TOKEN_ISSUER:                 z.string(),
+            /** Verifies tokens, cannot mint them. The signing key never leaves the cloud. */
+            WORKSPACE_TOKEN_PUBLIC_KEY:   z.string(),
+            /** Named up front, so ownership is not won by arriving first. */
+            WORKSPACE_OWNER_ID:           z.string(),
+            /** The origin a browser reaches this workspace at. */
+            CORS_ORIGIN:                  z.string(),
+            /** Every route the workspace asks of the cloud hangs off this. */
+            PRETZEL_CLOUD_URL:            z.string(),
+            /** Proves this workspace to the cloud. */
+            PRETZEL_CLOUD_TOKEN:          z.string(),
+            // Placed on the page it serves, rather than used by the machine itself.
+            PUBLIC_AUTH_URL:              z.string(),
+            PUBLIC_CLOUD_URL:             z.string(),
+            PUBLIC_SESSION_COOKIE_DOMAIN: z.string(),
+        })
+        export type Backend = z.infer<typeof Backend>
+
+        /** One container running both, so it holds what the backend holds. */
+        export const Combined = Backend
+        export type  Combined = z.infer<typeof Combined>
+
+        /** Its sibling holds the queue and the API it reports to. */
+        export const Worker = Base.extend({
+            REDIS_HOST: z.string(),
+            REDIS_PORT: z.string(),
+            API_URL:    z.string(),
+        })
+        export type Worker = z.infer<typeof Worker>
+    }
+
+    /**
+     * What a machine is built from, by role. The roles differ in what they are
+     * told, so they differ in the type rather than by convention: a worker spec
+     * cannot carry the credential that reaches the cloud.
+     */
     export namespace Spec {
 
         const Base = z.object({
             image: z.string(),
             size:  z.string(),
-            /** What every machine of a workspace receives, whatever its role. */
-            env:   z.record(z.string(), z.string()),
         })
 
         /** Backend and worker in one machine: nothing to find, nothing to wake. */
         export const Combined = Base.extend({
-            role:         z.literal("combined"),
-            cloudToken: z.string(),
+            role: z.literal("combined"),
+            env:  EnvKeys.Combined,
         })
-        export type  Combined = z.infer<typeof Combined>
+        export type Combined = z.infer<typeof Combined>
 
         /** Answers HTTP and holds the queue. The only role that may call the fleet. */
         export const Backend = Base.extend({
-            role:         z.literal("backend"),
-            cloudToken: z.string(),
+            role: z.literal("backend"),
+            env:  EnvKeys.Backend,
         })
         export type Backend = z.infer<typeof Backend>
 
         /** Drains the queue on its sibling, and never holds a fleet credential. */
         export const Worker = Base.extend({
-            role:        z.literal("worker"),
-            /** Where the backend is reached — the queue and the API are both there. */
-            backendHost: z.string(),
+            role: z.literal("worker"),
+            env:  EnvKeys.Worker,
         })
         export type Worker = z.infer<typeof Worker>
 
         export const Schema = z.discriminatedUnion("role", [Combined, Backend, Worker])
-
-        /** What the fleet supplies; everything else is derived from the workspace. */
-        export type Inputs = {
-            ownerId:     string
-            /** The workspace's own secrets, as its machines receive them. */
-            secrets:     Record<string, string>
-            authUrl:     string
-            tokenIssuer: string
-            /** Verifies tokens, cannot mint them. */
-            publicKey:   string
-            /** Where a browser reaches this workspace. */
-            appOrigin:   string
-            /** Proves this workspace to the cloud. Never given to a worker. */
-            cloudToken: string
-            /** Where the cloud is reached from inside the fleet. */
-            cloudUrl:   string
-            /** Where a browser reaches the issuer. */
-            publicAuthUrl: string
-            /** Where a browser reaches the portal. */
-            publicCloudUrl: string
-            /** The parent the session cookie is scoped to. */
-            sessionCookieDomain: string
-        }
-
-        /** The env every role receives. Each variant adds its own on top. */
-        export const baseEnv = (inputs: Inputs): Record<string, string> => ({
-            ...inputs.secrets,
-            // The issuer as reached from inside the container, not the URL a
-            // browser is given.
-            AUTH_URL:                   inputs.authUrl,
-            // Verifies, cannot mint. The signing key never leaves the cloud.
-            WORKSPACE_TOKEN_PUBLIC_KEY: inputs.publicKey,
-            TOKEN_ISSUER:               inputs.tokenIssuer,
-            // Names the owner up front, so ownership is not won by arriving first.
-            WORKSPACE_OWNER_ID:         inputs.ownerId,
-            // The origin a browser reaches this workspace at.
-            CORS_ORIGIN:                inputs.appOrigin,
-            // Every route the workspace asks of the cloud hangs off this.
-            PRETZEL_CLOUD_URL:          inputs.cloudUrl,
-            // Placed on the page it serves, rather than used by the machine.
-            PUBLIC_AUTH_URL:              inputs.publicAuthUrl,
-            PUBLIC_CLOUD_URL:             inputs.publicCloudUrl,
-            PUBLIC_SESSION_COOKIE_DOMAIN: inputs.sessionCookieDomain,
-        })
-
-        /**
-         * The environment a machine actually starts with: what every role gets,
-         * plus what this one's own fields say. Exhaustive on purpose — a new
-         * role fails to compile until it says how it is wired.
-         */
-        export const toEnv = (spec: Spec): Record<string, string> => {
-            switch (spec.role) {
-                case "combined":
-                    return {
-                        ...spec.env,
-                        PRETZEL_CLOUD_TOKEN: spec.cloudToken,
-                    };
-
-                case "backend":
-                    return {
-                        ...spec.env,
-                        // Its own credential. Where to spend it is built from
-                        // PRETZEL_CLOUD_URL and the workspace id it already has.
-                        PRETZEL_CLOUD_TOKEN: spec.cloudToken,
-                    };
-
-                case "worker":
-                    return {
-                        ...spec.env,
-                        // Its sibling holds the queue and the API it reports to.
-                        REDIS_HOST: spec.backendHost,
-                        REDIS_PORT: "6379",
-                        API_URL:    `http://${spec.backendHost}:3001`,
-                    };
-            }
-        }
     }
     export type Spec = z.infer<typeof Spec.Schema>
 
@@ -205,8 +197,8 @@ export namespace Machine {
     }
 
     /** The driver's own handle: a Fly machine id, or a Docker container id. */
-    export const ExternalId = z.string().min(1).brand("Fleet.Machine.ExternalId")
-    export type  ExternalId = z.infer<typeof ExternalId>
+    export const ResourceId = z.string().min(1).brand("Fleet.Machine.ResourceId")
+    export type  ResourceId = z.infer<typeof ResourceId>
 
     export namespace Name {
 
@@ -224,8 +216,10 @@ export namespace Machine {
     export const Schema = z.object({
         id:          Id,
         workspaceId: WorkspaceId,
-        hardwareId:  z.uuid().brand("Fleet.Hardware.Id").nullable(),
-        externalId:  ExternalId,
+        hardwareId:  z.uuid().brand("Fleet.Hardware.Id"),
+        /** Copied from its hardware, so acting on this machine needs no second read. */
+        driver:      Driver,
+        resourceId:  ResourceId,
         role:        Role,
         size:        z.string(),
         state:       State,

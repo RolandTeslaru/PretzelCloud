@@ -19,7 +19,7 @@ export namespace Provisioning {
      * The machines a plan's compute is made of. Free runs one — it has a booting
      * screen by design — and paid splits, so the worker sits on a usage clock.
      */
-    export const getTopology = (plan: Workspace.Plan): Machine.Role[] =>
+    export const getMachineRoles = (plan: Workspace.Plan): Machine.Role[] =>
         Workspace.isPaid(plan) ? ["backend", "worker"] : ["combined"]
 
     /** What becomes of an idle workspace. Free freezes; staying up is what paid buys. */

@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { WorkspaceTokenIssuerModule } from '@/services/WorkspaceSession/token-issuer.module';
-import { AbstractHardwareDriver } from './drivers/driver';
-import { DockerDriver } from './drivers/docker.driver';
+import { HardwareDriverRegistry } from './drivers/driver.registry';
 import { ClusterService } from './cluster/cluster.service';
 import { WorkspaceSecretsDatabase } from './WorkspaceSecrets/workspace-secrets.database';
 import { WorkspaceSecretsService } from './WorkspaceSecrets/workspace-secrets.service';
@@ -13,19 +12,10 @@ import { HostnameDatabase } from './Hostname/hostname.database';
 import { HostnameService } from './Hostname/hostname.service';
 import { ProvisioningService } from './provisioning/provisioning.service';
 
-// MACHINE_DRIVER picks the substrate. Everything else in provisioning is the
-// same either way.
-function driverFor(kind: string | undefined): AbstractHardwareDriver {
-    if (kind === 'fly')
-        throw new Error('MACHINE_DRIVER=fly is not implemented yet');
-
-    return new DockerDriver();
-}
-
 @Module({
     imports: [WorkspaceTokenIssuerModule],
     providers: [
-        { provide: AbstractHardwareDriver, useFactory: () => driverFor(process.env.MACHINE_DRIVER) },
+        HardwareDriverRegistry,
         ClusterService,
         WorkspaceSecretsDatabase, WorkspaceSecretsService,
         MachineDatabase, MachineService,
@@ -33,7 +23,7 @@ function driverFor(kind: string | undefined): AbstractHardwareDriver {
         HostnameDatabase, HostnameService,
         ProvisioningService,
     ],
-    // Hardware is the fleet's façade; the router needs the driver's address().
-    exports: [HardwareService, HostnameService, ProvisioningService, AbstractHardwareDriver],
+    // Hardware is the fleet's façade; everything above it goes through one of these.
+    exports: [HardwareService, HostnameService, ProvisioningService],
 })
 export class FleetModule { }
