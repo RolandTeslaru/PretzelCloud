@@ -13,7 +13,7 @@ export const CLOUD_TOKEN_HEADER = 'x-pretzel-cloud-token';
 @Injectable()
 export class SiloAuthGuard implements CanActivate {
 
-    constructor(private readonly permissions: PermissionService) {}
+    constructor(private readonly permissionService: PermissionService) {}
 
     public async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest<Request>();
@@ -28,7 +28,7 @@ export class SiloAuthGuard implements CanActivate {
         if (!workspaceId.success)
             throw new UnauthorizedException('Invalid workspace');
 
-        if (!await this.permissions.doesWorkspaceMatchCloudToken(workspaceId.data, given))
+        if (!await this.permissionService.doesWorkspaceMatchCloudToken(workspaceId.data, given))
             throw new UnauthorizedException('Invalid cloud token');
 
         request.principal = { type: 'silo', workspaceId: workspaceId.data };

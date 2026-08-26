@@ -10,7 +10,9 @@ import { WorkspaceTokenIssuer } from '@/services/WorkspaceSession/token-issuer.s
 
 export class ProvisioningError extends Error {
     constructor(readonly step: string, cause: unknown) {
-        super(`Provisioning failed at ${step}: ${cause instanceof Error ? cause.message : String(cause)}`);
+        // Kept, not just described: the caller decides what to do from the kind
+        // of failure this was, and a message cannot say.
+        super(`Provisioning failed at ${step}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
     }
 }
 
@@ -21,10 +23,10 @@ export class ProvisioningService {
     private readonly logger = new Logger(ProvisioningService.name);
 
     constructor(
-        private readonly cluster:  ClusterService,
-        private readonly secrets:  WorkspaceSecretsService,
-        private readonly hardware: HardwareService,
-        private readonly hostnames: HostnameService,
+        private readonly clusterService:  ClusterService,
+        private readonly workspaceSecretsService:  WorkspaceSecretsService,
+        private readonly hardwareService: HardwareService,
+        private readonly hostnameService: HostnameService,
         private readonly workspaceTokenIssuer: WorkspaceTokenIssuer,
     ) {}
 
@@ -33,52 +35,52 @@ export class ProvisioningService {
         const databaseName = Provisioning.getDatabaseName(workspaceId);
         const dbRoleName   = Provisioning.getRoleName(workspaceId);
 
-        const databaseUrl = await this.step('database', () => this.cluster.createDatabase(databaseName, dbRoleName));
+        const databaseUrl = await this.step('database', () => this.clusterService.createDatabase(databaseName, dbRoleName));
 
-        await this.step('secrets', () => this.secrets.ensure(workspaceId, databaseUrl));
+        await this.step('secrets', () => this.workspaceSecretsService.ensure(workspaceId, databaseUrl));
 
-        const secrets = await this.step('secrets', () => this.secrets.get(workspaceId));
+        const secrets = await this.step('secrets', () => this.workspaceSecretsService.get(workspaceId));
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
 
         const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, owner.id, secrets);
 
-        await this.step('hardware', () => this.hardware.build(workspaceId, plan, baseEnvKeys, backendEnvKeys));
+        await this.step('hardware', () => this.hardwareService.build(workspaceId, plan, baseEnvKeys, backendEnvKeys));
 
         // Before hostnames: a machine that never serves should not be published.
-        await this.step('health', () => this.hardware.awaitHealthy(workspaceId));
+        await this.step('health', () => this.hardwareService.awaitHealthy(workspaceId));
 
         // After health, which is what says the workspace has run its migrations.
-        await this.step('owner', () => this.cluster.seedOwner(databaseName, owner));
+        await this.step('owner', () => this.clusterService.seedOwner(databaseName, owner));
 
-        await this.step('hostnames', () => this.hostnames.registerCanonical(workspaceId));
+        await this.step('hostnames', () => this.hostnameService.registerCanonical(workspaceId));
 
         this.logger.log(`Provisioned ${workspaceId}`);
     }
 
     /** Rebuilds the machines for another plan's topology; the database is untouched. */
     async convert(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
-        const secrets = await this.secrets.get(workspaceId);
+        const secrets = await this.workspaceSecretsService.get(workspaceId);
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
         const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, ownerId, secrets);
         // No health wait: the caller stops the hardware around a conversion and starts it after.
-        await this.step('convert', () => this.hardware.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys));
+        await this.step('convert', () => this.hardwareService.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
     /** Rebuilds a workspace's machines from the current spec, keeping its data. */
     async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
-        const secrets = await this.secrets.get(workspaceId);
+        const secrets = await this.workspaceSecretsService.get(workspaceId);
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
         const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, ownerId, secrets);
         // No health wait: the caller stops the hardware around a rebuild and starts it after.
-        await this.step('rebuild', () => this.hardware.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
+        await this.step('rebuild', () => this.hardwareService.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
     /** The two env shapes a machine is built from; both need what only provisioning knows — owner, issuer, key material. */
@@ -92,7 +94,7 @@ export class ProvisioningService {
 
             backendEnvKeys: Fleet.Machine.EnvKeys.Backend.parse({
                 ...secrets,
-                PRETZEL_CLOUD_TOKEN:        await this.secrets.getCloudToken(workspaceId) ?? '',
+                PRETZEL_CLOUD_TOKEN:        await this.workspaceSecretsService.getCloudToken(workspaceId) ?? '',
                 AUTH_URL:                   requireEnv('WORKSPACE_AUTH_URL'),
                 TOKEN_ISSUER:               this.workspaceTokenIssuer.issuer(),
                 WORKSPACE_TOKEN_PUBLIC_KEY: JSON.stringify(await this.workspaceTokenIssuer.publicJwk()),
@@ -109,15 +111,15 @@ export class ProvisioningService {
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
         // Stopped before removed: a killed machine abandons its database connections instead of closing them.
-        await this.hardware.stopAll(workspaceId);
-        await this.hardware.destroy(workspaceId);
-        await this.hostnames.delete(workspaceId);
-        await this.secrets.delete(workspaceId);
+        await this.hardwareService.stopAll(workspaceId);
+        await this.hardwareService.destroy(workspaceId);
+        await this.hostnameService.delete(workspaceId);
+        await this.workspaceSecretsService.delete(workspaceId);
 
         const databaseName = Provisioning.getDatabaseName(workspaceId)
         const dbRoleName = Provisioning.getRoleName(workspaceId)
 
-        await this.cluster.dropDatabase(databaseName, dbRoleName);
+        await this.clusterService.dropDatabase(databaseName, dbRoleName);
     }
 
     private async step<T>(name: string, fn: () => Promise<T>): Promise<T> {

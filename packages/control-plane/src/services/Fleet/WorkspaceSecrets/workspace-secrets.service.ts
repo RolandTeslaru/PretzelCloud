@@ -11,17 +11,17 @@ import { WorkspaceSecretsDatabase } from './workspace-secrets.database';
 @Injectable()
 export class WorkspaceSecretsService {
 
-    constructor(private readonly db: WorkspaceSecretsDatabase) {}
+    constructor(private readonly workspaceSecretsDatabase: WorkspaceSecretsDatabase) {}
 
     /** Idempotent: an existing row keeps its keys, so a re-run cannot strand ciphertext. */
     async ensure(workspaceId: Workspace.Id, databaseUrl: Fleet.Cluster.Database.ConnectionURL): Promise<void> {
         await FleetDB.asService('ensure workspace secrets', async (trx) => {
-            if (await this.db.exists(trx, workspaceId)) {
-                await this.db.setDatabaseUrl(trx, workspaceId, databaseUrl);
+            if (await this.workspaceSecretsDatabase.exists(trx, workspaceId)) {
+                await this.workspaceSecretsDatabase.setDatabaseUrl(trx, workspaceId, databaseUrl);
                 return;
             }
 
-            await this.db.insert(trx, {
+            await this.workspaceSecretsDatabase.insert(trx, {
                 workspace_id:                workspaceId,
                 database_url:                databaseUrl,
                 // 32 bytes as hex, the shape PRETZEL_ENCRYPTION_KEY requires.
@@ -37,7 +37,7 @@ export class WorkspaceSecretsService {
 
     async get(workspaceId: Workspace.Id): Promise<Fleet.WorkspaceSecrets.MachineEnv | null> {
         return FleetDB.asService('read machine env', async (trx) => {
-            const row = await this.db.read(trx, workspaceId);
+            const row = await this.workspaceSecretsDatabase.read(trx, workspaceId);
 
             return row ? FleetDB.WorkspaceSecrets.toMachineEnv(FleetDB.WorkspaceSecrets.Row.parse(row)) : null;
         });
@@ -50,13 +50,13 @@ export class WorkspaceSecretsService {
      */
     async getCloudToken(workspaceId: Workspace.Id): Promise<string | null> {
         return FleetDB.asService('read backend token', async (trx) => {
-            const row = await this.db.read(trx, workspaceId);
+            const row = await this.workspaceSecretsDatabase.read(trx, workspaceId);
 
             return row ? FleetDB.WorkspaceSecrets.Row.parse(row).cloud_token : null;
         });
     }
 
     async delete(workspaceId: Workspace.Id): Promise<void> {
-        await FleetDB.asService('delete workspace secrets', (trx) => this.db.deleteFor(trx, workspaceId));
+        await FleetDB.asService('delete workspace secrets', (trx) => this.workspaceSecretsDatabase.deleteFor(trx, workspaceId));
     }
 }

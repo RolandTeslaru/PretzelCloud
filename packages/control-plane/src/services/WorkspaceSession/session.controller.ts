@@ -18,7 +18,7 @@ import { WorkspaceTokenIssuer } from './token-issuer.service';
 export class WorkspaceSessionController {
 
     constructor(
-        private readonly tokenIssuer: WorkspaceTokenIssuer,
+        private readonly workspaceTokenIssuer: WorkspaceTokenIssuer,
         private readonly router: Router,
     ) {}
 
@@ -43,7 +43,7 @@ export class WorkspaceSessionController {
         if (!member)
             throw new ForbiddenException('Not a member of this workspace');
 
-        return this.tokenIssuer.mint(principal, resolution.workspaceId);
+        return this.workspaceTokenIssuer.mint(principal, resolution.workspaceId);
     }
 }
 
@@ -55,10 +55,10 @@ export class WorkspaceSessionController {
 @Controller('.well-known')
 export class JwksController {
 
-    constructor(private readonly tokenIssuer: WorkspaceTokenIssuer) {}
+    constructor(private readonly workspaceTokenIssuer: WorkspaceTokenIssuer) {}
 
     @Get('jwks.json')
     async jwks() {
-        return { keys: [await this.tokenIssuer.publicJwk()] };
+        return { keys: [await this.workspaceTokenIssuer.publicJwk()] };
     }
 }

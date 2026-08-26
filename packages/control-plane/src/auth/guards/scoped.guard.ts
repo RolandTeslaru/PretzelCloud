@@ -21,7 +21,7 @@ export class ScopedGuard implements CanActivate {
 
     constructor(
         private readonly reflector: Reflector,
-        private readonly permissions: PermissionService,
+        private readonly permissionService: PermissionService,
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -59,7 +59,7 @@ export class ScopedGuard implements CanActivate {
         if (request.principal?.type !== 'user')
             throw new ForbiddenException('Not authenticated');
 
-        const workspace = await this.permissions.getWorkspaceForMember(request.principal, parsed.data);
+        const workspace = await this.permissionService.getWorkspaceForMember(request.principal, parsed.data);
 
         // Not a member and not existing are the same answer on purpose: a
         // membership probe should not distinguish them.

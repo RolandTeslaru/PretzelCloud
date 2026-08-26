@@ -45,8 +45,8 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
         // Circular by nature: resolving a request records activity, and acting
         // on it drives the same lifecycle the router reads back.
         @Inject(forwardRef(() => WorkspaceService))
-        private readonly workspaces: WorkspaceService,
-        private readonly hardware:   HardwareService,
+        private readonly workspaceService: WorkspaceService,
+        private readonly hardwareService:   HardwareService,
     ) {}
 
     onModuleInit(): void {
@@ -74,14 +74,14 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
 
         this.writtenAt.set(workspaceId, Date.now());
 
-        void this.hardware.touch(workspaceId)
+        void this.hardwareService.touch(workspaceId)
             .catch((error) => this.logger.warn(`Could not record activity for ${workspaceId}: ${error instanceof Error ? error.message : error}`));
     }
 
     /** What has gone quiet long enough to act on, and what to do about it. */
     private async sweep(): Promise<void> {
         try {
-            const seen = await this.hardware.getLastSeen();
+            const seen = await this.hardwareService.getLastSeen();
 
             const idle = seen.filter(({ lastSeenAt }) => Date.now() - lastSeenAt.getTime() >= IDLE_MS);
 
@@ -90,7 +90,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
 
             const ids        = idle.map(({ workspaceId }) => workspaceId);
             const plans      = await this.getPlans(ids);
-            const states     = await this.hardware.getStates(ids);
+            const states     = await this.hardwareService.getStates(ids);
             const lifecycleStates = await this.getLifecycleStates(ids);
 
             const quietFor = new Map(idle.map(({ workspaceId, lastSeenAt }) => [workspaceId, Date.now() - lastSeenAt.getTime()]));
@@ -127,10 +127,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
     private async suspend(workspaceId: Workspace.Id): Promise<void> {
         try {
             // Work is in flight; the backend holds the queue it runs from.
-            if (await this.hardware.hasRunningWorker(workspaceId))
+            if (await this.hardwareService.hasRunningWorker(workspaceId))
                 return;
 
-            await this.workspaces.suspend(workspaceId);
+            await this.workspaceService.suspend(workspaceId);
 
             this.logger.log(`Slept ${workspaceId} after an idle period`);
         }
@@ -142,10 +142,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
     /** Gives the machines back once a workspace has gone a week unused. */
     private async reclaim(workspaceId: Workspace.Id): Promise<void> {
         try {
-            if (await this.hardware.hasRunningWorker(workspaceId))
+            if (await this.hardwareService.hasRunningWorker(workspaceId))
                 return;
 
-            await this.workspaces.reclaimCompute(workspaceId);
+            await this.workspaceService.reclaimCompute(workspaceId);
 
             this.logger.log(`Reclaimed the machines of ${workspaceId} after a week unused`);
         }

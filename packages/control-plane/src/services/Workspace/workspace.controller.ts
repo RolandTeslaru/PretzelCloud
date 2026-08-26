@@ -20,13 +20,13 @@ const API = Workspace.API;
 @UseGuards(UserAuthGuard, ScopedGuard)
 export class WorkspaceController {
 
-    constructor(private readonly workspaces: WorkspaceService) {}
+    constructor(private readonly workspaceService: WorkspaceService) {}
 
     @Get()
     async list(
         @AuthenticatedUser() principal: Principal.User,
     ): Promise<Workspace.API.List.Response> {
-        return { workspaces: await this.workspaces.list(principal) };
+        return { workspaces: await this.workspaceService.list(principal) };
     }
 
     // A database, a role, containers and hostnames per call, with retries.
@@ -36,7 +36,7 @@ export class WorkspaceController {
         @AuthenticatedUser() principal: Principal.User,
         @ZodBody(API.Create.Request) body: Workspace.API.Create.Request,
     ): Promise<Workspace.API.Create.Response> {
-        return { workspace: await this.workspaces.create(principal, body.displayName) };
+        return { workspace: await this.workspaceService.create(principal, body.displayName) };
     }
 
     @Get(':workspaceId')
@@ -56,7 +56,7 @@ export class WorkspaceController {
         @WorkspaceIdParam()  workspaceId: Workspace.Id,
         @ZodBody(API.Rename.Request) body: Workspace.API.Rename.Request,
     ): Promise<Workspace.API.Rename.Response> {
-        await this.workspaces.rename(principal, workspaceId, body.displayName);
+        await this.workspaceService.rename(principal, workspaceId, body.displayName);
 
         return {};
     }
@@ -69,7 +69,7 @@ export class WorkspaceController {
         @WorkspaceScope() workspace: Workspace,
         @ZodBody(API.SetSubdomain.Request) body: Workspace.API.SetSubdomain.Request,
     ): Promise<Workspace.API.SetSubdomain.Response> {
-        await this.workspaces.setSubdomain(principal, workspace, body.subdomain);
+        await this.workspaceService.setSubdomain(principal, workspace, body.subdomain);
 
         return {};
     }
@@ -81,7 +81,7 @@ export class WorkspaceController {
         @WorkspaceScope() workspace: Workspace,
         @ZodBody(API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
     ): Promise<Workspace.API.SetPlan.Response> {
-        await this.workspaces.setPlan(workspace.id, workspace.ownerId, body.plan);
+        await this.workspaceService.setPlan(workspace.id, workspace.ownerId, body.plan);
 
         return {};
     }
@@ -90,7 +90,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     async start(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaces.start(workspaceId);
+        await this.workspaceService.start(workspaceId);
 
         return {};
     }
@@ -99,7 +99,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     async stop(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaces.stop(workspaceId);
+        await this.workspaceService.stop(workspaceId);
 
         return {};
     }
@@ -108,7 +108,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     async suspend(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaces.suspend(workspaceId);
+        await this.workspaceService.suspend(workspaceId);
 
         return {};
     }
@@ -117,7 +117,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     async rebuild(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaces.rebuild(workspace.id, workspace.ownerId, workspace.plan);
+        await this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan);
 
         return {};
     }
@@ -126,7 +126,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     async restart(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaces.restart(workspaceId);
+        await this.workspaceService.restart(workspaceId);
 
         return {};
     }
@@ -139,7 +139,7 @@ export class WorkspaceController {
         @AuthenticatedUser() principal: Principal.User,
         @WorkspaceIdParam() workspaceId: Workspace.Id,
     ): Promise<Workspace.API.Destroy.Response> {
-        await this.workspaces.destroy(principal, workspaceId);
+        await this.workspaceService.destroy(principal, workspaceId);
 
         return {};
     }

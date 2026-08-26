@@ -19,18 +19,18 @@ import { WorkspaceService } from './workspace.service';
 @UseGuards(SiloAuthGuard)
 export class SiloWorkerLifecycleController {
 
-    constructor(private readonly workspaces: WorkspaceService) {}
+    constructor(private readonly workspaceService: WorkspaceService) {}
 
     @Post(':workspaceId/worker/wake')
     async wakeWorker(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Record<string, never>> {
-        await this.workspaces.wakeWorker(workspaceId);
+        await this.workspaceService.wakeWorker(workspaceId);
 
         return {};
     }
 
     @Post(':workspaceId/worker/sleep')
     async sleepWorker(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Record<string, never>> {
-        await this.workspaces.sleepWorker(workspaceId);
+        await this.workspaceService.sleepWorker(workspaceId);
 
         return {};
     }

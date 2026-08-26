@@ -17,7 +17,7 @@ import { EntitlementService } from './entitlement.service';
 @UseGuards(UserAuthGuard, ScopedGuard)
 export class EntitlementController {
 
-    constructor(private readonly entitlements: EntitlementService) {}
+    constructor(private readonly entitlementService: EntitlementService) {}
 
     @Get('workspaces/:workspaceId/executions')
     @Scoped('workspace')
@@ -29,7 +29,7 @@ export class EntitlementController {
         // clock reaches the query.
         const period = Workspace.Usage.getPeriodFromWindow(Workspace.Usage.Window.catch('week').parse(window));
 
-        return { records: await this.entitlements.executions.get(workspace.id, period) };
+        return { records: await this.entitlementService.executions.get(workspace.id, period) };
     }
 
     @Get('workspaces/:workspaceId/executions/series')
@@ -37,8 +37,8 @@ export class EntitlementController {
     public async getUsageSeries(
         @WorkspaceScope() workspace: Workspace,
     ): Promise<Workspace.API.GetUsageSeries.Response> {
-        const period = await this.entitlements.getBillingPeriod(workspace.id);
-        const points = await this.entitlements.executions.getDailyCounts(workspace.id, period);
+        const period = await this.entitlementService.getBillingPeriod(workspace.id);
+        const points = await this.entitlementService.executions.getDailyCounts(workspace.id, period);
 
         return { points: Workspace.Usage.getDailySeries(period, points) };
     }
@@ -48,6 +48,6 @@ export class EntitlementController {
     public async getUsageReport(
         @WorkspaceScope() workspace: Workspace,
     ): Promise<Workspace.API.GetUsageReport.Response> {
-        return this.entitlements.getPeriodUsageReport(workspace.id);
+        return this.entitlementService.getPeriodUsageReport(workspace.id);
     }
 }

@@ -54,7 +54,14 @@ echo "Building $ROLE from $GRAPH at $SHA"
         --image-label "$TAG"
 )
 
-DIGEST=$(docker manifest inspect --verbose "$IMAGE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["Descriptor"]["digest"])')
+# Retried: the tag is not always readable the instant the push returns.
+for attempt in 1 2 3 4 5; do
+    DIGEST=$(docker manifest inspect --verbose "$IMAGE" 2>/dev/null \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["Descriptor"]["digest"])' 2>/dev/null) && break
+    sleep 2
+done
+
+[ -n "${DIGEST:-}" ] || { echo "Pushed $IMAGE, but could not read its digest" >&2; exit 1; }
 
 echo
 echo "Pin this, not the tag — a tag can be pushed over:"

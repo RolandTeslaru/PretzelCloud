@@ -16,7 +16,7 @@ const API = User.API;
 @UseGuards(UserAuthGuard)
 export class UserController {
 
-    constructor(private readonly users: UserService) {}
+    constructor(private readonly userService: UserService) {}
 
     /** Idempotent, so the portal can call it on every boot. */
     @Put()
@@ -24,14 +24,14 @@ export class UserController {
         @AuthenticatedUser() principal: Principal.User,
         @ZodBody(API.Register.Request) body: User.API.Register.Request,
     ): Promise<User.API.Register.Response> {
-        return { user: await this.users.register(principal, body) };
+        return { user: await this.userService.register(principal, body) };
     }
 
     @Get()
     async get(
         @AuthenticatedUser() principal: Principal.User,
     ): Promise<User.API.Get.Response> {
-        return { user: await this.users.get(principal) };
+        return { user: await this.userService.get(principal) };
     }
 
     /** Closes the account. Workspaces are not touched; one still owned refuses. */
@@ -40,7 +40,7 @@ export class UserController {
     async delete(
         @AuthenticatedUser() principal: Principal.User,
     ): Promise<void> {
-        await this.users.delete(principal);
+        await this.userService.delete(principal);
     }
 
     @Patch()
@@ -48,6 +48,6 @@ export class UserController {
         @AuthenticatedUser() principal: Principal.User,
         @ZodBody(API.Update.Request) body: User.API.Update.Request,
     ): Promise<User.API.Update.Response> {
-        return { user: await this.users.update(principal, body) };
+        return { user: await this.userService.update(principal, body) };
     }
 }

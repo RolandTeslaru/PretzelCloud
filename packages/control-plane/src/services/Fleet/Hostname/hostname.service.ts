@@ -6,14 +6,14 @@ import { HostnameDatabase } from './hostname.database';
 @Injectable()
 export class HostnameService {
 
-    constructor(private readonly db: HostnameDatabase) {}
+    constructor(private readonly hostnameDatabase: HostnameDatabase) {}
 
     /** The pair every workspace answers at, derived from its id. Never removed. */
     async registerCanonical(workspaceId: Workspace.Id): Promise<void> {
         const canonical = Workspace.Subdomain.canonical(workspaceId);
 
         await FleetDB.asService('register canonical hostnames', (trx) =>
-            this.db.register(trx, workspaceId, Fleet.Hostname.Host.createAll(canonical)));
+            this.hostnameDatabase.register(trx, workspaceId, Fleet.Hostname.Host.createAll(canonical)));
     }
 
     /**
@@ -26,14 +26,14 @@ export class HostnameService {
         const keep = Fleet.Hostname.Host.createAll(canonical).map((entry) => entry.host);
 
         await FleetDB.asService('set custom hostnames', async (trx) => {
-            await this.db.clearExcept(trx, workspaceId, keep);
+            await this.hostnameDatabase.clearExcept(trx, workspaceId, keep);
 
             if (subdomain)
-                await this.db.register(trx, workspaceId, Fleet.Hostname.Host.createAll(subdomain));
+                await this.hostnameDatabase.register(trx, workspaceId, Fleet.Hostname.Host.createAll(subdomain));
         });
     }
 
     async delete(workspaceId: Workspace.Id): Promise<void> {
-        await FleetDB.asService('delete hostnames', (trx) => this.db.deleteFor(trx, workspaceId));
+        await FleetDB.asService('delete hostnames', (trx) => this.hostnameDatabase.deleteFor(trx, workspaceId));
     }
 }

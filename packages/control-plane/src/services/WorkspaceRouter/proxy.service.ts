@@ -86,9 +86,9 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     constructor(
         private readonly router: Router,
         @Inject(forwardRef(() => WorkspaceService))
-        private readonly workspaces: WorkspaceService,
+        private readonly workspaceService: WorkspaceService,
 
-        private readonly entitlements: EntitlementService,
+        private readonly entitlementService: EntitlementService,
     ) {}
 
     onModuleInit(): void {
@@ -194,7 +194,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }
 
         // Out of executions: refused from memory, before anything is forwarded.
-        if (Router.isMeteredPath(req.method, req.url) && await this.entitlements.isLocked(resolution.workspaceId)) {
+        if (Router.isMeteredPath(req.method, req.url) && await this.entitlementService.isLocked(resolution.workspaceId)) {
             this.refuseOverLimit(res);
 
             return;
@@ -292,7 +292,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             setTimeout(() => resolve(false), WEBHOOK_WAIT_MS).unref();
         });
 
-        const started = this.workspaces.ensureStarted(workspaceId)
+        const started = this.workspaceService.ensureStarted(workspaceId)
             .then(() => true)
             .catch((error) => {
                 this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);
@@ -350,7 +350,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                 this.logger.error(`Counted a run for ${workspaceId} without an execution id (${overflowed ? 'body too large' : encoded ? `encoded ${encoded}` : 'unrecognised shape'})`);
 
             // Not awaited: a slow fleet database must not slow an execution.
-            void this.entitlements.executions.recordAndLockIfOver(workspaceId, found?.executionId ?? null, found?.igniter ?? null)
+            void this.entitlementService.executions.recordAndLockIfOver(workspaceId, found?.executionId ?? null, found?.igniter ?? null)
                 .catch((error: unknown) => this.logger.error(`Could not record usage for ${workspaceId}: ${error instanceof Error ? error.message : error}`));
         });
     }
@@ -475,7 +475,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
         // Not awaited: a reclaimed workspace is rebuilt here, far longer than a
         // request should be held open.
-        void this.workspaces.ensureStarted(workspaceId).catch((error) => {
+        void this.workspaceService.ensureStarted(workspaceId).catch((error) => {
             this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);
 
             this.waking.delete(workspaceId);

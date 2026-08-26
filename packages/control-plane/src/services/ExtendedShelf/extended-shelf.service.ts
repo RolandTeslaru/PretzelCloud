@@ -18,14 +18,14 @@ const shelfWorkspace = (): Principal.Silo => {
 @Injectable()
 export class ExtendedShelfService {
 
-    constructor(private readonly listingsDb: ListingDatabase) {}
+    constructor(private readonly listingDatabase: ListingDatabase) {}
 
 
     public async getAll(): Promise<Listing[]> {
         if (!process.env.EXTENDED_SHELF_WORKSPACE_ID)
             return [];
 
-        return PortalDB.asService('read extended shelf listings', (trx) => this.listingsDb.getAllForWorkspace(trx, shelfWorkspace().workspaceId));
+        return PortalDB.asService('read extended shelf listings', (trx) => this.listingDatabase.getAllForWorkspace(trx, shelfWorkspace().workspaceId));
     }
 
     // Tagging runs as the pinned workspace, so RLS scopes it to that workspace's listings.
@@ -40,7 +40,7 @@ export class ExtendedShelfService {
     };
 
     private async setBlueprintId(id: Listing.Id, blueprintId: string | null): Promise<void> {
-        const updated = await PortalDB.asSilo(shelfWorkspace(), (trx) => this.listingsDb.setBlueprintId(trx, id, blueprintId));
+        const updated = await PortalDB.asSilo(shelfWorkspace(), (trx) => this.listingDatabase.setBlueprintId(trx, id, blueprintId));
 
         if (updated === 0)
             throw new NotFoundException('No such listing');

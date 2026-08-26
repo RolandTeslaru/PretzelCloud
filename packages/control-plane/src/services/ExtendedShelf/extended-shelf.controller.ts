@@ -8,12 +8,12 @@ import { ExtendedShelfService } from './extended-shelf.service';
 @Controller()
 export class ExtendedShelfController {
 
-    constructor(private readonly extendedShelf: ExtendedShelfService) {}
+    constructor(private readonly extendedShelfService: ExtendedShelfService) {}
 
 
     @Get('extended-shelf')
     public async getAll(): Promise<ExtendedShelf.API.List.Response> {
-        return { workflows: await this.extendedShelf.getAll() };
+        return { workflows: await this.extendedShelfService.getAll() };
     }
 
     @Put('admin/extended-shelf/:id')
@@ -24,7 +24,7 @@ export class ExtendedShelfController {
     ): Promise<Record<string, never>> {
         const { blueprintId } = ExtendedShelf.API.Add.Request.parse(body);
 
-        await this.extendedShelf.operator.add(Listing.Id.parse(id), blueprintId);
+        await this.extendedShelfService.operator.add(Listing.Id.parse(id), blueprintId);
 
         return {};
     }
@@ -32,7 +32,7 @@ export class ExtendedShelfController {
     @Delete('admin/extended-shelf/:id')
     @UseGuards(UserAuthGuard, OperatorGuard)
     public async remove(@Param('id') id: string): Promise<Record<string, never>> {
-        await this.extendedShelf.operator.remove(Listing.Id.parse(id));
+        await this.extendedShelfService.operator.remove(Listing.Id.parse(id));
 
         return {};
     }

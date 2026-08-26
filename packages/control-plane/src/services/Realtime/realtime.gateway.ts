@@ -24,7 +24,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly wsSubscriptions  = new Map<Realtime.Channel, Set<WebSocket>>();
     private readonly socketIdentities = new WeakMap<WebSocket, Principal.User>();
 
-    constructor(private readonly identity: IdentityResolver) {
+    constructor(private readonly identityResolver: IdentityResolver) {
 
         this.redisSub.on('message', (channel: Realtime.Channel, serializedEvent: string) => {
 
@@ -71,7 +71,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
             return;
         }
 
-        const principal = await this.identity.resolveToken(token);
+        const principal = await this.identityResolver.resolveToken(token);
 
         if (!principal) {
             ws.close(1008, 'Invalid authentication token');

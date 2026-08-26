@@ -34,7 +34,7 @@ const matches = (given: string, expected: string): boolean => {
 @Injectable()
 export class PermissionService {
 
-    constructor(private readonly workspacesDb: WorkspaceDatabase) {}
+    constructor(private readonly workspaceDatabase: WorkspaceDatabase) {}
 
     private readonly siloCloudTokenCache = new TtlCache<Workspace.Id, string>(CLOUD_TOKEN_TTL_MS, CLOUD_TOKEN_CACHE_MAX);
 
@@ -75,7 +75,7 @@ export class PermissionService {
 
     /** The workspace, or null when it does not exist or is not theirs to see. */
     public async getWorkspaceForMember(principal: Principal.User, workspaceId: Workspace.Id): Promise<Workspace | null> {
-        return PortalDB.asUser(principal, (trx) => this.workspacesDb.getForUser(trx, workspaceId));
+        return PortalDB.asUser(principal, (trx) => this.workspaceDatabase.getForUser(trx, workspaceId));
     }
 
     public async isMember(principal: Principal.User, workspaceId: Workspace.Id): Promise<boolean> {

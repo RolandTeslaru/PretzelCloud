@@ -22,10 +22,10 @@ export class Router {
     private readonly logger = new Logger(Router.name);
 
     constructor(
-        private readonly hardware: HardwareService,
+        private readonly hardwareService: HardwareService,
 
         @Inject(forwardRef(() => SiloActivityService))
-        private readonly activity: SiloActivityService,
+        private readonly siloActivityService: SiloActivityService,
     ) {}
 
     /** Answered by the control plane even on a workspace hostname. */
@@ -95,7 +95,7 @@ export class Router {
         const cached = this.hits.get(host);
 
         if (cached) {
-            this.activity.noteActivity(cached.workspaceId);
+            this.siloActivityService.noteActivity(cached.workspaceId);
 
             return cached;
         }
@@ -112,7 +112,7 @@ export class Router {
 
         this.hits.set(host, found);
 
-        this.activity.noteActivity(found.workspaceId);
+        this.siloActivityService.noteActivity(found.workspaceId);
 
         return found;
     }
@@ -148,7 +148,7 @@ export class Router {
             lifecycleState: Workspace.LifecycleState.parse(desired?.lifecycle_state ?? 'running'),
             frozenReason:   desired?.frozen_reason ?? null,
             // Null when there is no machine, which a request rebuilds.
-            target: await this.hardware.getBackendAddress(workspaceId),
+            target: await this.hardwareService.getBackendAddress(workspaceId),
         };
     }
 

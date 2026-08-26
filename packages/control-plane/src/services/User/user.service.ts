@@ -18,10 +18,10 @@ export class UserService {
     private readonly logger = new Logger(UserService.name);
 
     constructor(
-        private readonly identities: IdentityAdminService,
-        private readonly usersDb: UserDatabase,
+        private readonly identityAdminService: IdentityAdminService,
+        private readonly userDatabase: UserDatabase,
         @Inject(forwardRef(() => WorkspaceService))
-        private readonly workspaces: WorkspaceService,
+        private readonly workspaceService: WorkspaceService,
     ) {}
 
     /** The id and email come from the verified token, never the body. */
@@ -32,7 +32,7 @@ export class UserService {
             return existing;
 
         try {
-            await PortalDB.asService('register user', (trx) => this.usersDb.insert(trx, {
+            await PortalDB.asService('register user', (trx) => this.userDatabase.insert(trx, {
                 id:          principal.userId,
                 email:       principal.email,
                 username:    body.username,
@@ -65,7 +65,7 @@ export class UserService {
     }
 
     private async find(principal: Principal.User): Promise<User | null> {
-        return PortalDB.asUser(principal, (trx) => this.usersDb.get(trx, principal.userId));
+        return PortalDB.asUser(principal, (trx) => this.userDatabase.get(trx, principal.userId));
     }
 
     /** The names this deployment shows. The issuer holds no copy of them. */
@@ -79,7 +79,7 @@ export class UserService {
             return this.get(principal);
 
         try {
-            const user = await PortalDB.asUser(principal, (trx) => this.usersDb.update(trx, principal.userId, changes));
+            const user = await PortalDB.asUser(principal, (trx) => this.userDatabase.update(trx, principal.userId, changes));
 
             if (!user)
                 throw new NotFoundException('No profile yet');
@@ -96,15 +96,15 @@ export class UserService {
 
     /** Workspaces, then the credential, then the profile. A failure stops the rest. */
     public async delete(principal: Principal.User): Promise<void> {
-        const owned = await PortalDB.asUser(principal, (trx) => this.usersDb.getOwnedWorkspaceIds(trx, principal.userId));
+        const owned = await PortalDB.asUser(principal, (trx) => this.userDatabase.getOwnedWorkspaceIds(trx, principal.userId));
 
         for (const row of owned)
-            await this.workspaces.destroy(principal, Workspace.Id.parse(row.id));
+            await this.workspaceService.destroy(principal, Workspace.Id.parse(row.id));
 
-        await this.identities.deleteUser(principal.userId);
+        await this.identityAdminService.deleteUser(principal.userId);
 
         try {
-            await PortalDB.asService('delete user', (trx) => this.usersDb.delete(trx, principal.userId));
+            await PortalDB.asService('delete user', (trx) => this.userDatabase.delete(trx, principal.userId));
         }
         catch (error) {
             this.logger.error(`issuer account ${principal.userId} is gone but its profile row is not`, error);

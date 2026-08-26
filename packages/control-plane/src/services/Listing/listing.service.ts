@@ -8,11 +8,11 @@ import { ListingDatabase } from './listing.database';
 @Injectable()
 export class ListingService {
 
-    constructor(private readonly listingsDb: ListingDatabase) {}
+    constructor(private readonly listingDatabase: ListingDatabase) {}
 
 
     public async get(id: Listing.Id): Promise<Listing> {
-        const workflow = await PortalDB.asService('read listing', (trx) => this.listingsDb.find(trx, id));
+        const workflow = await PortalDB.asService('read listing', (trx) => this.listingDatabase.find(trx, id));
 
         if (!workflow)
             throw new NotFoundException('No such listing');
@@ -25,7 +25,7 @@ export class ListingService {
         if (ids.length === 0)
             return {};
 
-        return PortalDB.asService('check listing updates', (trx) => this.listingsDb.getUpdates(trx, ids));
+        return PortalDB.asService('check listing updates', (trx) => this.listingDatabase.getUpdates(trx, ids));
     }
 
     public async put(principal: Principal.Silo, request: Listing.API.Put.Request): Promise<Listing.Id> {
@@ -34,9 +34,9 @@ export class ListingService {
 
         return PortalDB.asSilo(principal, async (trx) => {
             if (!request.id)
-                return this.listingsDb.insert(trx, principal.workspaceId, request);
+                return this.listingDatabase.insert(trx, principal.workspaceId, request);
 
-            const updated = await this.listingsDb.update(trx, request.id, principal.workspaceId, request);
+            const updated = await this.listingDatabase.update(trx, request.id, principal.workspaceId, request);
 
             if (updated === 0)
                 throw new NotFoundException('No such listing');
@@ -46,11 +46,11 @@ export class ListingService {
     }
 
     public async deleteAllForWorkspace(workspaceId: Workspace.Id): Promise<void> {
-        await PortalDB.asService('delete destroyed workspace listings', (trx) => this.listingsDb.deleteAllForWorkspace(trx, workspaceId));
+        await PortalDB.asService('delete destroyed workspace listings', (trx) => this.listingDatabase.deleteAllForWorkspace(trx, workspaceId));
     }
 
     public async delete(principal: Principal.Silo, id: Listing.Id): Promise<void> {
-        const deleted = await PortalDB.asSilo(principal, (trx) => this.listingsDb.delete(trx, id));
+        const deleted = await PortalDB.asSilo(principal, (trx) => this.listingDatabase.delete(trx, id));
 
         if (deleted === 0)
             throw new NotFoundException('No such listing');

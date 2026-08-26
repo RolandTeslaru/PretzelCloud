@@ -16,7 +16,7 @@ const HEALTH_POLL_MS    = 1_000;
 export class MachineService {
 
     constructor(
-        private readonly db: MachineDatabase,
+        private readonly machineDatabase: MachineDatabase,
     ) {}
 
     /** The spec says which role this is, so nothing else has to be told. */
@@ -35,7 +35,7 @@ export class MachineService {
             env:   spec.env,
         });
 
-        await FleetDB.asService('record machine', (trx) => this.db.insert(trx, {
+        await FleetDB.asService('record machine', (trx) => this.machineDatabase.insert(trx, {
             workspace_id: workspaceId,
             hardware_id:  hardwareId,
             driver:       driver.kind,
@@ -49,7 +49,7 @@ export class MachineService {
     }
 
     getAll(workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
-        return FleetDB.asService('list machines', (trx) => this.db.getAll(trx, workspaceId));
+        return FleetDB.asService('list machines', (trx) => this.machineDatabase.getAll(trx, workspaceId));
     }
 
     /**
@@ -58,7 +58,7 @@ export class MachineService {
      * for it. Reads one row rather than the whole set.
      */
     getByRole(workspaceId: Workspace.Id, roles: Fleet.Machine.Role[]): Promise<Fleet.Machine | undefined> {
-        return FleetDB.asService('read machine by role', (trx) => this.db.getByRole(trx, workspaceId, roles));
+        return FleetDB.asService('read machine by role', (trx) => this.machineDatabase.getByRole(trx, workspaceId, roles));
     }
 
     /** Blocks until this one machine reports serving, not merely started. */
@@ -78,15 +78,15 @@ export class MachineService {
         for (;;) {
             const health = await driver.health(resourceId);
 
-            if (health === 'unhealthy')
-                throw new Error(`Machine ${resourceId} failed its health check`);
-
             // An image declaring no check cannot be waited for; take it as ready.
             if (health === 'healthy' || health === 'unknown')
                 return;
 
+            // `unhealthy` is not terminal while there is still time: a machine
+            // that has not opened its port yet fails a check exactly as one that
+            // never will does, and only the deadline tells them apart.
             if (Date.now() > deadline)
-                throw new Error(`Machine ${resourceId} did not become healthy within ${timeoutMs}ms`);
+                throw new Error(`Machine ${resourceId} was ${health} for the whole ${timeoutMs}ms it was given`);
 
             await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_MS));
         }
@@ -132,7 +132,7 @@ export class MachineService {
 
         await driver.destroy(machine.resourceId);
 
-        await FleetDB.asService('delete machine', (trx) => this.db.deleteById(trx, machine.id));
+        await FleetDB.asService('delete machine', (trx) => this.machineDatabase.deleteById(trx, machine.id));
     }
 
     /** Asks the driver, not the row: the daemon is the truth about what is running. */
@@ -140,7 +140,7 @@ export class MachineService {
     async refreshState(driver: AbstractHardwareDriver, machine: Fleet.Machine): Promise<Fleet.Machine.State> {
         const state = await driver.status(machine.resourceId);
 
-        await FleetDB.asService('refresh machine state', (trx) => this.db.setState(trx, machine.id, state));
+        await FleetDB.asService('refresh machine state', (trx) => this.machineDatabase.setState(trx, machine.id, state));
 
         return state;
     }

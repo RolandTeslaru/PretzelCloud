@@ -18,7 +18,7 @@ const getPortalAppOrigin = () => process.env.PORTAL_URL ?? 'http://localhost:517
 @UseGuards(UserAuthGuard, ScopedGuard)
 export class BillingController {
 
-    constructor(private readonly billing: BillingService) {}
+    constructor(private readonly billingService: BillingService) {}
 
     @Post('workspaces/:workspaceId/plan')
     @Scoped('workspace')
@@ -28,13 +28,13 @@ export class BillingController {
         @WorkspaceIdParam() workspaceId: Workspace.Id,
         @ZodBody(Workspace.API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
     ): Promise<{ url: string | null }> {
-        return this.billing.changePlan(principal, workspaceId, body.plan, getPortalAppOrigin());
+        return this.billingService.changePlan(principal, workspaceId, body.plan, getPortalAppOrigin());
     }
 
     @Post('portal')
     async portal(
         @AuthenticatedUser() principal: Principal.User,
     ): Promise<{ url: string }> {
-        return { url: await this.billing.getStripeBillingPortalUrl(principal, `${getPortalAppOrigin()}/workspaces`) };
+        return { url: await this.billingService.getStripeBillingPortalUrl(principal, `${getPortalAppOrigin()}/workspaces`) };
     }
 }

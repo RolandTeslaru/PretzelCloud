@@ -9,7 +9,7 @@ import { ListingService } from './listing.service';
 @Controller()
 export class ListingController {
 
-    constructor(private readonly listings: ListingService) {}
+    constructor(private readonly listingService: ListingService) {}
 
 
     // Open side: no session, no token.
@@ -19,12 +19,12 @@ export class ListingController {
     public async updates(@Query() query: unknown): Promise<Listing.API.Updates.Response> {
         const { ids } = Listing.API.Updates.Request.parse(query);
 
-        return { updates: await this.listings.getUpdates(ids) };
+        return { updates: await this.listingService.getUpdates(ids) };
     }
 
     @Get('listings/:id')
     public async get(@Param('id') id: string): Promise<Listing.API.Get.Response> {
-        return { workflow: await this.listings.get(Listing.Id.parse(id)) };
+        return { workflow: await this.listingService.get(Listing.Id.parse(id)) };
     }
 
     // Writing side: a silo sharing or withdrawing its own workflows.
@@ -35,7 +35,7 @@ export class ListingController {
         @AuthenticatedSilo() workspace: Principal.Silo,
         @Body() body: unknown,
     ): Promise<Listing.API.Put.Response> {
-        const id = await this.listings.put(workspace, Listing.API.Put.Request.parse(body));
+        const id = await this.listingService.put(workspace, Listing.API.Put.Request.parse(body));
 
         return { id };
     }
@@ -46,7 +46,7 @@ export class ListingController {
         @AuthenticatedSilo() workspace: Principal.Silo,
         @Param('id') id: string,
     ): Promise<Record<string, never>> {
-        await this.listings.delete(workspace, Listing.Id.parse(id));
+        await this.listingService.delete(workspace, Listing.Id.parse(id));
 
         return {};
     }

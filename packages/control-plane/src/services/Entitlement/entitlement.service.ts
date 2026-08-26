@@ -24,8 +24,8 @@ export class EntitlementService {
     private readonly logger = new Logger(EntitlementService.name);
 
     constructor(
-        private readonly usageDb: UsageDatabase,
-        private readonly plans: PlanRegistry,
+        private readonly usageDatabase: UsageDatabase,
+        private readonly planRegistry: PlanRegistry,
     ) {}
 
     /** Workspaces known to be over, and when each was last confirmed. */
@@ -36,12 +36,12 @@ export class EntitlementService {
         /** How many have run in a period. */
         getCount: (workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<number> =>
             FleetDB.asService('count executions', (trx) =>
-                this.usageDb.executions.getCountIn(trx, workspaceId, period)),
+                this.usageDatabase.executions.getCountIn(trx, workspaceId, period)),
 
         /** The same for many, over one period, so a grid stays one query. */
         getCounts: async (workspaceIds: Workspace.Id[], period: Workspace.Usage.Period): Promise<Map<Workspace.Id, number>> => {
             const rows = await FleetDB.asService('count executions for many', (trx) =>
-                this.usageDb.executions.getCountsIn(trx, workspaceIds, period));
+                this.usageDatabase.executions.getCountsIn(trx, workspaceIds, period));
 
             return new Map(rows.map((row) => [Workspace.Id.parse(row.workspace_id), Number(row.count)]));
         },
@@ -49,12 +49,12 @@ export class EntitlementService {
         /** Executions per day over a period, days with none omitted. */
         getDailyCounts: (workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<Workspace.Usage.Point[]> =>
             FleetDB.asService('count executions by day', (trx) =>
-                this.usageDb.executions.getDailyCounts(trx, workspaceId, period)),
+                this.usageDatabase.executions.getDailyCounts(trx, workspaceId, period)),
 
         /** The rows behind the count, newest first. */
         get: (workspaceId: Workspace.Id, period: Workspace.Usage.Period, limit = LIST_LIMIT): Promise<Workspace.Usage[]> =>
             FleetDB.asService('list executions', (trx) =>
-                this.usageDb.executions.getIn(trx, workspaceId, period, limit)),
+                this.usageDatabase.executions.getIn(trx, workspaceId, period, limit)),
 
         /**
          * Records one and locks the workspace when that was its last. A single
@@ -64,7 +64,7 @@ export class EntitlementService {
             const allowance = await this.executions.getAllowance(workspaceId);
 
             const used = await FleetDB.asService('record execution', (trx) =>
-                this.usageDb.executions.insertAndGetCount(trx, {
+                this.usageDatabase.executions.insertAndGetCount(trx, {
                     workspaceId,
                     executionId,
                     igniter,
@@ -93,7 +93,7 @@ export class EntitlementService {
             if (!row)
                 return null;
 
-            const plan = this.plans.find(Plan.Id.parse(row.plan));
+            const plan = this.planRegistry.find(Plan.Id.parse(row.plan));
 
             return {
                 limit:       plan?.maxExecutionsMonthly ?? null,
@@ -177,6 +177,6 @@ export class EntitlementService {
 
     /** Newest first, across the workspaces the caller may see. */
     public getRecentUsage(workspaceIds: Workspace.Id[], limit = LIST_LIMIT): Promise<Workspace.Usage[]> {
-        return FleetDB.asService('list usage', (trx) => this.usageDb.executions.getRecent(trx, workspaceIds, limit));
+        return FleetDB.asService('list usage', (trx) => this.usageDatabase.executions.getRecent(trx, workspaceIds, limit));
     }
 }

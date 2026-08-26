@@ -10,7 +10,7 @@ import { PortalDB } from '@/db/portal';
 @UseGuards(UserAuthGuard, OperatorGuard)
 export class AdminController {
 
-    constructor(private readonly workspaces: WorkspaceService) {}
+    constructor(private readonly workspaceService: WorkspaceService) {}
 
     @Get('workspaces')
     public async list() {
@@ -29,7 +29,7 @@ export class AdminController {
         @Param('workspaceId') workspaceId: string,
         @Body() body: { reason?: string },
     ): Promise<Record<string, never>> {
-        await this.workspaces.freeze(
+        await this.workspaceService.freeze(
             Workspace.Id.parse(workspaceId),
             body?.reason?.trim() || 'This workspace has been suspended by an operator.',
         );
@@ -39,7 +39,7 @@ export class AdminController {
 
     @Post('workspaces/:workspaceId/unfreeze')
     public async unfreeze(@Param('workspaceId') workspaceId: string): Promise<Record<string, never>> {
-        await this.workspaces.unfreeze(Workspace.Id.parse(workspaceId));
+        await this.workspaceService.unfreeze(Workspace.Id.parse(workspaceId));
 
         return {};
     }

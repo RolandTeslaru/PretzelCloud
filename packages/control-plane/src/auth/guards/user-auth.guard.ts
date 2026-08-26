@@ -9,12 +9,12 @@ import { IdentityResolver } from '../identity/identity';
 @Injectable()
 export class UserAuthGuard implements CanActivate {
 
-    constructor(private readonly identity: IdentityResolver) {}
+    constructor(private readonly identityResolver: IdentityResolver) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest<Request>();
 
-        const principal = await this.identity.resolve(request);
+        const principal = await this.identityResolver.resolve(request);
 
         if (!principal)
             throw new UnauthorizedException('Not authenticated');

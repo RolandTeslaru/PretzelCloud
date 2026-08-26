@@ -6,7 +6,7 @@ import { ListingService } from '@/services/Listing/listing.service';
 import { WorkspaceDatabase } from './workspace.database';
 import { UserDatabase } from '@/services/User/user.database';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
-import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
+import { HardwareService, TopologyNotRestored } from '@/services/Fleet/Hardware/hardware.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/identity/principal';
 import { Router } from '@/services/WorkspaceRouter/router.service';
@@ -16,31 +16,39 @@ import { BillingService } from '@/services/Billing/billing.service';
 
 const PROVISION_ATTEMPTS = 3;
 
+/** Unwraps the provisioner's wrapper to ask what actually went wrong underneath. */
+function isTopologyNotRestored(error: unknown): boolean {
+    if (error instanceof TopologyNotRestored)
+        return true;
+
+    return error instanceof Error && error.cause instanceof TopologyNotRestored;
+}
+
 @Injectable()
 export class WorkspaceService {
 
     private readonly logger = new Logger(WorkspaceService.name);
 
     constructor(
-        private readonly provisioning: ProvisioningService,
-        private readonly hardware: HardwareService,
-        private readonly hostnames: HostnameService,
+        private readonly provisioningService: ProvisioningService,
+        private readonly hardwareService: HardwareService,
+        private readonly hostnameService: HostnameService,
         private readonly router: Router,
-        private readonly realtime: RealtimeService,
-        private readonly entitlements: EntitlementService,
-        private readonly workspacesDb: WorkspaceDatabase,
-        private readonly usersDb: UserDatabase,
-        private readonly permissions: PermissionService,
-        private readonly listings: ListingService,
+        private readonly realtimeService: RealtimeService,
+        private readonly entitlementService: EntitlementService,
+        private readonly workspaceDatabase: WorkspaceDatabase,
+        private readonly userDatabase: UserDatabase,
+        private readonly permissionService: PermissionService,
+        private readonly listingService: ListingService,
         @Inject(forwardRef(() => BillingService))
-        private readonly billing: BillingService,
+        private readonly billingService: BillingService,
     ) {}
 
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
     private emit(workspaceId: Workspace.Id, event: Workspace.Event.Unstamped): void {
         const channel = Workspace.Event.getChannel(workspaceId);
 
-        this.realtime.publish(channel, { ...event, channel, workspaceId });
+        this.realtimeService.publish(channel, { ...event, channel, workspaceId });
     }
 
     /**
@@ -55,11 +63,11 @@ export class WorkspaceService {
 
         // Both rows or neither: no membership row means the owner cannot see it.
         const owner = await PortalDB.asService('create workspace', async (trx) => {
-            await this.workspacesDb.insert(trx, { id, displayName, ownerId: principal.userId });
+            await this.workspaceDatabase.insert(trx, { id, displayName, ownerId: principal.userId });
 
             // Read here so a missing profile fails before anything is built,
             // rather than partway through provisioning.
-            const owner = await this.usersDb.get(trx, principal.userId);
+            const owner = await this.userDatabase.get(trx, principal.userId);
 
             if (!owner)
                 throw new NotFoundException('No profile yet');
@@ -69,7 +77,7 @@ export class WorkspaceService {
 
         for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
             try {
-                await this.provisioning.provision(id, owner, 'free');
+                await this.provisioningService.provision(id, owner, 'free');
 
                 // Its hostnames were unknown until a moment ago, and a probe in
                 // that window would have cached the absence.
@@ -90,7 +98,7 @@ export class WorkspaceService {
     /** Writes the state and tells anyone watching. */
     private async setLifecycleState(id: Workspace.Id, lifecycleState: Workspace.LifecycleState): Promise<Workspace> {
         const workspace = await PortalDB.asService('set workspace lifecycle state', (trx) =>
-            this.workspacesDb.setLifecycleState(trx, id, lifecycleState));
+            this.workspaceDatabase.setLifecycleState(trx, id, lifecycleState));
 
         this.emit(id, Workspace.Event.create('lifecycle:changed', { lifecycleState }));
 
@@ -104,30 +112,30 @@ export class WorkspaceService {
      */
     private async abandon(id: Workspace.Id): Promise<void> {
         try {
-            await this.provisioning.deprovision(id);
+            await this.provisioningService.deprovision(id);
 
             this.router.invalidate(id);
         }
         catch (error) {
             this.logger.error(`Teardown of ${id} failed, leaving it for the sweep: ${error instanceof Error ? error.message : error}`);
 
-            await PortalDB.asService('flag abandoned workspace', (trx) => this.workspacesDb.setAbandoned(trx, id));
+            await PortalDB.asService('flag abandoned workspace', (trx) => this.workspaceDatabase.setAbandoned(trx, id));
         }
 
         await this.setLifecycleState(id, 'provisioning_failed');
     }
 
     public async list(principal: Principal.User): Promise<Workspace[]> {
-        return this.permissions.getWorkspacesForMember(principal);
+        return this.permissionService.getWorkspacesForMember(principal);
     }
 
     public async get(workspaceId: Workspace.Id): Promise<Workspace> {
-        return PortalDB.asService('read workspace', (trx) => this.workspacesDb.get(trx, workspaceId));
+        return PortalDB.asService('read workspace', (trx) => this.workspaceDatabase.get(trx, workspaceId));
     }
 
     /** The name on the account. Ownership was settled by the guard. */
     public async rename(principal: Principal.User, workspaceId: Workspace.Id, displayName: string): Promise<void> {
-        await PortalDB.asUser(principal, (trx) => this.workspacesDb.setDisplayName(trx, workspaceId, displayName));
+        await PortalDB.asUser(principal, (trx) => this.workspaceDatabase.setDisplayName(trx, workspaceId, displayName));
     }
 
     /**
@@ -139,7 +147,7 @@ export class WorkspaceService {
             throw new ForbiddenException('A custom subdomain requires a paid plan');
 
         try {
-            await PortalDB.asUser(principal, (trx) => this.workspacesDb.setSubdomain(trx, workspace.id, subdomain));
+            await PortalDB.asUser(principal, (trx) => this.workspaceDatabase.setSubdomain(trx, workspace.id, subdomain));
         }
         catch (error) {
             if (error instanceof Error && error.message.includes('workspaces_subdomain_key'))
@@ -148,7 +156,7 @@ export class WorkspaceService {
             throw error;
         }
 
-        await this.hostnames.setCustom(workspace.id, subdomain);
+        await this.hostnameService.setCustom(workspace.id, subdomain);
 
         this.router.invalidate(workspace.id, [workspace.subdomain, subdomain]);
     }
@@ -159,12 +167,12 @@ export class WorkspaceService {
      * is coming.
      */
     public wakeWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardware.startWorker(workspaceId);
+        return this.hardwareService.startWorker(workspaceId);
     }
 
     /** Stops the worker once its backend reports the queue has been quiet. */
     public sleepWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardware.stopWorker(workspaceId);
+        return this.hardwareService.stopWorker(workspaceId);
     }
 
     /** The one place the wake rule lives, so every trigger path inherits it. */
@@ -193,17 +201,15 @@ export class WorkspaceService {
         if (!Workspace.isWakeable(lifecycleState))
             throw new ConflictException(`This workspace is ${lifecycleState}`);
 
-        if (await this.hardware.isServing(workspaceId))
+        if (await this.hardwareService.isServing(workspaceId))
             return;
 
         await this.start(workspaceId);
-
-        await this.hardware.awaitHealthy(workspaceId);
     }
 
     /** The fleet turning it off. Only `unfreeze` undoes it. */
     public async freeze(workspaceId: Workspace.Id, reason: string): Promise<void> {
-        await PortalDB.asService('freeze workspace', (trx) => this.workspacesDb.setFrozen(trx, workspaceId, reason));
+        await PortalDB.asService('freeze workspace', (trx) => this.workspaceDatabase.setFrozen(trx, workspaceId, reason));
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'frozen' }));
 
@@ -211,7 +217,7 @@ export class WorkspaceService {
 
         // Not a transition: `stop` would land it on `stopped`, and which of the
         // two it is decides who may start it again.
-        await this.hardware.stopAll(workspaceId);
+        await this.hardwareService.stopAll(workspaceId);
     }
 
     /** Left running rather than started: it comes back on the next request. */
@@ -221,7 +227,7 @@ export class WorkspaceService {
         if (lifecycleState !== 'frozen')
             return;
 
-        await PortalDB.asService('unfreeze workspace', (trx) => this.workspacesDb.clearFrozen(trx, workspaceId));
+        await PortalDB.asService('unfreeze workspace', (trx) => this.workspaceDatabase.clearFrozen(trx, workspaceId));
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'sleeping' }));
 
@@ -242,25 +248,25 @@ export class WorkspaceService {
     public async reclaimCompute(workspaceId: Workspace.Id): Promise<void> {
         await this.stop(workspaceId);
 
-        await this.hardware.destroy(workspaceId);
+        await this.hardwareService.destroy(workspaceId);
 
         this.router.invalidate(workspaceId);
     }
 
     /** Rebuilds reclaimed machines. Data was never on them, so this is a slow start. */
     private async ensureCompute(workspaceId: Workspace.Id): Promise<void> {
-        if (await this.hardware.exists(workspaceId))
+        if (await this.hardwareService.hasMachines(workspaceId))
             return;
 
         const row = await PortalDB.asService('read workspace to rebuild compute', (trx) =>
-            this.workspacesDb.getSpecInputs(trx, workspaceId));
+            this.workspaceDatabase.getSpecInputs(trx, workspaceId));
 
         if (!row)
             return;
 
         this.logger.log(`Rebuilding reclaimed machines for ${workspaceId}`);
 
-        await this.provisioning.rebuild(workspaceId, User.Id.parse(row.owner_id), Workspace.Plan.parse(row.plan));
+        await this.provisioningService.rebuild(workspaceId, User.Id.parse(row.owner_id), Workspace.Plan.parse(row.plan));
     }
 
     /** Stopping means nothing is left running, worker included. */
@@ -284,11 +290,17 @@ export class WorkspaceService {
 
         try {
             switch (action) {
-                case 'start':   await this.hardware.startBackend(workspaceId);   break;
-                case 'stop':    await this.hardware.stopAll(workspaceId);        break;
-                case 'suspend': await this.hardware.suspendBackend(workspaceId); break;
-                case 'restart': await this.hardware.restartAll(workspaceId);     break;
+                case 'start':   await this.hardwareService.startBackend(workspaceId);   break;
+                case 'stop':    await this.hardwareService.stopAll(workspaceId);        break;
+                case 'suspend': await this.hardwareService.suspendBackend(workspaceId); break;
+                case 'restart': await this.hardwareService.restartAll(workspaceId);     break;
             }
+
+            // Recorded only once it answers: an action that brings a workspace up
+            // is not done when the machines are told, and a row saying `running`
+            // in the meantime is one the router forwards into.
+            if (action === 'start' || action === 'restart')
+                await this.hardwareService.awaitHealthy(workspaceId);
 
             this.router.invalidate(workspaceId);
 
@@ -319,53 +331,59 @@ export class WorkspaceService {
         // Down for the rebuild: stopped first so executions end and pools close.
         await this.stop(workspaceId);
 
-        await this.provisioning.rebuild(workspaceId, ownerId, plan);
+        await this.provisioningService.rebuild(workspaceId, ownerId, plan);
 
         await this.start(workspaceId);
-
-        await this.hardware.awaitHealthy(workspaceId);
 
         this.router.invalidate(workspaceId);
     }
 
     public async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
-        await PortalDB.asService('set workspace plan', (trx) => this.workspacesDb.setPlan(trx, workspaceId, plan));
+        await PortalDB.asService('set workspace plan', (trx) => this.workspaceDatabase.setPlan(trx, workspaceId, plan));
 
         // Before the rebuild: what was bought is already true.
         this.emit(workspaceId, Workspace.Event.create('plan:changed', { plan }));
 
         // A bigger plan takes effect now, not at the next re-check.
-        this.entitlements.unlock(workspaceId);
+        this.entitlementService.unlock(workspaceId);
 
         // Down for the conversion, so executions end and pools close.
         await this.stop(workspaceId);
 
-        await this.provisioning.convert(workspaceId, ownerId, plan);
+        try {
+            await this.provisioningService.convert(workspaceId, ownerId, plan);
+        }
+        catch (error) {
+            // Only when its machines could not be put back. A conversion that
+            // failed and rolled back leaves a working workspace, and freezing it
+            // for that would take away what the owner already had.
+            if (isTopologyNotRestored(error))
+                await this.freeze(workspaceId, 'Its machines could not be rebuilt after a failed plan change.');
+
+            this.router.invalidate(workspaceId);
+
+            throw error;
+        }
 
         await this.start(workspaceId);
-
-        await this.hardware.awaitHealthy(workspaceId);
 
         this.router.invalidate(workspaceId);
     }
 
     public async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
-        // Money first: the row carries the only pointer to the subscription.
-        await this.billing.cancelSubscription(workspaceId);
+        await this.billingService.cancelSubscription(workspaceId);
 
-        // Its token dies with it; the cache must not outlive the workspace.
-        this.permissions.invalidateCloudToken(workspaceId);
+        this.permissionService.invalidateCloudToken(workspaceId);
 
-        // Infrastructure next: the row is the only record of what to tear down.
-        await this.provisioning.deprovision(workspaceId);
+        await this.provisioningService.deprovision(workspaceId);
 
         // Before the row goes: a cached route would otherwise keep answering for
         // a machine that no longer exists.
         this.router.invalidate(workspaceId);
 
-        await this.listings.deleteAllForWorkspace(workspaceId);
+        await this.listingService.deleteAllForWorkspace(workspaceId);
 
-        await PortalDB.asUser(principal, (trx) => this.workspacesDb.delete(trx, workspaceId));
+        await PortalDB.asUser(principal, (trx) => this.workspaceDatabase.delete(trx, workspaceId));
 
         this.emit(workspaceId, Workspace.Event.create('destroyed'));
     }
