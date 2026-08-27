@@ -207,11 +207,11 @@ export class WorkspaceService {
         await this.start(workspaceId);
     }
 
-    /** The fleet turning it off. Only `unfreeze` undoes it. */
-    public async freeze(workspaceId: Workspace.Id, reason: string): Promise<void> {
-        await PortalDB.asService('freeze workspace', (trx) => this.workspaceDatabase.setFrozen(trx, workspaceId, reason));
+    /** The fleet turning it off. Only `enable` undoes it. */
+    public async disable(workspaceId: Workspace.Id, reason: string): Promise<void> {
+        await PortalDB.asService('disable workspace', (trx) => this.workspaceDatabase.setDisabled(trx, workspaceId, reason));
 
-        this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'frozen' }));
+        this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'disabled' }));
 
         this.router.invalidate(workspaceId);
 
@@ -221,13 +221,13 @@ export class WorkspaceService {
     }
 
     /** Left running rather than started: it comes back on the next request. */
-    public async unfreeze(workspaceId: Workspace.Id): Promise<void> {
+    public async enable(workspaceId: Workspace.Id): Promise<void> {
         const { lifecycleState } = await this.get(workspaceId);
 
-        if (lifecycleState !== 'frozen')
+        if (lifecycleState !== 'disabled')
             return;
 
-        await PortalDB.asService('unfreeze workspace', (trx) => this.workspaceDatabase.clearFrozen(trx, workspaceId));
+        await PortalDB.asService('enable workspace', (trx) => this.workspaceDatabase.clearDisabled(trx, workspaceId));
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'sleeping' }));
 
@@ -235,9 +235,9 @@ export class WorkspaceService {
     }
 
     public async start(workspaceId: Workspace.Id): Promise<void> {
-        // Only `unfreeze` leaves that state, so no start path can.
-        if ((await this.get(workspaceId)).lifecycleState === 'frozen')
-            throw new ForbiddenException('This workspace is frozen');
+        // Only `enable` leaves that state, so no start path can.
+        if ((await this.get(workspaceId)).lifecycleState === 'disabled')
+            throw new ForbiddenException('This workspace is disabled');
 
         await this.ensureCompute(workspaceId);
 
@@ -358,7 +358,7 @@ export class WorkspaceService {
             // failed and rolled back leaves a working workspace, and freezing it
             // for that would take away what the owner already had.
             if (isTopologyNotRestored(error))
-                await this.freeze(workspaceId, 'Its machines could not be rebuilt after a failed plan change.');
+                await this.disable(workspaceId, 'Its machines could not be rebuilt after a failed plan change.');
 
             this.router.invalidate(workspaceId);
 

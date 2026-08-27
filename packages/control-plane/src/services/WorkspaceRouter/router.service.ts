@@ -139,14 +139,14 @@ export class Router {
 
         // Cached with the resolution, and dropped whenever the lifecycle moves.
         const desired = await PortalDB.asService('resolve lifecycle', (db) =>
-            db.selectFrom('workspaces').select(['lifecycle_state', 'frozen_reason']).where('id', '=', workspaceId).executeTakeFirst());
+            db.selectFrom('workspaces').select(['lifecycle_state', 'disabled_reason']).where('id', '=', workspaceId).executeTakeFirst());
 
         return {
             workspaceId,
             kind:         Fleet.Hostname.Kind.parse(row.hostname_kind),
             routerSecret: row.router_secret,
             lifecycleState: Workspace.LifecycleState.parse(desired?.lifecycle_state ?? 'running'),
-            frozenReason:   desired?.frozen_reason ?? null,
+            disabledReason:   desired?.disabled_reason ?? null,
             // Null when there is no machine, which a request rebuilds.
             target: await this.hardwareService.getBackendAddress(workspaceId),
         };
@@ -193,8 +193,8 @@ export namespace Router {
         routerSecret: string;
         /** What it should be doing, which decides whether traffic may wake it. */
         lifecycleState: Workspace.LifecycleState;
-        /** The sentence shown when it is frozen. */
-        frozenReason:   string | null;
+        /** The sentence shown when it is disabled. */
+        disabledReason:   string | null;
         /** Null when the backend is not serving. */
         target:      URL | null;
     };

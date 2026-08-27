@@ -80,19 +80,19 @@ export class WorkspaceDatabase {
     }
 
     @AllowedDatabaseRoles('service')
-    public async setFrozen(trx: ServiceTrx, workspaceId: Workspace.Id, reason: string): Promise<void> {
+    public async setDisabled(trx: ServiceTrx, workspaceId: Workspace.Id, reason: string): Promise<void> {
         await trx
             .updateTable('workspaces')
-            .set({ lifecycle_state: 'frozen', frozen_at: new Date(), frozen_reason: reason })
+            .set({ lifecycle_state: 'disabled', disabled_at: new Date(), disabled_reason: reason })
             .where('id', '=', workspaceId)
             .execute();
     }
 
     @AllowedDatabaseRoles('service')
-    public async clearFrozen(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<void> {
+    public async clearDisabled(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<void> {
         await trx
             .updateTable('workspaces')
-            .set({ lifecycle_state: 'sleeping', frozen_at: null, frozen_reason: null })
+            .set({ lifecycle_state: 'sleeping', disabled_at: null, disabled_reason: null })
             .where('id', '=', workspaceId)
             .execute();
     }

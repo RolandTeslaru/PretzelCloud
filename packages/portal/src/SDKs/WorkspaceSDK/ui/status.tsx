@@ -39,7 +39,7 @@ export const displayStatus = (
         case 'running':             return { label: 'Running',      variant: 'success',     icon: <SystemIcons.Check /> }
         case 'sleeping':            return { label: 'Sleeping',     variant: 'nightly',     icon: <SystemIcons.Moon /> }
         case 'stopped':             return { label: 'Stopped',      variant: 'destructive', icon: <SystemIcons.Power /> }
-        case 'frozen':              return { label: 'Suspended',    variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
+        case 'disabled':              return { label: 'Suspended',    variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
     }
 }
 

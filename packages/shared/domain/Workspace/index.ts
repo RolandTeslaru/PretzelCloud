@@ -26,7 +26,7 @@ export namespace Workspace {
         // entirely — is the ladder's business; traffic brings it back either way.
         "sleeping",
         "stopped",       // The owner turned it off. Traffic does not wake it.
-        "frozen",        // The fleet turned it off. The owner cannot undo it.
+        "disabled",        // The fleet turned it off. The owner cannot undo it.
         "provisioning_failed",
     ])
     export type LifecycleState = z.infer<typeof LifecycleState>
@@ -70,8 +70,8 @@ export namespace Workspace {
         subdomain:   Subdomain.Schema.nullable(),
         displayName: z.string(),
         lifecycleState: LifecycleState,
-        /** Why the fleet froze it, for the portal to render. Null unless frozen. */
-        frozenReason:   z.string().nullable(),
+        /** Why the fleet froze it, for the portal to render. Null unless disabled. */
+        disabledReason:   z.string().nullable(),
         plan:        Plan,
         // What the payment provider says about the subscription behind the plan.
         // Null while nothing is paying for it.

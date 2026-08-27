@@ -17,19 +17,19 @@ export class AdminController {
         const rows = await PortalDB.asService('list workspaces for operator', (db) =>
             db
                 .selectFrom('workspaces')
-                .select(['id', 'display_name', 'plan', 'lifecycle_state', 'frozen_reason', 'owner_id', 'created_at'])
+                .select(['id', 'display_name', 'plan', 'lifecycle_state', 'disabled_reason', 'owner_id', 'created_at'])
                 .orderBy('created_at', 'desc')
                 .execute());
 
         return { workspaces: rows };
     }
 
-    @Post('workspaces/:workspaceId/freeze')
-    public async freeze(
+    @Post('workspaces/:workspaceId/disable')
+    public async disable(
         @Param('workspaceId') workspaceId: string,
         @Body() body: { reason?: string },
     ): Promise<Record<string, never>> {
-        await this.workspaceService.freeze(
+        await this.workspaceService.disable(
             Workspace.Id.parse(workspaceId),
             body?.reason?.trim() || 'This workspace has been suspended by an operator.',
         );
@@ -37,9 +37,9 @@ export class AdminController {
         return {};
     }
 
-    @Post('workspaces/:workspaceId/unfreeze')
-    public async unfreeze(@Param('workspaceId') workspaceId: string): Promise<Record<string, never>> {
-        await this.workspaceService.unfreeze(Workspace.Id.parse(workspaceId));
+    @Post('workspaces/:workspaceId/enable')
+    public async enable(@Param('workspaceId') workspaceId: string): Promise<Record<string, never>> {
+        await this.workspaceService.enable(Workspace.Id.parse(workspaceId));
 
         return {};
     }

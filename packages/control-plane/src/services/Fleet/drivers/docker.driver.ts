@@ -134,9 +134,13 @@ export class DockerDriver extends AbstractHardwareDriver {
 
         const packages = role === 'worker'
             ? ['worker', 'nodes']
-            : role === 'combined' ? ['backend', 'worker', 'nodes'] : ['backend', 'nodes'];
+            : role === 'combined' ? ['backend', 'worker', 'nodes', 'frontend'] : ['backend', 'nodes', 'frontend'];
 
-        return packages.flatMap((name) => ['--volume', `${repo}/packages/${name}/dist:/app/packages/${name}/dist:ro`]);
+        const mounts = packages.flatMap((name) => ['--volume', `${repo}/packages/${name}/dist:/app/packages/${name}/dist:ro`]);
+
+        // The image restarts its own processes when what is mounted changes, so
+        // a rebuild on the host is the whole loop.
+        return [...mounts, '--env', 'PRETZEL_DEV_WATCH=1'];
     }
 
     async create(options: AbstractHardwareDriver.CreateOptions): Promise<AbstractHardwareDriver.Handle> {

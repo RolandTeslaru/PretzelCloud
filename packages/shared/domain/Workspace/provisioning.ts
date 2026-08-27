@@ -22,7 +22,7 @@ export namespace Provisioning {
     export const getMachineRoles = (plan: Workspace.Plan): Machine.Role[] =>
         Workspace.isPaid(plan) ? ["backend", "worker"] : ["combined"]
 
-    /** What becomes of an idle workspace. Free freezes; staying up is what paid buys. */
+    /** What becomes of an idle workspace. Free disables; staying up is what paid buys. */
     export const getIdlePolicy = (plan: Workspace.Plan): "suspend" | "none" =>
         Workspace.isPaid(plan) ? "none" : "suspend"
 }

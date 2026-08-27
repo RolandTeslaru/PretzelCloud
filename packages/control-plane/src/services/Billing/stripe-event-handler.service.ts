@@ -81,9 +81,9 @@ export class StripeEventHandlerService {
 
             await PortalDB.asService('save subscription', (trx) => this.billingDatabase.saveSubscription(trx, workspaceId, subscription));
 
-            // Buying again is how a frozen workspace comes back, so this path says
+            // Buying again is how a disabled workspace comes back, so this path says
             // so rather than leaving it to the subscription event that follows.
-            await this.workspaceService.unfreeze(workspaceId);
+            await this.workspaceService.enable(workspaceId);
 
             await this.changeWorkspaceSubscription(workspaceId, subscription);
         },
@@ -99,7 +99,7 @@ export class StripeEventHandlerService {
             // `past_due` is deliberately absent: the card is still being retried,
             // and taking a workspace down mid-retry is the wrong call.
             if (subscription.status === 'active' || subscription.status === 'trialing') {
-                await this.workspaceService.unfreeze(workspaceId);
+                await this.workspaceService.enable(workspaceId);
 
                 await this.changeWorkspaceSubscription(workspaceId, subscription);
 
@@ -109,7 +109,7 @@ export class StripeEventHandlerService {
             // Retries are exhausted. Which terminal action the account is set to
             // decides whether a deletion follows, so this cannot wait for one.
             if (subscription.status === 'unpaid') {
-                await this.workspaceService.freeze(workspaceId, 'The last invoice for this workspace was not paid.');
+                await this.workspaceService.disable(workspaceId, 'The last invoice for this workspace was not paid.');
 
                 this.logger.log(`Froze ${workspaceId}: its invoice went unpaid`);
             }
@@ -126,7 +126,7 @@ export class StripeEventHandlerService {
             // The plan stays on the row: what they bought is what they come back to,
             // and dropping them to free here would silently rebuild their machines
             // at a smaller size before anyone has decided that is what they want.
-            await this.workspaceService.freeze(workspaceId, 'The subscription paying for this workspace has ended.');
+            await this.workspaceService.disable(workspaceId, 'The subscription paying for this workspace has ended.');
 
             this.logger.log(`Froze ${workspaceId}: its subscription ended`);
         },

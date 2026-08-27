@@ -86,14 +86,14 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                 <StatusBadge workspace={workspace} />
                 <PlanBadge plan={workspace.plan} />
 
-                {workspace.frozenReason && 
+                {workspace.disabledReason && 
                     <>
                         <Tooltip.Root>
                             <Tooltip.Trigger className='absolute right-4 -bottom-2'>
                                 <SystemIcons.AlertTriangleFill className=' text-destructive animate-pulse size-5'/>
                             </Tooltip.Trigger>
                             <Tooltip.Content className='max-w-[300px]'>
-                                {`This workspace has been suspended. ${workspace.frozenReason}`}
+                                {`This workspace has been suspended. ${workspace.disabledReason}`}
                             </Tooltip.Content>
                         </Tooltip.Root>
                     </>

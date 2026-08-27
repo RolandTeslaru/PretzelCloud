@@ -17,7 +17,7 @@ const STOP_TIMEOUT_SECONDS = 15;
 
 // No `services` block: machines are reached over the private network, so nothing
 // is published and the platform proxy is never in front of one.
-const CHECKS = {
+const SERVING_CHECK = {
     serving: {
         type:         'http',
         port:         SERVICE_PORT,
@@ -29,7 +29,15 @@ const CHECKS = {
     },
 };
 
-
+/**
+ * Only the roles that answer HTTP. A worker drains a queue and listens on
+ * nothing, so a check against it could never pass — and a machine with no check
+ * reports `unknown`, which is read as ready, exactly as the worker image's
+ * missing HEALTHCHECK is on Docker.
+ */
+function getChecksForRole(role: Fleet.Machine.Role): Record<string, unknown> {
+    return role === 'worker' ? {} : SERVING_CHECK;
+}
 
 type FlyMachine = {
     id:     string;
@@ -148,7 +156,7 @@ export class FlyDriver extends AbstractHardwareDriver {
                 image:    options.image,
                 env:      options.env,
                 guest:    this.toGuest(options.size),
-                checks:   CHECKS,
+                checks:   getChecksForRole(options.role),
                 restart:  { policy: 'on-failure' },
                 metadata: {
                     [WORKSPACE_METADATA]: options.workspaceId,

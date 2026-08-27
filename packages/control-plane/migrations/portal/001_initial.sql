@@ -125,8 +125,8 @@ create table workspaces (
     lifecycle_state text default 'creating' not null,
     -- Why the fleet turned it off. An unpaid invoice and an operator stop are
     -- the same state and a different sentence. Both clear on unfreeze.
-    frozen_at       timestamp with time zone,
-    frozen_reason   text,
+    disabled_at     timestamp with time zone,
+    disabled_reason text,
     -- Teardown was asked for and threw, so the fleet may still owe cleanup.
     -- Orthogonal to the lifecycle: teardown runs for a destroy and for a failed
     -- provision alike.
@@ -145,7 +145,7 @@ create table workspaces (
     updated_at   timestamp with time zone default now() not null,
 
     constraint workspaces_lifecycle_state_check check (lifecycle_state in (
-        'creating', 'running', 'sleeping', 'stopped', 'frozen', 'provisioning_failed')),
+        'creating', 'running', 'sleeping', 'stopped', 'disabled', 'provisioning_failed')),
     constraint workspaces_plan_fkey   foreign key (plan) references plans(id) on delete restrict
 );
 

@@ -147,7 +147,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     // does the host resolve?           → 404
     // is it a control-plane path?      → the control plane answers it, no machine needed
     // a page load carrying no session? → the portal
-    // is the workspace switched off?   → the portal, or 402 frozen / 503 stopped
+    // is the workspace switched off?   → the portal, or 402 disabled / 503 stopped
     // is it out of executions?         → 402 over limit
     // is the machine asleep or gone?   → wake, or hold a webhook, or ask for a retry
     //                                  → forward
@@ -188,7 +188,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             if (ProxyService.isPageRequest(req))
                 this.redirectToPortal(res);
             else
-                this.refuseStoppedOrFrozen(res, resolution);
+                this.refuseStoppedOrDisabled(res, resolution);
 
             return;
         }
@@ -240,18 +240,18 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
      * the bare status.
      */
     // No `Retry-After` on either: nothing is coming without a person.
-    private refuseStoppedOrFrozen(res: ServerResponse, resolution: Router.Resolution): void {
-        const frozen = resolution.lifecycleState === 'frozen';
+    private refuseStoppedOrDisabled(res: ServerResponse, resolution: Router.Resolution): void {
+        const disabled = resolution.lifecycleState === 'disabled';
 
-        res.writeHead(frozen ? 402 : 503, { 'Content-Type': 'application/json' }).end(JSON.stringify({
-            status: frozen ? 402 : 503,
+        res.writeHead(disabled ? 402 : 503, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+            status: disabled ? 402 : 503,
             error: {
-                code:    frozen ? 'WORKSPACE_FROZEN' : 'WORKSPACE_STOPPED',
-                message: frozen
-                    ? 'This workspace has been suspended.'
+                code:    disabled ? 'WORKSPACE_DISABLED' : 'WORKSPACE_STOPPED',
+                message: disabled
+                    ? 'This workspace has been disabled.'
                     : 'This workspace has been turned off by its owner.',
-                detail: frozen
-                    ? resolution.frozenReason ?? 'Settle the account to bring it back.'
+                detail: disabled
+                    ? resolution.disabledReason ?? 'Settle the account to bring it back.'
                     : 'Start it again from the dashboard.',
             },
         }));

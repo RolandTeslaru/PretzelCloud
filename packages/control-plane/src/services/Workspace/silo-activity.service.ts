@@ -101,7 +101,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
                 if (!plan || Provisioning.getIdlePolicy(plan) === 'none')
                     continue;
 
-                // Stopped or frozen is where its owner or its billing put it.
+                // Stopped or disabled is where its owner or its billing put it.
                 if (!Workspace.acceptsTraffic(lifecycleStates.get(workspaceId) ?? 'creating'))
                     continue;
 
