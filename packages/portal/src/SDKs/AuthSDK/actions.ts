@@ -1,16 +1,7 @@
 import { NotificationSDK } from "@pretzel-graph/standard-ui/SDKs/NotificationSDK";
 import { User } from "@pretzel-cloud/shared/domain";
 import type { AuthSDK, AuthSDKImpl } from "./sdk";
-import { api } from "../api";
-
-/** The server's reason where there is one; axios only reports the status code. */
-const message = (error: unknown) => {
-    const replied = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-
-    if (replied) return replied
-
-    return error instanceof Error ? error.message : String(error)
-}
+import { api, getMessageFromError } from "../api";
 
 /** Signed in at the issuer, but with no profile row here yet. */
 const isMissingProfile = (error: unknown) =>
@@ -70,7 +61,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
                 await sdk.actions.register({ username: props.username, displayName: props.displayName })
             }
             catch (error) {
-                NotificationSDK.toast.error(message(error))
+                NotificationSDK.toast.error(getMessageFromError(error))
                 return false;
             }
 
@@ -103,7 +94,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
                 await User.API.deleteAccount(api)
             }
             catch (error) {
-                NotificationSDK.toast.error(message(error))
+                NotificationSDK.toast.error(getMessageFromError(error))
 
                 return false
             }
@@ -142,7 +133,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
             }
             catch (error) {
                 if (!isMissingProfile(error)) {
-                    NotificationSDK.toast.error(`Could not load your profile: ${message(error)}`)
+                    NotificationSDK.toast.error(`Could not load your profile: ${getMessageFromError(error)}`)
                 }
 
                 sdk.setState(s => {

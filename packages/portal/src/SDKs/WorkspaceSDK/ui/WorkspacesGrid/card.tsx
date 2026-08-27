@@ -32,7 +32,9 @@ const copyWorkspaceId = async (id: Workspace.Id) => {
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
     const transition = WorkspaceSDK.useStore((s) => s.transitions[workspace.id])
 
-    const reachable = isReachable(workspace, transition)
+    const rebuilding = WorkspaceSDK.useStore((s) => s.rebuilding[workspace.id])
+
+    const reachable = isReachable(workspace, transition, rebuilding)
 
     return (
         <Card.Root
@@ -93,7 +95,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                                 <SystemIcons.AlertTriangleFill className=' text-destructive animate-pulse size-5'/>
                             </Tooltip.Trigger>
                             <Tooltip.Content className='max-w-[300px]'>
-                                {`This workspace has been suspended. ${workspace.disabledReason}`}
+                                {`This workspace has been disabled. ${workspace.disabledReason}`}
                             </Tooltip.Content>
                         </Tooltip.Root>
                     </>

@@ -8,6 +8,7 @@ import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { User } from '@pretzel-cloud/shared/domain'
+import { getMessageFromError } from '@/SDKs/api'
 import { AuthSDK } from '../sdk'
 
 const DIALOG_ID = 'account'
@@ -80,15 +81,15 @@ function AccountContent() {
             setIsEditing(false)
         }
         catch (error) {
-            const replied = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
+            const replied = getMessageFromError(error, 'Could not update your account')
 
             // A taken username belongs on the field, not only in a toast.
-            if (replied?.toLowerCase().includes('username')) {
+            if (replied.toLowerCase().includes('username')) {
                 form.setError('username', { message: replied })
                 return
             }
 
-            NotificationSDK.toast.error(replied ?? 'Could not update your account')
+            NotificationSDK.toast.error(replied)
         }
     }
 

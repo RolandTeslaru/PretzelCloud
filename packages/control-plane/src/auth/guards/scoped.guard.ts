@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { PermissionService } from '@/services/Permission/permission.service';
-import { ScopeName, Scopes, SCOPE, REQUIRE_OWNER } from '../scopes';
+import { ScopeName, Scopes, SCOPE, REQUIRE_OWNER, REQUIRE_ENABLED } from '../scopes';
 
 export type ScopedRequest = Request & { scopes?: Partial<Scopes> };
 
@@ -30,8 +30,24 @@ export class ScopedGuard implements CanActivate {
             [context.getHandler(), context.getClass()],
         );
 
-        if (!name)
+        const requireOwner = this.reflector.getAllAndOverride<boolean | undefined>(
+            REQUIRE_OWNER,
+            [context.getHandler(), context.getClass()],
+        );
+
+        const requireEnabled = this.reflector.getAllAndOverride<boolean | undefined>(
+            REQUIRE_ENABLED,
+            [context.getHandler(), context.getClass()],
+        );
+
+        if (!name) {
+            // Both read the resolved workspace, so a route asking for either
+            // without a scope is asking for a check that would never run.
+            if (requireOwner || requireEnabled)
+                throw new Error("@RequireOwner and @RequireEnabled need @Scoped('workspace')");
+
             return true;
+        }
 
         const request = context.switchToHttp().getRequest<ScopedRequest>();
 
@@ -41,9 +57,14 @@ export class ScopedGuard implements CanActivate {
 
         const workspace = await this.resolveWorkspace(request);
 
-        if (this.reflector.getAllAndOverride<boolean | undefined>(REQUIRE_OWNER, [context.getHandler(), context.getClass()])
-            && workspace.ownerId !== request.principal.userId)
+        if (requireOwner && workspace.ownerId !== request.principal.userId)
             throw new ForbiddenException('Only the workspace owner can do that');
+
+        // With the reason: the caller cannot undo this, so the only useful thing
+        // to say is why it happened.
+        if (requireEnabled && workspace.lifecycleState === 'disabled')
+            throw new ForbiddenException(
+                `This workspace is disabled. ${workspace.disabledReason ?? 'Settle the account to bring it back.'}`);
 
         request.scopes = { ...request.scopes, [name]: workspace };
 

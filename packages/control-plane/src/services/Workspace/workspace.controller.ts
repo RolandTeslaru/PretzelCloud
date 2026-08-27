@@ -1,9 +1,9 @@
-import { Controller, Delete, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Logger, Patch, Post, UseGuards } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { ZodBody } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
 import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
 import { ScopedGuard } from '@/auth/guards/scoped.guard';
-import { Scoped, RequireOwner } from '@/auth/scopes';
+import { Scoped, RequireOwner, RequireEnabled } from '@/auth/scopes';
 import { WorkspaceScope, WorkspaceIdParam } from '@/auth/guarded-params';
 import { AuthenticatedUser } from '@/auth/identity/principal.decorator';
 import { Principal } from '@/auth/identity/principal';
@@ -19,6 +19,8 @@ const API = Workspace.API;
 @Controller('workspaces')
 @UseGuards(UserAuthGuard, ScopedGuard)
 export class WorkspaceController {
+
+    private readonly logger = new Logger(WorkspaceController.name);
 
     constructor(private readonly workspaceService: WorkspaceService) {}
 
@@ -89,8 +91,14 @@ export class WorkspaceController {
     @Post(':workspaceId/start')
     @Scoped('workspace')
     @RequireOwner()
+    @RequireEnabled()
+    @HttpCode(202)
     async start(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaceService.start(workspaceId);
+        // Accepted, not done: bringing a workspace up waits on machines, and a
+        // browser holding the request for that long learns nothing it would not
+        // hear from `transition:failed` or `lifecycle:changed` anyway.
+        void this.workspaceService.start(workspaceId)
+            .catch((error: unknown) => this.logger.error(`Starting ${workspaceId} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};
     }
@@ -98,8 +106,11 @@ export class WorkspaceController {
     @Post(':workspaceId/stop')
     @Scoped('workspace')
     @RequireOwner()
+    @RequireEnabled()
+    @HttpCode(202)
     async stop(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaceService.stop(workspaceId);
+        void this.workspaceService.stop(workspaceId)
+            .catch((error: unknown) => this.logger.error(`Stopping ${workspaceId} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};
     }
@@ -107,8 +118,11 @@ export class WorkspaceController {
     @Post(':workspaceId/suspend')
     @Scoped('workspace')
     @RequireOwner()
+    @RequireEnabled()
+    @HttpCode(202)
     async suspend(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaceService.suspend(workspaceId);
+        void this.workspaceService.suspend(workspaceId)
+            .catch((error: unknown) => this.logger.error(`Suspending ${workspaceId} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};
     }
@@ -116,8 +130,11 @@ export class WorkspaceController {
     @Post(':workspaceId/rebuild')
     @Scoped('workspace')
     @RequireOwner()
+    @RequireEnabled()
+    @HttpCode(202)
     async rebuild(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan);
+        void this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan)
+            .catch((error: unknown) => this.logger.error(`Rebuilding ${workspace.id} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};
     }
@@ -125,8 +142,11 @@ export class WorkspaceController {
     @Post(':workspaceId/restart')
     @Scoped('workspace')
     @RequireOwner()
+    @RequireEnabled()
+    @HttpCode(202)
     async restart(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
-        await this.workspaceService.restart(workspaceId);
+        void this.workspaceService.restart(workspaceId)
+            .catch((error: unknown) => this.logger.error(`Restarting ${workspaceId} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};
     }

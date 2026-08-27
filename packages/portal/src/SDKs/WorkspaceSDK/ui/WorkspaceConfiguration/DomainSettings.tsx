@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { Badge, Button, Form, Input, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { Workspace } from '@pretzel-cloud/shared/domain'
+import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../../sdk'
 
 // Subdomain.Custom is branded, so what the form holds and what it produces are
@@ -31,9 +32,7 @@ export const DomainSettings = ({ workspaceId }: { workspaceId: Workspace.Id }) =
             NotificationSDK.toast.success('Subdomain updated')
         }
         catch (error) {
-            const replied = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-
-            NotificationSDK.toast.error(replied ?? 'Could not set the subdomain')
+            NotificationSDK.toast.error(getMessageFromError(error, 'Could not set the subdomain'))
         }
     }
 

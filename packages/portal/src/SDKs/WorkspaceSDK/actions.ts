@@ -1,4 +1,5 @@
 import { Workspace } from '@pretzel-cloud/shared/domain'
+import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { api } from '../api'
 import type { WorkspaceSDKImpl } from './sdk'
 
@@ -9,11 +10,11 @@ export type _WorkspaceSDKActions_ = {
     rename:       (workspaceId: Workspace.Id, payload: Workspace.API.Rename.Request) => Promise<void>
     setSubdomain: (workspaceId: Workspace.Id, payload: Workspace.API.SetSubdomain.Request) => Promise<void>
     destroy:      (workspaceId: Workspace.Id) => Promise<void>
-    start:        (workspaceId: Workspace.Id) => Promise<Workspace>
-    stop:         (workspaceId: Workspace.Id) => Promise<Workspace>
-    suspend:      (workspaceId: Workspace.Id) => Promise<Workspace>
-    restart:      (workspaceId: Workspace.Id) => Promise<Workspace>
-    rebuild:      (workspaceId: Workspace.Id) => Promise<Workspace>
+    start:        (workspaceId: Workspace.Id) => Promise<void>
+    stop:         (workspaceId: Workspace.Id) => Promise<void>
+    suspend:      (workspaceId: Workspace.Id) => Promise<void>
+    restart:      (workspaceId: Workspace.Id) => Promise<void>
+    rebuild:      (workspaceId: Workspace.Id) => Promise<void>
     setPlan:      (workspaceId: Workspace.Id, plan: Workspace.Plan) => Promise<Workspace>
     applyEvent:   (event: Workspace.Event.Any) => void
 }
@@ -26,6 +27,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
             s.workspaces[workspace.id] = workspace
 
             delete s.transitions[workspace.id]
+            delete s.rebuilding[workspace.id]
         })
     }
 
@@ -42,6 +44,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 // The rows just read are authoritative; anything believed to be
                 // in flight was settled by an event this client may have missed.
                 s.transitions = {}
+                s.rebuilding = {}
             })
 
             return byId
@@ -91,13 +94,14 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
             })
         },
 
-        // The transition changes machine state, which the workspace's status
-        // reflects — so re-read the card rather than guessing the new value.
-        start:   async (workspaceId) => { await Workspace.API.start(api, workspaceId);   return sdk.actions.refresh(workspaceId) },
-        stop:    async (workspaceId) => { await Workspace.API.stop(api, workspaceId);    return sdk.actions.refresh(workspaceId) },
-        suspend: async (workspaceId) => { await Workspace.API.suspend(api, workspaceId); return sdk.actions.refresh(workspaceId) },
-        restart: async (workspaceId) => { await Workspace.API.restart(api, workspaceId); return sdk.actions.refresh(workspaceId) },
-        rebuild: async (workspaceId) => { await Workspace.API.rebuild(api, workspaceId); return sdk.actions.refresh(workspaceId) },
+        // Accepted, not done: the request returns before the machine has moved,
+        // and what it settles on arrives as an event. Reading the card here
+        // would only find the state it is on its way out of.
+        start:   async (workspaceId) => { await Workspace.API.start(api, workspaceId)   },
+        stop:    async (workspaceId) => { await Workspace.API.stop(api, workspaceId)    },
+        suspend: async (workspaceId) => { await Workspace.API.suspend(api, workspaceId) },
+        restart: async (workspaceId) => { await Workspace.API.restart(api, workspaceId) },
+        rebuild: async (workspaceId) => { await Workspace.API.rebuild(api, workspaceId) },
 
         // The plan decides the topology, so the machines are rebuilt behind
         // this — re-read rather than patching the plan in place.
@@ -115,6 +119,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 if (event.type === 'destroyed') {
                     delete s.workspaces[event.workspaceId]
                     delete s.transitions[event.workspaceId]
+                    delete s.rebuilding[event.workspaceId]
 
                     return
                 }
@@ -128,10 +133,35 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 if (event.type === 'transition:started')
                     s.transitions[event.workspaceId] = event.action
 
+                // Cleared here too: the state that follows is the one it was
+                // already in, so nothing else would take the card out of it.
+                if (event.type === 'transition:failed') {
+                    delete s.transitions[event.workspaceId]
+
+                    NotificationSDK.toast.error(`Could not ${event.action} ${card.displayName}`, { description: event.reason })
+                }
+
                 if (event.type === 'lifecycle:changed') {
                     card.lifecycleState = event.lifecycleState
 
                     delete s.transitions[event.workspaceId]
+                }
+
+                // Held for the whole rebuild, since the stop and start it runs
+                // report nothing of their own.
+                if (event.type === 'rebuild:started')
+                    s.rebuilding[event.workspaceId] = true
+
+                if (event.type === 'rebuilt') {
+                    delete s.rebuilding[event.workspaceId]
+
+                    NotificationSDK.toast.success(`${card.displayName} rebuilt`)
+                }
+
+                if (event.type === 'rebuild:failed') {
+                    delete s.rebuilding[event.workspaceId]
+
+                    NotificationSDK.toast.error(`Could not rebuild ${card.displayName}`, { description: event.reason })
                 }
 
                 if (event.type === 'plan:changed')

@@ -32,4 +32,20 @@ export const api: AxiosInstance = (g.__api ??= (() => {
     return instance;
 })());
 
+/**
+ * The server's own reason where it sent one, since axios reports only the status
+ * code. Without a fallback it falls back to whatever the transport said.
+ */
+export const getMessageFromError = (error: unknown, fallback?: string): string => {
+    const replied = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
+
+    if (replied)
+        return replied
+
+    if (fallback)
+        return fallback
+
+    return error instanceof Error ? error.message : String(error)
+}
+
 if (import.meta.hot) import.meta.hot.accept();

@@ -15,8 +15,8 @@ export class WorkspaceDatabase {
         id:          Workspace.Id;
         displayName: string;
         ownerId:     User.Id;
-    }): Promise<void> {
-        await trx
+    }): Promise<Workspace> {
+        const row = await trx
             .insertInto('workspaces')
             .values({
                 id:              values.id,
@@ -26,12 +26,15 @@ export class WorkspaceDatabase {
                 plan:            'free',
                 owner_id:        values.ownerId,
             })
-            .execute();
+            .returningAll()
+            .executeTakeFirstOrThrow();
 
         await trx
             .insertInto('workspace_members')
             .values({ workspace_id: values.id, user_id: values.ownerId })
             .execute();
+
+        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
     }
 
     @AllowedDatabaseRoles('service')

@@ -45,6 +45,9 @@ export namespace Workspace {
     export const getLifecycleStateFromAction = (action: LifecycleAction): LifecycleState =>
         LANDS_ON[action]
 
+    /** How a transition is run when something larger is doing the announcing. */
+    export type TransitionOptions = { emitNoEvents?: boolean }
+
     /** Whether traffic arriving may bring it up. */
     export const isWakeable = (state: LifecycleState): boolean =>
         state === "sleeping"
@@ -259,6 +262,25 @@ export namespace Workspace {
         export type  Destroyed = z.infer<typeof Destroyed>
 
         /**
+         * Its machines are being replaced. Not a transition: they are destroyed
+         * and made again, and the stop and start inside it stay quiet so this
+         * covers the whole of it.
+         */
+        export const RebuildStarted = Base.extend({ type: z.literal('rebuild:started') })
+        export type  RebuildStarted = z.infer<typeof RebuildStarted>
+
+        /** Its machines were replaced. Nothing it holds changed — only what runs it. */
+        export const Rebuilt = Base.extend({ type: z.literal('rebuilt') })
+        export type  Rebuilt = z.infer<typeof Rebuilt>
+
+        /** They were not. Whatever it is left on, `lifecycle:changed` says. */
+        export const RebuildFailed = Base.extend({
+            type:   z.literal('rebuild:failed'),
+            reason: z.string(),
+        })
+        export type  RebuildFailed = z.infer<typeof RebuildFailed>
+
+        /**
          * A transition in flight. Never stored — the row keeps saying what it
          * last settled on until `lifecycle:changed` says what this turned out
          * to be.
@@ -269,7 +291,20 @@ export namespace Workspace {
         })
         export type  TransitionStarted = z.infer<typeof TransitionStarted>
 
-        export const Schema = z.discriminatedUnion('type', [LifecycleChanged, PlanChanged, Destroyed, TransitionStarted])
+        /**
+         * A transition that did not get there. The workspace is wherever it was
+         * before it was asked, which `lifecycle:changed` says separately — this
+         * carries the only thing that is otherwise lost when the caller is not
+         * waiting for an answer.
+         */
+        export const TransitionFailed = Base.extend({
+            type:   z.literal('transition:failed'),
+            action: LifecycleAction,
+            reason: z.string(),
+        })
+        export type  TransitionFailed = z.infer<typeof TransitionFailed>
+
+        export const Schema = z.discriminatedUnion('type', [LifecycleChanged, PlanChanged, Destroyed, RebuildStarted, Rebuilt, RebuildFailed, TransitionStarted, TransitionFailed])
 
         export type Any = z.infer<typeof Schema>
 
@@ -281,6 +316,7 @@ export namespace Workspace {
 
         export const create = Realtime.Event.defineFactory(Schema, Stamped)
     }
+    export type Event = z.infer<typeof Event.Schema>
 
     // Inline rather than a sibling file: a module importing back into this one
     // would be a cycle that leaves the zod schemas undefined at load.

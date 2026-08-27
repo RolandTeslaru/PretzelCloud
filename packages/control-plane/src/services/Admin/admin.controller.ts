@@ -31,7 +31,7 @@ export class AdminController {
     ): Promise<Record<string, never>> {
         await this.workspaceService.disable(
             Workspace.Id.parse(workspaceId),
-            body?.reason?.trim() || 'This workspace has been suspended by an operator.',
+            body?.reason?.trim() || 'This workspace has been disabled by an operator.',
         );
 
         return {};

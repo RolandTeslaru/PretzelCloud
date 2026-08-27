@@ -1,16 +1,14 @@
 import { useEffect } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import confetti from 'canvas-confetti'
-import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { Billing, Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
-import { workspacesQuery } from '@/SDKs/WorkspaceSDK/ui/WorkspacesGrid'
 
 export const Route = createFileRoute('/_app/checkout/success/$workspaceId')({
     loader: async () => {
-        await QuerySDK.client.fetchQuery(workspacesQuery).catch(() => null)
+        await WorkspaceSDK.fetchWorkspaces().catch(() => null)
 
         return null
     },

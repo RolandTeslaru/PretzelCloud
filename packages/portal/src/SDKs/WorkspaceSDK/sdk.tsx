@@ -1,20 +1,30 @@
 import { immer } from 'zustand/middleware/immer'
 import { createWithEqualityFn } from 'zustand/traditional'
 import { shallow } from 'zustand/shallow'
-import type { Workspace } from '@pretzel-cloud/shared/domain'
+import { Workspace } from '@pretzel-cloud/shared/domain'
+import { RealtimeSDK } from '@/SDKs/RealtimeSDK'
 import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createWorkspaceSDKActions, type _WorkspaceSDKActions_ } from './actions'
 import { workspaceSelectors, type WorkspaceSDKSelectors } from './selectors'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
+import { Dialog } from '@pretzel-graph/standard-ui/foundations'
+import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
 import WorkspaceConfiguration, { type ItemId } from './ui/WorkspaceConfiguration'
+import { CreateWorkspaceDialog } from './ui/CreateWorkspaceDialog'
 import { DestroyWorkspaceDialog } from './ui/WorkspaceConfiguration/DestroyWorkspaceDialog'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
+import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 
 // Per workspace, so opening one from another card does not reuse its panel state.
 const configurationDialogId = (workspaceId: Workspace.Id) => `workspace-configuration-${workspaceId}`
 
 const destroyDialogId = (workspaceId: Workspace.Id) => `destroy-workspace-${workspaceId}`
+
+// One at a time, unlike the others: it is not opened from a workspace.
+const CREATE_DIALOG_ID = 'create-workspace'
+
+const WORKSPACES_STALE_TIME = 30_000
 
 @SDK('Workspace')
 export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
@@ -25,12 +35,58 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
         immer<WorkspaceSDK.State>(() => ({
             workspaces: {},
             transitions: {},
+            rebuilding: {},
             selectors: workspaceSelectors,
         })),
         shallow
     )
 
     public readonly selectors: WorkspaceSDK.Selectors = workspaceSelectors
+
+    /** One entry per workspace the store holds, for as long as it holds it. */
+    public readonly runtime = {
+        unsubscribeByWorkspaceId: new Map<Workspace.Id, () => void>()
+    }
+
+    /** One descriptor, so every caller names the same cache entry. */
+    private readonly workspacesQuery = {
+        queryKey:  ['workspaces'] as const,
+        queryFn:   () => this.actions.list(),
+        staleTime: WORKSPACES_STALE_TIME,
+    }
+
+    /** Seeds the store; the subscription below keeps it live from there. */
+    public useWorkspacesQuery = () => QuerySDK.useQuery<Record<Workspace.Id, Workspace>, Error>(
+        this.workspacesQuery.queryKey,
+        this.workspacesQuery.queryFn,
+        { staleTime: this.workspacesQuery.staleTime },
+    )
+
+    /** The same query for route loaders, which run before anything renders. */
+    public fetchWorkspaces = () => QuerySDK.client.fetchQuery(this.workspacesQuery)
+
+    public openCreateWorkspaceDialog = () => {
+        DialogSDK.actions.push(CREATE_DIALOG_ID, (props) => (
+            <DialogSDK.SplitTemplate
+                {...props}
+                className='h-[400px]'
+                sidebarClassName='w-[400px]'
+                sidebarRenderer={() => (
+                    <>
+                        <div className='flex flex-row gap-2'>
+                            <ServerIllustration className='size-10 shrink-0' />
+                            <Dialog.Title className='text-sm font-semibold my-auto'>Workspace Builder</Dialog.Title>
+                        </div>
+                        <Dialog.Description className='text-xs text-muted-foreground pt-1'>
+                            Every workspace is its own isolated deployment with a private database and private compute.
+                        </Dialog.Description>
+                    </>
+                )}
+            >
+                <CreateWorkspaceDialog dialogId={CREATE_DIALOG_ID} />
+            </DialogSDK.SplitTemplate>
+        ))
+    }
 
     /** `currentPanel` opens straight onto one, for callers that already know which. */
     public openConfigurationDialog = (workspaceId: Workspace.Id, currentPanel?: ItemId) => {
@@ -84,6 +140,39 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
 
 export const WorkspaceSDK = SDK.get<WorkspaceSDKImpl>('Workspace')
 
+// Every workspace in the store is subscribed for as long as it is there, so an
+// event lands whatever is on screen.
+WorkspaceSDK.subscribe((state, prevState) => {
+    // Immer keeps the reference when the slice was not touched.
+    if (state.workspaces === prevState.workspaces)
+        return
+
+    const { unsubscribeByWorkspaceId } = WorkspaceSDK.runtime
+
+    const workspaceIds = new Set(Object.keys(state.workspaces) as Workspace.Id[])
+
+    for (const [workspaceId, unsubscribe] of unsubscribeByWorkspaceId) {
+        if (workspaceIds.has(workspaceId))
+            continue
+
+        unsubscribe()
+
+        unsubscribeByWorkspaceId.delete(workspaceId)
+    }
+
+    // Only the new ones: resubscribing an unchanged workspace would drop the
+    // events published while the socket carried the swap.
+    for (const workspaceId of workspaceIds) {
+        if (unsubscribeByWorkspaceId.has(workspaceId))
+            continue
+
+        unsubscribeByWorkspaceId.set(workspaceId, RealtimeSDK.subscribeToChannel<Workspace.Event.Any>(
+            Workspace.Event.getChannel(workspaceId),
+            (event) => WorkspaceSDK.actions.applyEvent(event),
+        ))
+    }
+})
+
 export namespace WorkspaceSDK {
     export type State = {
         // Keyed by id so a single workspace can be updated without walking a
@@ -94,6 +183,9 @@ export namespace WorkspaceSDK {
         // state, nothing stores it, and the next reading of the row would drop
         // it anyway.
         transitions: Partial<Record<Workspace.Id, Workspace.LifecycleAction>>
+        // Beside the transitions rather than among them: a rebuild is not one,
+        // and the stop and start inside it never announce themselves.
+        rebuilding: Partial<Record<Workspace.Id, boolean>>
         selectors: WorkspaceSDKSelectors
     }
 

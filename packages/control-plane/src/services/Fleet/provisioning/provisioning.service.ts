@@ -44,7 +44,7 @@ export class ProvisioningService {
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
 
-        const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, owner.id, secrets);
+        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, owner.id, secrets);
 
         await this.step('hardware', () => this.hardwareService.build(workspaceId, plan, baseEnvKeys, backendEnvKeys));
 
@@ -66,7 +66,7 @@ export class ProvisioningService {
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
-        const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, ownerId, secrets);
+        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, secrets);
         // No health wait: the caller stops the hardware around a conversion and starts it after.
         await this.step('convert', () => this.hardwareService.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
@@ -78,13 +78,13 @@ export class ProvisioningService {
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
-        const { baseEnvKeys, backendEnvKeys } = await this.getMachineEnvKeys(workspaceId, ownerId, secrets);
+        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, secrets);
         // No health wait: the caller stops the hardware around a rebuild and starts it after.
         await this.step('rebuild', () => this.hardwareService.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
     /** The two env shapes a machine is built from; both need what only provisioning knows — owner, issuer, key material. */
-    private async getMachineEnvKeys(
+    private async assembleMachineEnvKeys(
         workspaceId: Workspace.Id,
         ownerId:     User.Id,
         secrets:     Fleet.WorkspaceSecrets.MachineEnv,

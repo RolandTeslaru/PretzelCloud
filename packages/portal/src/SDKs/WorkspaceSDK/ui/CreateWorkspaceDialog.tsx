@@ -1,44 +1,19 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button, Dialog, Form, Input, Spinner } from '@pretzel-graph/standard-ui/foundations'
+import { Button, Form, Input, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
-import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
 import { Workspace } from '@pretzel-cloud/shared/domain'
+import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../sdk'
-
-const DIALOG_ID = 'create-workspace'
 
 const Schema = z.object({
     displayName: Workspace.DisplayName,
 })
 type Values = z.infer<typeof Schema>
 
-export function openCreateWorkspaceDialog() {
-    DialogSDK.actions.push(DIALOG_ID, (props) => (
-        <DialogSDK.SplitTemplate
-            {...props}
-            className='h-[400px]'
-            sidebarClassName='w-[400px]'
-            sidebarRenderer={() => (
-                <>
-                    <div className='flex flex-row gap-2'>
-                        <ServerIllustration className='size-10 shrink-0' />
-                        <Dialog.Title className='text-sm font-semibold my-auto'>Workspace Builder</Dialog.Title>
-                    </div>
-                    <Dialog.Description className='text-xs text-muted-foreground pt-1'>
-                        Every workspace is its own isolated deployment with a private database and private compute.
-                    </Dialog.Description>
-                </>
-            )}
-        >
-            <CreateWorkspaceContent dialogId={DIALOG_ID} />
-        </DialogSDK.SplitTemplate>
-    ))
-}
-
-function CreateWorkspaceContent({ dialogId }: { dialogId: string }) {
+export function CreateWorkspaceDialog({ dialogId }: { dialogId: string }) {
     const form = useForm<Values>({
         resolver: zodResolver(Schema),
         defaultValues: { displayName: '' },
@@ -51,9 +26,7 @@ function CreateWorkspaceContent({ dialogId }: { dialogId: string }) {
             DialogSDK.actions.pop(dialogId)
         }
         catch (error) {
-            const replied = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-
-            NotificationSDK.toast.error(replied ?? 'Could not create the workspace')
+            NotificationSDK.toast.error(getMessageFromError(error, 'Could not create the workspace'))
         }
     }
 

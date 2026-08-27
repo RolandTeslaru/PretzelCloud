@@ -1,13 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { ScrollArea, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
-import { workspacesQuery } from '@/SDKs/WorkspaceSDK/ui/WorkspacesGrid'
 import { WorkspaceUsage } from '@/SDKs/EntitlementSDK/ui/WorkspaceUsage'
 
 export const Route = createFileRoute('/_app/usage')({
     loader: async () => {
-        await QuerySDK.client.fetchQuery(workspacesQuery).catch(() => null)
+        await WorkspaceSDK.fetchWorkspaces().catch(() => null)
 
         return null
     },
@@ -16,11 +14,7 @@ export const Route = createFileRoute('/_app/usage')({
 })
 
 function UsagePage() {
-    const { isPending } = QuerySDK.useQuery<unknown, Error>(
-        workspacesQuery.queryKey,
-        workspacesQuery.queryFn,
-        { staleTime: workspacesQuery.staleTime },
-    )
+    const { isPending } = WorkspaceSDK.useWorkspacesQuery()
 
     const workspaces = WorkspaceSDK.useStore((s) => Object.values(s.workspaces))
 

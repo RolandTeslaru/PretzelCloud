@@ -1,14 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { BillingSDK } from '@/SDKs/BillingSDK'
+import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
 import { WorkspacesBillingTable } from '@/SDKs/BillingSDK/ui/WorkspacesBillingTable'
-import { workspacesQuery } from '@/SDKs/WorkspaceSDK/ui/WorkspacesGrid'
 
 export const Route = createFileRoute('/_app/billing')({
     loader: async () => {
-        await QuerySDK.client.fetchQuery(workspacesQuery).catch(() => null)
+        await WorkspaceSDK.fetchWorkspaces().catch(() => null)
 
         return null
     },

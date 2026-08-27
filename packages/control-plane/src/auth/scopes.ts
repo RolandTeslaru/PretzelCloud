@@ -11,6 +11,7 @@ export type Scope<K extends ScopeName> = Scopes[K];
 
 export const SCOPE = 'pretzel.scope';
 export const REQUIRE_OWNER = 'pretzel.require-owner';
+export const REQUIRE_ENABLED = 'pretzel.require-enabled';
 
 /** Declares which resource this route acts on. ScopedGuard resolves it. */
 export const Scoped = (name: ScopeName) => SetMetadata(SCOPE, name);
@@ -23,3 +24,9 @@ export const Scoped = (name: ScopeName) => SetMetadata(SCOPE, name);
  * live in its own database and have no say here.
  */
 export const RequireOwner = () => SetMetadata(REQUIRE_OWNER, true);
+
+/**
+ * Refuses a workspace the fleet turned off. Only `enable` clears that state, so
+ * nothing reachable by its owner may act around it.
+ */
+export const RequireEnabled = () => SetMetadata(REQUIRE_ENABLED, true);

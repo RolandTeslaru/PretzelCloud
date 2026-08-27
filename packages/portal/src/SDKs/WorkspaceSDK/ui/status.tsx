@@ -25,12 +25,20 @@ const IN_FLIGHT: Record<Workspace.LifecycleAction, Omit<Appearance, 'icon'>> = {
 
 /** One badge for the lifecycle, or for whatever is moving it right now. */
 export const displayStatus = (
-    workspace:  Workspace,
+    workspace:   Workspace,
     transition?: Workspace.LifecycleAction,
+    rebuilding?: boolean,
 ): Appearance => {
+    const settling = workspace.lifecycleState === 'creating' || workspace.lifecycleState === 'provisioning_failed'
+
+    // Ahead of the transitions: a rebuild runs a stop and a start inside it, and
+    // naming those would report the parts rather than the whole.
+    if (rebuilding && !settling)
+        return { label: 'Rebuilding', variant: 'secondary', icon: spinner }
+
     // A transition in flight wins over the state it is on its way out of, but
     // not over being built or having failed to build.
-    if (transition && workspace.lifecycleState !== 'creating' && workspace.lifecycleState !== 'provisioning_failed')
+    if (transition && !settling)
         return { ...IN_FLIGHT[transition], icon: spinner }
 
     switch (workspace.lifecycleState) {
@@ -39,7 +47,7 @@ export const displayStatus = (
         case 'running':             return { label: 'Running',      variant: 'success',     icon: <SystemIcons.Check /> }
         case 'sleeping':            return { label: 'Sleeping',     variant: 'nightly',     icon: <SystemIcons.Moon /> }
         case 'stopped':             return { label: 'Stopped',      variant: 'destructive', icon: <SystemIcons.Power /> }
-        case 'disabled':              return { label: 'Suspended',    variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
+        case 'disabled':            return { label: 'Disabled',    variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
     }
 }
 
@@ -69,15 +77,19 @@ export const PlanBadge = ({ plan }: { plan: Workspace.Plan }) => (
 export const isReachable = (
     workspace:   Workspace,
     transition?: Workspace.LifecycleAction,
+    rebuilding?: boolean,
 ) =>
     Workspace.acceptsTraffic(workspace.lifecycleState)
     && !transition
+    && !rebuilding
 
 /** Reads the transition itself, so only the badge re-renders when one starts. */
 export const StatusBadge = ({ workspace }: { workspace: Workspace }) => {
     const transition = WorkspaceSDK.useStore((s) => s.transitions[workspace.id])
 
-    const { label, variant, icon } = displayStatus(workspace, transition)
+    const rebuilding = WorkspaceSDK.useStore((s) => s.rebuilding[workspace.id])
+
+    const { label, variant, icon } = displayStatus(workspace, transition, rebuilding)
 
     return (
         <Badge variant={variant} size="sm">
