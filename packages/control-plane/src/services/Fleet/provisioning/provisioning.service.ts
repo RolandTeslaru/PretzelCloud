@@ -101,7 +101,7 @@ export class ProvisioningService {
         secrets:     Fleet.WorkspaceSecrets.MachineEnv,
     ): Promise<{ baseEnvKeys: Fleet.Machine.EnvKeys.Base; backendEnvKeys: Fleet.Machine.EnvKeys.Backend }> {
         // Every machine the fleet runs, whatever a self-hoster does with theirs.
-        const hardening = { BLOCK_OUTBOUND_SMTP: '1' };
+        const hardening = { BLOCK_OUTBOUND_SMTP: '1', REFUSE_PRIVATE_NETWORK: '1' };
 
         return {
             baseEnvKeys: Fleet.Machine.EnvKeys.Base.parse({ ...secrets, ...hardening }),
