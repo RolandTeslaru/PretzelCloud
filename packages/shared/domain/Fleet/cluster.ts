@@ -7,6 +7,29 @@ import { z } from "zod"
  */
 export namespace Cluster {
 
+    export const Id = z.uuid().brand("Cluster.Id")
+    export type  Id = z.infer<typeof Id>
+
+    /** Spoken, so an operator can name one without reading a uuid. */
+    export const Name = z.string().min(1).brand("Cluster.Name")
+    export type  Name = z.infer<typeof Name>
+
+    /** Where it is and whether it takes new workspaces. The credential that administers it is not here. */
+    export const Schema = z.object({
+        id:        Id,
+        name:      Name,
+        host:      z.string(),
+        port:      z.number().int(),
+        region:    z.string(),
+        accepting: z.boolean(),
+        createdAt: z.coerce.date(),
+        updatedAt: z.coerce.date(),
+    })
+
+    /** What a machine dials. The port is a column of its own and joined here. */
+    export const getAddress = (cluster: Cluster): string =>
+        `${cluster.host}:${cluster.port}`
+
     // Unquoted identifiers are folded to lower case and capped at 63 bytes.
     const Identifier = z.string()
         .regex(/^[a-z_][a-z0-9_]*$/, 'Lower case, digits and underscores; must not start with a digit')
@@ -76,3 +99,4 @@ export namespace Cluster {
         export type Password = z.infer<typeof Password.Schema>
     }
 }
+export type Cluster = z.infer<typeof Cluster.Schema>

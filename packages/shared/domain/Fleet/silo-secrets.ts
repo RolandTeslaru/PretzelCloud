@@ -4,7 +4,7 @@ import { Cluster } from "./cluster"
 
 // Read by one caller — the provisioner, handing these to a machine. Never
 // returned to a controller, never logged, never widened into a DTO.
-export namespace WorkspaceSecrets {
+export namespace SiloSecrets {
 
     export const Schema = z.object({
         workspaceId:   WorkspaceId,
@@ -36,4 +36,4 @@ export namespace WorkspaceSecrets {
     })
     export type MachineEnv = z.infer<typeof MachineEnv>
 }
-export type WorkspaceSecrets = z.infer<typeof WorkspaceSecrets.Schema>
+export type SiloSecrets = z.infer<typeof SiloSecrets.Schema>

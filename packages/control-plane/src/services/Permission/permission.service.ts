@@ -62,7 +62,7 @@ export class PermissionService {
 
         const row = await FleetDB.asService('read cloud token', (trx) =>
             trx
-                .selectFrom('workspace_secrets')
+                .selectFrom('silo_secrets')
                 .select('cloud_token')
                 .where('workspace_id', '=', workspaceId)
                 .executeTakeFirst());

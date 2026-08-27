@@ -2,7 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { BillingModule } from '@/services/Billing/billing.module';
 import { FleetModule } from '@/services/Fleet/fleet.module';
 import { EntitlementModule } from '@/services/Entitlement/entitlement.module';
-import { RouterModule } from '@/services/WorkspaceRouter/router.module';
+import { RouterModule } from '@/services/SiloRouter/router.module';
 import { RealtimeModule } from '@/services/Realtime/realtime.module';
 import { WorkspaceController } from './workspace.controller';
 import { SiloWorkerLifecycleController } from './silo-worker-lifecycle.controller';

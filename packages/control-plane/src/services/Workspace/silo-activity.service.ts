@@ -146,6 +146,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
     /** Gives the machines back once a workspace has gone a week unused. */
     private async reclaim(workspaceId: Workspace.Id): Promise<void> {
         try {
+            // The hardware row outlives the machines, so a reclaimed workspace stays in the sweep with nothing left to take.
+            if (!await this.hardwareService.hasMachines(workspaceId))
+                return;
+
             if (await this.hardwareService.hasRunningWorker(workspaceId))
                 return;
 

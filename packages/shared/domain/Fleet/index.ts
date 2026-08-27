@@ -1,9 +1,8 @@
 import * as ClusterMod from "./cluster"
 import * as MachineMod from "./machine"
 import * as HardwareMod from "./hardware"
-import * as SecretsMod from "./secrets"
+import * as SiloSecretsMod from "./silo-secrets"
 import * as HostnameMod from "./hostname"
-import * as RuntimeMod from "./runtime"
 import * as DriverMod from "./driver"
 
 // Actual state: what has been materialized for a workspace. Desired state is
@@ -15,8 +14,7 @@ export namespace Fleet {
     export import Cluster          = ClusterMod.Cluster
     export import Machine          = MachineMod.Machine
     export import Hardware         = HardwareMod.Hardware
-    export import WorkspaceSecrets = SecretsMod.WorkspaceSecrets
+    export import SiloSecrets      = SiloSecretsMod.SiloSecrets
     export import Hostname         = HostnameMod.Hostname
-    export import WorkspaceRuntime = RuntimeMod.WorkspaceRuntime
     export import Driver           = DriverMod.Driver
 }

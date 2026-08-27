@@ -10,7 +10,7 @@ import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.
 import { HardwareService, TopologyNotRestored } from '@/services/Fleet/Hardware/hardware.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/identity/principal';
-import { Router } from '@/services/WorkspaceRouter/router.service';
+import { Router } from '@/services/SiloRouter/router.service';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 import { BillingService } from '@/services/Billing/billing.service';
@@ -32,18 +32,18 @@ export class WorkspaceService {
 
     constructor(
         private readonly provisioningService: ProvisioningService,
-        private readonly hardwareService: HardwareService,
-        private readonly hostnameService: HostnameService,
-        private readonly router: Router,
-        private readonly realtimeService: RealtimeService,
-        private readonly entitlementService: EntitlementService,
-        private readonly workspaceDatabase: WorkspaceDatabase,
-        private readonly userDatabase: UserDatabase,
-        private readonly permissionService: PermissionService,
-        private readonly listingService: ListingService,
+        private readonly hardwareService:     HardwareService,
+        private readonly hostnameService:     HostnameService,
+        private readonly siloRouter:          Router,
+        private readonly realtimeService:     RealtimeService,
+        private readonly entitlementService:  EntitlementService,
+        private readonly workspaceDatabase:   WorkspaceDatabase,
+        private readonly userDatabase:        UserDatabase,
+        private readonly permissionService:   PermissionService,
+        private readonly listingService:      ListingService,
         @Inject(forwardRef(() => BillingService))
-        private readonly billingService: BillingService,
-        private readonly planRegistry: PlanRegistry,
+        private readonly billingService:      BillingService,
+        private readonly planRegistry:        PlanRegistry,
     ) {}
 
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
@@ -84,7 +84,7 @@ export class WorkspaceService {
 
                     // Its hostnames were unknown until a moment ago, and a probe in
                     // that window would have cached the absence.
-                    this.router.invalidate(id);
+                    this.siloRouter.invalidate(id);
 
                     return this.setLifecycleState(id, 'running');
                 }
@@ -127,7 +127,7 @@ export class WorkspaceService {
         try {
             await this.provisioningService.deprovision(id);
 
-            this.router.invalidate(id);
+            this.siloRouter.invalidate(id);
         }
         catch (error) {
             this.logger.error(`Teardown of ${id} failed, leaving it for the sweep: ${error instanceof Error ? error.message : error}`);
@@ -171,7 +171,7 @@ export class WorkspaceService {
 
         await this.hostnameService.setCustom(workspace.id, subdomain);
 
-        this.router.invalidate(workspace.id, [workspace.subdomain, subdomain]);
+        this.siloRouter.invalidate(workspace.id, [workspace.subdomain, subdomain]);
     }
 
 
@@ -241,7 +241,7 @@ export class WorkspaceService {
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'disabled' }));
 
-        this.router.invalidate(workspaceId);
+        this.siloRouter.invalidate(workspaceId);
 
         // Not a transition: `stop` would land it on `stopped`, and which of the
         // two it is decides who may start it again.
@@ -262,7 +262,7 @@ export class WorkspaceService {
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'sleeping' }));
 
-        this.router.invalidate(workspaceId);
+        this.siloRouter.invalidate(workspaceId);
     }
 
 
@@ -277,13 +277,16 @@ export class WorkspaceService {
 
 
 
-    /** Gives the machines back. Database, hostnames and secrets stay. */
+    /** Gives the machines back. Hardware row, database, hostnames and secrets stay, and traffic rebuilds it. */
     public async reclaimCompute(workspaceId: Workspace.Id): Promise<void> {
-        await this.stop(workspaceId);
+        // Quiet: the state announced is `sleeping` below, not the `stopped` a stop lands on.
+        await this.stop(workspaceId, { emitNoEvents: true });
 
-        await this.hardwareService.destroy(workspaceId);
+        await this.hardwareService.destroyCompute(workspaceId);
 
-        this.router.invalidate(workspaceId);
+        await this.setLifecycleState(workspaceId, 'sleeping');
+
+        this.siloRouter.invalidate(workspaceId);
     }
 
     /** Rebuilds reclaimed machines. Data was never on them, so this is a slow start. */
@@ -350,11 +353,11 @@ export class WorkspaceService {
             }
             // Recorded only once it answers: an action that brings a workspace up
             // is not done when the machines are told, and a row saying `running`
-            // in the meantime is one the router forwards into.
+            // in the meantime is one the siloRouter forwards into.
             if (action === 'start' || action === 'restart')
                 await this.hardwareService.awaitHealthy(workspaceId);
 
-            this.router.invalidate(workspaceId);
+            this.siloRouter.invalidate(workspaceId);
 
             // Written either way, only unannounced: a caller that dies partway
             // leaves a row saying what the machines are, not what they were.
@@ -411,7 +414,7 @@ export class WorkspaceService {
             throw error;
         }
 
-        this.router.invalidate(workspaceId);
+        this.siloRouter.invalidate(workspaceId);
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'running' }));
 
@@ -443,14 +446,14 @@ export class WorkspaceService {
             if (isTopologyNotRestored(error))
                 await this.disable(workspaceId, 'Its machines could not be rebuilt after a failed plan change.');
 
-            this.router.invalidate(workspaceId);
+            this.siloRouter.invalidate(workspaceId);
 
             throw error;
         }
 
         await this.start(workspaceId);
 
-        this.router.invalidate(workspaceId);
+        this.siloRouter.invalidate(workspaceId);
     }
 
 
@@ -465,7 +468,7 @@ export class WorkspaceService {
 
         // Before the row goes: a cached route would otherwise keep answering for
         // a machine that no longer exists.
-        this.router.invalidate(workspaceId);
+        this.siloRouter.invalidate(workspaceId);
 
         await this.listingService.deleteAllForWorkspace(workspaceId);
 

@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { WorkspaceId } from "../Workspace/ids"
-import { WorkspaceSecrets } from "./secrets"
+import { SiloSecrets } from "./silo-secrets"
 import { Driver } from "./driver"
 
 /**
@@ -41,7 +41,7 @@ export namespace Machine {
      */
     export namespace EnvKeys {
 
-        const Secrets = WorkspaceSecrets.MachineEnv
+        const Secrets = SiloSecrets.MachineEnv
 
         /** What both processes read, however the workspace is split up. */
         export const Base = Secrets.pick({

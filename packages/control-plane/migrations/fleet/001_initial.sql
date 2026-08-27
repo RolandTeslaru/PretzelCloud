@@ -40,7 +40,7 @@ $$;
 -- No key id column: it is the key's own fingerprint, so the workspace derives it
 -- from the key it already holds. Storing it would be a second copy of a fact the
 -- key already carries, and one that can be edited into disagreeing.
-create table workspace_secrets (
+create table silo_secrets (
     workspace_id uuid not null,
     database_url text not null,
     encryption_key text not null,
@@ -64,10 +64,28 @@ create table workspace_secrets (
 -- A workspace's compute. One row per workspace (the unique index enforces the
 -- 1:1); its machines hold the FK back. `driver` lives here, not on the machine:
 -- a workspace never mixes substrates.
+-- The Postgres clusters workspace databases are created in. A workspace's own
+-- database name is derived from its id, so the cluster is the only part of its
+-- address that has to be recorded.
+create table clusters (
+    id         uuid default gen_random_uuid() not null,
+    -- Spoken names, so an operator can say which one without reading a uuid.
+    name       text not null,
+    -- What a machine connects to. The admin credential is not held here.
+    host       text not null,
+    port       integer not null default 5432,
+    region     text not null,
+    -- Whether new workspaces may be placed here. Draining is flipping this off.
+    accepting  boolean not null default true,
+    created_at timestamp with time zone default now() not null,
+    updated_at timestamp with time zone default now() not null
+);
+
 create table hardware (
     id           uuid default gen_random_uuid() not null,
     workspace_id uuid not null,
     driver       text not null,
+    cluster_id   uuid not null,
     last_boot_at timestamp with time zone,
     last_seen_at timestamp with time zone,
     created_at   timestamp with time zone default now() not null,
@@ -109,26 +127,24 @@ create table hostnames (
 );
 
 -- What the router needs beyond machine state, reported by the workspace itself.
-create table workspace_runtime (
-    workspace_id     uuid not null,
-    has_publications boolean default false not null,
-    reported_at      timestamp with time zone
-);
-
-
 -- ── Primary keys and unique constraints ──────────────────────────────────────
 
-alter table only workspace_secrets add constraint workspace_secrets_pkey primary key (workspace_id);
+alter table only silo_secrets add constraint silo_secrets_pkey primary key (workspace_id);
+alter table only clusters          add constraint clusters_pkey          primary key (id);
+alter table only clusters          add constraint clusters_name_key      unique (name);
 alter table only hardware          add constraint hardware_pkey          primary key (id);
 alter table only machines          add constraint machines_pkey          primary key (id);
 alter table only hostnames         add constraint hostnames_pkey         primary key (host);
-alter table only workspace_runtime add constraint workspace_runtime_pkey primary key (workspace_id);
 
 -- A workspace has one machine per role. A re-run collides here instead of
 -- creating a second machine nobody is tracking.
 create unique index hardware_workspace_key on hardware using btree (workspace_id);
 create unique index machines_workspace_role_key on machines using btree (workspace_id, role);
 alter table only machines add constraint machines_hardware_driver_fkey foreign key (hardware_id, driver) references hardware(id, driver) on delete cascade;
+
+-- Restrict, not cascade: a cluster with workspaces on it cannot be removed
+-- while their databases are still there.
+alter table only hardware add constraint hardware_cluster_fkey foreign key (cluster_id) references clusters(id) on delete restrict;
 
 -- No uniqueness on (workspace_id, kind): a workspace answers at its canonical
 -- host and, on paid plans, an additional custom one. A host still resolves to
@@ -184,5 +200,5 @@ begin
 end;
 $$;
 
-create trigger workspace_secrets_set_updated_at before update on workspace_secrets for each row execute function set_updated_at();
+create trigger silo_secrets_set_updated_at before update on silo_secrets for each row execute function set_updated_at();
 create trigger machines_set_updated_at          before update on machines          for each row execute function set_updated_at();

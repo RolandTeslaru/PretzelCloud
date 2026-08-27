@@ -8,15 +8,25 @@ type Trx = FleetDB.Transaction;
 @Injectable()
 export class HardwareDatabase {
 
-    async insert(trx: Trx, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver) {
-        const row = await trx
+    /** The driver and the cluster are chosen once. A workspace that already has hardware keeps both. */
+    async ensureForWorkspace(trx: Trx, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver, clusterId: Fleet.Cluster.Id) {
+        const inserted = await trx
             .insertInto('hardware')
-            .values({ workspace_id: workspaceId, driver })
-            .onConflict((oc) => oc.column('workspace_id').doUpdateSet({ driver }))
+            .values({ workspace_id: workspaceId, driver, cluster_id: clusterId })
+            .onConflict((oc) => oc.column('workspace_id').doNothing())
             .returningAll()
+            .executeTakeFirst();
+
+        if (inserted)
+            return FleetDB.Hardware.Row.parse(inserted);
+
+        const existing = await trx
+            .selectFrom('hardware')
+            .selectAll()
+            .where('workspace_id', '=', workspaceId)
             .executeTakeFirstOrThrow();
 
-        return FleetDB.Hardware.Row.parse(row);
+        return FleetDB.Hardware.Row.parse(existing);
     }
 
     async getByWorkspace(trx: Trx, workspaceId: Workspace.Id) {

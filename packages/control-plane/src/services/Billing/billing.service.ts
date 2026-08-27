@@ -2,8 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
-import { requireEnv } from '@/db/table';
-import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { PortalDB } from '@/db/portal';
 import { BillingDatabase } from './billing.database';
 import { StripeClient } from './stripe.client';
@@ -23,7 +21,6 @@ export class BillingService {
 
     constructor(
         private readonly stripeClient: StripeClient,
-        private readonly workspaceService: WorkspaceService,
         private readonly billingDatabase:  BillingDatabase,
         private readonly planRegistry:     PlanRegistry,
     ) {}

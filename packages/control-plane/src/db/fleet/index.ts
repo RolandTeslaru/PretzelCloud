@@ -47,7 +47,7 @@ export namespace FleetDB {
         });
     }
 
-    export namespace WorkspaceSecrets {
+    export namespace SiloSecrets {
         export const Row = z.object({
             workspace_id:   WorkspaceD.Id,
             // text in the column; the brand is applied at the seam below.
@@ -64,7 +64,7 @@ export namespace FleetDB {
         export type Row = z.infer<typeof Row>;
 
         /** Everything this row is allowed to become. Nothing else may read it. */
-        export const toMachineEnv = (row: Row) => Fleet.WorkspaceSecrets.MachineEnv.parse({
+        export const toMachineEnv = (row: Row) => Fleet.SiloSecrets.MachineEnv.parse({
             DATABASE_URL:           row.database_url,
             PRETZEL_ENCRYPTION_KEY: row.encryption_key,
             EXECUTION_TOKEN_SIGNING_KEY: row.execution_token_signing_key,
@@ -93,18 +93,28 @@ export namespace FleetDB {
         });
     }
 
-    export namespace WorkspaceRuntime {
+    export namespace Cluster {
         export const Row = z.object({
-            workspace_id:     WorkspaceD.Id,
-            has_publications: z.boolean(),
-            reported_at:      z.coerce.date().nullable(),
+            id:         Fleet.Cluster.Id,
+            name:       Fleet.Cluster.Name,
+            host:       z.string(),
+            port:       z.number().int(),
+            region:     z.string(),
+            accepting:  z.boolean(),
+            created_at: z.coerce.date(),
+            updated_at: z.coerce.date(),
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => Fleet.WorkspaceRuntime.Schema.parse({
-            workspaceId:     row.workspace_id,
-            hasPublications: row.has_publications,
-            reportedAt:      row.reported_at,
+        export const toDomain = (row: Row) => Fleet.Cluster.Schema.parse({
+            id:        row.id,
+            name:      row.name,
+            host:      row.host,
+            port:      row.port,
+            region:    row.region,
+            accepting: row.accepting,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
         });
     }
 
@@ -113,6 +123,7 @@ export namespace FleetDB {
             id:           Fleet.Hardware.Id,
             workspace_id: WorkspaceD.Id,
             driver:       Fleet.Hardware.Driver,
+            cluster_id:   Fleet.Cluster.Id,
             last_boot_at: z.coerce.date().nullable(),
             last_seen_at: z.coerce.date().nullable(),
             created_at:   z.coerce.date(),
@@ -125,6 +136,7 @@ export namespace FleetDB {
             id:          row.id,
             workspaceId: row.workspace_id,
             driver:      row.driver,
+            clusterId:   row.cluster_id,
             machineIds,
             lastBootAt:  row.last_boot_at,
             lastSeenAt:  row.last_seen_at,
@@ -153,11 +165,11 @@ export namespace FleetDB {
     }
 
     export interface Tables {
+        clusters:          Table<typeof Cluster.Row, Stamps>;
         hardware:          Table<typeof Hardware.Row, 'id' | Stamps>;
         machines:          Table<typeof Machine.Row, 'id' | Stamps>;
-        workspace_secrets: Table<typeof WorkspaceSecrets.Row, Stamps>;
+        silo_secrets:      Table<typeof SiloSecrets.Row, Stamps>;
         hostnames:         Table<typeof Hostname.Row, 'created_at'>;
-        workspace_runtime: Table<typeof WorkspaceRuntime.Row, never>;
         workspace_usage:   Table<typeof Usage.Row, 'id' | 'created_at'>;
     }
 

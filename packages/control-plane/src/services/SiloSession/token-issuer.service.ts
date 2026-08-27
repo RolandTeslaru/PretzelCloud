@@ -19,7 +19,7 @@ type SigningKey = {
  * the fleet-wide minting capability lives here and at the issuer, nowhere else.
  */
 @Injectable()
-export class WorkspaceTokenIssuer {
+export class SiloTokenIssuer {
 
     private loaded?: Promise<SigningKey>;
 

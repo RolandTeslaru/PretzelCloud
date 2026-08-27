@@ -4,8 +4,8 @@ import { PortalDB } from '@/db/portal';
 import { Principal } from '@/auth/identity/principal';
 import { AuthenticatedUser } from '@/auth/identity/principal.decorator';
 import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
-import { Router } from '@/services/WorkspaceRouter/router.service';
-import { WorkspaceTokenIssuer } from './token-issuer.service';
+import { Router } from '@/services/SiloRouter/router.service';
+import { SiloTokenIssuer } from './token-issuer.service';
 
 /**
  * Exchanges a session for a token scoped to one workspace.
@@ -15,10 +15,10 @@ import { WorkspaceTokenIssuer } from './token-issuer.service';
  * anyone can name any hostname, and the access index decides.
  */
 @Controller('session')
-export class WorkspaceSessionController {
+export class SiloSessionController {
 
     constructor(
-        private readonly workspaceTokenIssuer: WorkspaceTokenIssuer,
+        private readonly siloTokenIssuer: SiloTokenIssuer,
         private readonly router: Router,
     ) {}
 
@@ -43,7 +43,7 @@ export class WorkspaceSessionController {
         if (!member)
             throw new ForbiddenException('Not a member of this workspace');
 
-        return this.workspaceTokenIssuer.mint(principal, resolution.workspaceId);
+        return this.siloTokenIssuer.mint(principal, resolution.workspaceId);
     }
 }
 
@@ -55,10 +55,10 @@ export class WorkspaceSessionController {
 @Controller('.well-known')
 export class JwksController {
 
-    constructor(private readonly workspaceTokenIssuer: WorkspaceTokenIssuer) {}
+    constructor(private readonly siloTokenIssuer: SiloTokenIssuer) {}
 
     @Get('jwks.json')
     async jwks() {
-        return { keys: [await this.workspaceTokenIssuer.publicJwk()] };
+        return { keys: [await this.siloTokenIssuer.publicJwk()] };
     }
 }

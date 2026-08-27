@@ -2,6 +2,7 @@ import z from "zod";
 import { WorkspaceId } from "../Workspace/ids";
 import { Machine } from "./machine";
 import { Driver as DriverSchema } from "./driver";
+import { Cluster as ClusterSchema } from "./cluster";
 
 /**
  * A workspace's compute, agnostic to how many machines back it. One workspace
@@ -25,6 +26,8 @@ export namespace Hardware {
         id:          Id,
         workspaceId: WorkspaceId,
         driver:      Driver,
+        /** The Postgres cluster this workspace's database was created in. */
+        clusterId:   ClusterSchema.Id,
         // The machines backing it, by id. Ids are stable; their volatile state
         // is read fresh, never carried here.
         machineIds:  z.array(Machine.Id),

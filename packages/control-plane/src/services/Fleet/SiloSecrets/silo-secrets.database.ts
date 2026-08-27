@@ -4,13 +4,13 @@ import { FleetDB } from '@/db/fleet';
 
 type Trx = FleetDB.Transaction;
 
-/** Row operations on `workspace_secrets`. No generation, no orchestration. */
+/** Row operations on `silo_secrets`. No generation, no orchestration. */
 @Injectable()
-export class WorkspaceSecretsDatabase {
+export class SiloSecretsDatabase {
 
     read(trx: Trx, workspaceId: Workspace.Id) {
         return trx
-            .selectFrom('workspace_secrets')
+            .selectFrom('silo_secrets')
             .selectAll()
             .where('workspace_id', '=', workspaceId)
             .executeTakeFirst();
@@ -18,7 +18,7 @@ export class WorkspaceSecretsDatabase {
 
     async exists(trx: Trx, workspaceId: Workspace.Id): Promise<boolean> {
         const row = await trx
-            .selectFrom('workspace_secrets')
+            .selectFrom('silo_secrets')
             .select('workspace_id')
             .where('workspace_id', '=', workspaceId)
             .executeTakeFirst();
@@ -36,18 +36,18 @@ export class WorkspaceSecretsDatabase {
         redis_password: string;
         cloud_token: string;
     }) {
-        return trx.insertInto('workspace_secrets').values(values).execute();
+        return trx.insertInto('silo_secrets').values(values).execute();
     }
 
     setDatabaseUrl(trx: Trx, workspaceId: Workspace.Id, databaseUrl: Fleet.Cluster.Database.ConnectionURL) {
         return trx
-            .updateTable('workspace_secrets')
+            .updateTable('silo_secrets')
             .set({ database_url: databaseUrl })
             .where('workspace_id', '=', workspaceId)
             .execute();
     }
 
     deleteFor(trx: Trx, workspaceId: Workspace.Id) {
-        return trx.deleteFrom('workspace_secrets').where('workspace_id', '=', workspaceId).execute();
+        return trx.deleteFrom('silo_secrets').where('workspace_id', '=', workspaceId).execute();
     }
 }

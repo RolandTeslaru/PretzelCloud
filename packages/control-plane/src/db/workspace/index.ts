@@ -60,19 +60,20 @@ export namespace WorkspaceDB {
     /**
      * One workspace database, on the admin credential. The URL handed to a
      * workspace names the cluster as a container reaches it, which is not how
-     * this process reaches it — so the address comes from the admin connection
-     * and only the database name is taken from the caller.
+     * this process reaches it — so the address comes from the cluster's admin
+     * connection and only the database name is taken from the caller.
      *
      * `reason` is mandatory so every use is greppable.
      */
     export async function withWorkspaceDatabase<T>(
         reason: string,
+        adminUrl: string,
         databaseName: Fleet.Cluster.Database.Name,
         fn: (trx: Transaction) => Promise<T>,
     ): Promise<T> {
         void reason;
 
-        const url = new URL(requireEnv('CLUSTER_ADMIN_DATABASE_URL'));
+        const url = new URL(adminUrl);
 
         url.pathname = `/${databaseName}`;
 

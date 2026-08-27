@@ -130,12 +130,12 @@ export class Router {
         const row = await FleetDB.asService('resolve host', (trx) =>
             trx
                 .selectFrom('hostnames')
-                .innerJoin('workspace_secrets', 'workspace_secrets.workspace_id', 'hostnames.workspace_id')
+                .innerJoin('silo_secrets', 'silo_secrets.workspace_id', 'hostnames.workspace_id')
                 .where('hostnames.host', '=', host)
                 .select([
                     'hostnames.kind as hostname_kind',
                     'hostnames.workspace_id as hostname_workspace_id',
-                    'workspace_secrets.router_secret as router_secret',
+                    'silo_secrets.router_secret as router_secret',
                 ])
                 .executeTakeFirst());
 
