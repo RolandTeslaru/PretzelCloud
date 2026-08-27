@@ -100,11 +100,15 @@ export class ProvisioningService {
         ownerId:     User.Id,
         secrets:     Fleet.WorkspaceSecrets.MachineEnv,
     ): Promise<{ baseEnvKeys: Fleet.Machine.EnvKeys.Base; backendEnvKeys: Fleet.Machine.EnvKeys.Backend }> {
+        // Every machine the fleet runs, whatever a self-hoster does with theirs.
+        const hardening = { BLOCK_OUTBOUND_SMTP: '1' };
+
         return {
-            baseEnvKeys: Fleet.Machine.EnvKeys.Base.parse(secrets),
+            baseEnvKeys: Fleet.Machine.EnvKeys.Base.parse({ ...secrets, ...hardening }),
 
             backendEnvKeys: Fleet.Machine.EnvKeys.Backend.parse({
                 ...secrets,
+                ...hardening,
                 PRETZEL_CLOUD_TOKEN:        await this.workspaceSecretsService.getCloudToken(workspaceId) ?? '',
                 AUTH_URL:                   requireEnv('WORKSPACE_AUTH_URL'),
                 TOKEN_ISSUER:               this.workspaceTokenIssuer.issuer(),

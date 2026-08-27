@@ -52,6 +52,9 @@ export namespace Machine {
             REDIS_PASSWORD: true,
             // How the two prove themselves to each other.
             WORKER_SERVICE_INTERNAL_TOKEN: true,
+        }).extend({
+            /** Set on every machine that runs workflow code. */
+            BLOCK_OUTBOUND_SMTP: z.string(),
         })
         export type Base = z.infer<typeof Base>
 
