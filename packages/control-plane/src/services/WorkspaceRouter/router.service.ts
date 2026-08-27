@@ -34,6 +34,9 @@ export class Router {
     /** All the hooks hostname serves; the app hostname serves them too. */
     static readonly WEBHOOK_PREFIXES = ['/webhook', '/webhook-test'];
 
+    /** Paths a workspace answers. Everything else is the editor. */
+    static readonly SILO_PREFIXES = ['/api', '/socket', '/webhook', '/webhook-test', '/health'];
+
     /**
      * Starting an execution, as opposed to asking about one. `internal/run` is
      * a workflow calling another and is already paid for by the outer call;
@@ -55,6 +58,10 @@ export class Router {
 
     static isControlPlanePath(url: string | undefined): boolean {
         return Router.matches(url, Router.CONTROL_PLANE_PREFIXES);
+    }
+
+    static isSiloPath(url: string | undefined): boolean {
+        return Router.matches(url, Router.SILO_PREFIXES);
     }
 
     static isWebhookPath(url: string | undefined): boolean {

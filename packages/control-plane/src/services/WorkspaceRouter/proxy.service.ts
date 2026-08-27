@@ -180,6 +180,15 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        // With an editor origin set, pages and assets come from it instead of the
+        // machine. Unset everywhere but a development fleet, where a machine
+        // serves the bundle built into it.
+        if (process.env.FRONTEND_ORIGIN && !Router.isSiloPath(req.url)) {
+            this.serveEditorFromOrigin(req, res);
+
+            return;
+        }
+
         // Turned off rather than parked: nothing arriving may bring it back, and
         // which route it asked for makes no difference.
         if (!Workspace.acceptsTraffic(resolution.lifecycleState)) {
@@ -255,6 +264,18 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                     : 'Start it again from the dashboard.',
             },
         }));
+    }
+
+    /** The editor from the origin serving it, rather than from the workspace. */
+    private serveEditorFromOrigin(req: IncomingMessage, res: ServerResponse): void {
+        const origin = process.env.FRONTEND_ORIGIN!;
+
+        this.proxy.web(req, res, { target: origin }, (error: Error) => {
+            this.logger.warn(`Editor origin failed: ${error.message}`);
+
+            if (!res.headersSent)
+                res.writeHead(502, { 'Content-Type': 'text/plain' }).end('Editor unavailable\n');
+        });
     }
 
     private refuseOverLimit(res: ServerResponse): void {
