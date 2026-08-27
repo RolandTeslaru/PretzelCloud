@@ -23,11 +23,7 @@ export namespace Hostname {
             .max(253)
             .brand("Fleet.Hostname.Host")
 
-        /**
-         * The fleet's own domain, read here rather than passed in: every caller
-         * would otherwise have to fetch the same value, and one of them getting
-         * it wrong means a hostname that resolves nowhere.
-         */
+        /** The fleet's own domain, read here so no caller can pass a wrong one. */
         function getDomain(): string {
             const value = process.env.FLEET_DOMAIN;
 

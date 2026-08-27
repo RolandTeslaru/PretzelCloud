@@ -26,8 +26,8 @@ export namespace Workspace {
         // Parked to save money. Which rung — suspended, stopped, or given back
         // entirely — is the ladder's business; traffic brings it back either way.
         "sleeping",
-        "stopped",       // The owner turned it off. Traffic does not wake it.
-        "disabled",        // The fleet turned it off. The owner cannot undo it.
+        "stopped",   // The owner turned it off. Traffic does not wake it.
+        "disabled",  // The fleet turned it off. The owner cannot undo it.
         "provisioning_failed",
     ])
     export type LifecycleState = z.infer<typeof LifecycleState>
@@ -57,31 +57,30 @@ export namespace Workspace {
     export const acceptsTraffic = (state: LifecycleState): boolean =>
         state === "running" || state === "sleeping"
 
-
     export const DisplayName = z.string().trim()
         .min(1, 'Workspace name is required')
         .max(64, 'Workspace name must be at most 64 characters')
 
     export const Schema = z.object({
-        id:          Id,
+        id:                 Id,
         // Null until a paid plan sets one; the canonical host is derived.
-        subdomain:   Subdomain.Schema.nullable(),
-        displayName: z.string(),
-        lifecycleState: LifecycleState,
+        subdomain:          Subdomain.Schema.nullable(),
+        displayName:        z.string(),
+        lifecycleState:     LifecycleState,
         /** Why the fleet froze it, for the portal to render. Null unless disabled. */
-        disabledReason:   z.string().nullable(),
-        plan:        Plan.Schema,
+        disabledReason:     z.string().nullable(),
+        plan:               Plan.Schema,
         // What the payment provider says about the subscription behind the plan.
         // Null while nothing is paying for it.
         subscriptionStatus: z.string().nullable(),
         /** The window the provider bills over. Null while nothing pays for it. */
         currentPeriodStart: z.coerce.date().nullable(),
         currentPeriodEnd:   z.coerce.date().nullable(),
-        ownerId:     User.Id,
+        ownerId:            User.Id,
         // Derived where the fleet domain is known; a browser cannot build it.
-        appUrl:      z.url(),
-        createdAt:   z.coerce.date(),
-        updatedAt:   z.coerce.date(),
+        appUrl:             z.url(),
+        createdAt:          z.coerce.date(),
+        updatedAt:          z.coerce.date(),
     })
 
     /**
@@ -103,7 +102,6 @@ export namespace Workspace {
             createdAt:   z.coerce.date(),
         })
 
-        /** The stretch of time an allowance is measured over. */
         export const Period = z.object({
             start: z.coerce.date(),
             /** Null while it is the one running now. */
@@ -111,7 +109,6 @@ export namespace Workspace {
         })
         export type Period = z.infer<typeof Period>
 
-        /** How many executions are allowed, and the period that allowance runs over. */
         export const Allowance = z.object({
             limit:       z.number().int().nullable(),
             periodStart: z.coerce.date().nullable(),
@@ -151,11 +148,9 @@ export namespace Workspace {
         export const isWithinLimit = (used: number, limit: number | null): boolean =>
             limit === null || used + COST <= limit
 
-        /** What is left, or null when nothing bounds it. */
         export const getRemaining = (used: number, limit: number | null): number | null =>
             limit === null ? null : Math.max(0, limit - used)
 
-        /** The spans the usage rows can be looked at over. */
         export const Window = z.enum(["today", "week", "month"])
         export type  Window = z.infer<typeof Window>
 
@@ -174,7 +169,6 @@ export namespace Workspace {
             return { start: new Date(at.getTime() - days * DAY_MS), end: null }
         }
 
-        /** One day's executions, for a series over a period. */
         export const Point = z.object({
             day:   z.coerce.date(),
             count: z.number().int(),
@@ -198,7 +192,6 @@ export namespace Workspace {
             return series
         }
 
-        /** A period's standing: what it allows, and how much of it is spent. */
         export const Report = z.object({
             period:    Period,
             used:      z.number().int(),
@@ -449,7 +442,6 @@ export namespace Workspace {
             const { data } = await api.get<ListUsage.Response>(`/api/entitlements/workspaces/${workspaceId}/executions`, { params: { window } })
             return ListUsage.Response.parse(data)
         }
-
     }
 }
 export type Workspace = z.infer<typeof Workspace.Schema>

@@ -24,7 +24,6 @@ export namespace Listing {
     // Largest workflowData accepted, in bytes of JSON.
     export const MAX_DATA_BYTES = 1_000_000
 
-
     export const Schema = z.object({
         id:              Id,
         workspaceId:     Workspace.Id,
@@ -36,7 +35,6 @@ export namespace Listing {
     })
 
     export namespace API {
-
 
         export namespace Get {
             export const Response = z.object({ workflow: Schema })

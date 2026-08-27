@@ -17,22 +17,22 @@ export namespace WorkspaceSecrets {
     // Exactly what a machine receives as its environment. The only shape these
     // values are allowed to leave the provisioner in.
     export const MachineEnv = z.object({
-        DATABASE_URL:           Cluster.Database.ConnectionURL,
+        DATABASE_URL:                  Cluster.Database.ConnectionURL,
         // The workspace derives the key's id from the key itself.
-        PRETZEL_ENCRYPTION_KEY: z.string(),
+        PRETZEL_ENCRYPTION_KEY:        z.string(),
         // Read lazily by the workspace, so a missing value surfaces at the first
         // execution rather than at boot.
-        EXECUTION_TOKEN_SIGNING_KEY: z.string(),
-        WORKSPACE_ID:           WorkspaceId,
+        EXECUTION_TOKEN_SIGNING_KEY:   z.string(),
+        WORKSPACE_ID:                  WorkspaceId,
         // Required on traffic reaching the workspace, when it fronts itself
         // with a proxy that stamps it.
-        TRUSTED_PROXY_TOKEN:    z.string(),
+        TRUSTED_PROXY_TOKEN:           z.string(),
         // Shared by the backend and its worker. Generated here rather than in a
         // container because a split's two machines must present the same value.
         WORKER_SERVICE_INTERNAL_TOKEN: z.string(),
         // What lets the worker reach the queue on its sibling: Redis bound off
         // loopback refuses unauthenticated clients.
-        REDIS_PASSWORD: z.string(),
+        REDIS_PASSWORD:                z.string(),
     })
     export type MachineEnv = z.infer<typeof MachineEnv>
 }

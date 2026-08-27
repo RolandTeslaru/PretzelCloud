@@ -20,9 +20,6 @@ export namespace Machine {
     export const Id = z.uuid().brand("Fleet.Machine.Id")
     export type  Id = z.infer<typeof Id>
 
-    // Where the container runs. Everything else in provisioning is identical
-    // across the two.
-
     // 'combined' is the free-tier shape: one machine holding backend, Redis and
     // worker together.
     export const Role = z.enum(["backend", "worker", "combined"])
@@ -37,18 +34,6 @@ export namespace Machine {
     export const LifecycleAction = z.enum(["start", "stop", "suspend", "resume", "restart"])
     export type  LifecycleAction = z.infer<typeof LifecycleAction>
 
-    /**
-     * Everything a machine is built from. `cloudToken` sits beside the env
-     * rather than inside it because only one role may receive it: the worker
-     * runs workflow code, so the credential that reaches the fleet must not be
-     * copied into every machine.
-     */
-    /**
-     * What a machine is built from, by role. The roles differ in what they need
-     * to know — the backend holds a fleet credential, the worker holds its
-     * sibling's address — so they differ in the type rather than by convention:
-     * a worker spec cannot carry the credential that reaches the cloud.
-     */
     /**
      * Exactly what a machine starts with. Built once, above the layer that knows
      * about roles — the base needs the owner, and nothing under provisioning
@@ -189,7 +174,6 @@ export namespace Machine {
 
     const BRINGS_UP: LifecycleAction[] = ["start", "resume"]
 
-    /** The machines in the order the action should reach them. */
     export const inLifecycleOrder = <T extends { role: Role }>(action: LifecycleAction, machines: T[]): T[] => {
         const ordered = [...machines].sort((a, b) => TEARDOWN_RANK[a.role] - TEARDOWN_RANK[b.role])
 

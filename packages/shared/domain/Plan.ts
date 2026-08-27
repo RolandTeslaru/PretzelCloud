@@ -6,7 +6,7 @@ import type { Machine } from "./Fleet/machine"
  * What a plan is: the compute it buys, and the bounds it sets.
  *
  * A row rather than a value in the code, so a plan can be written for a single
- * customer without a deploy. Paying for one is [[Billing]]'s concern; this says
+ * customer without a deploy. Paying for one is {@link Billing}'s concern; this says
  * only what having one means.
  */
 export namespace Plan {
@@ -26,47 +26,44 @@ export namespace Plan {
     export type  IdleBackendPolicy = z.infer<typeof IdleBackendPolicy>
 
     export const Schema = z.object({
-        id:          Id,
-        displayName: z.string(),
-        description: z.string(),
+        id:                            Id,
+        displayName:                   z.string(),
+        description:                   z.string(),
         // Display only. The payment provider holds what is actually charged.
-        priceCents:  z.number().int(),
-        currency:    z.string(),
-        stripePriceId:   z.string().nullable(),
-        stripeProductId: z.string().nullable(),
+        priceCents:                    z.number().int(),
+        currency:                      z.string(),
+        stripePriceId:                 z.string().nullable(),
+        stripeProductId:               z.string().nullable(),
 
-        topology:          Topology,
-        backendSize:       z.string(),
-        workerSize:        z.string().nullable(),
-        idleBackendPolicy: IdleBackendPolicy,
-        executionConcurrencyLimit: z.number().int(),
+        topology:                      Topology,
+        backendSize:                   z.string(),
+        workerSize:                    z.string().nullable(),
+        idleBackendPolicy:             IdleBackendPolicy,
+        executionConcurrencyLimit:     z.number().int(),
 
         // Null is unlimited.
-        maxWorkflows:          z.number().int().nullable(),
-        maxExecutionsMonthly:  z.number().int().nullable(),
-        maxWorkspaceMembers:   z.number().int().nullable(),
-        maxUptimeHoursMonthly: z.number().int().nullable(),
+        maxWorkflows:                  z.number().int().nullable(),
+        maxExecutionsMonthly:          z.number().int().nullable(),
+        maxWorkspaceMembers:           z.number().int().nullable(),
+        maxUptimeHoursMonthly:         z.number().int().nullable(),
         /** How long an execution's recorded session is kept. Null keeps it. */
-        executionSessionRetentionDays:         z.number().int().nullable(),
+        executionSessionRetentionDays: z.number().int().nullable(),
 
-        purchasable: z.boolean(),
-        sortOrder:   z.number().int(),
-        createdAt:   z.coerce.date(),
-        updatedAt:   z.coerce.date(),
+        purchasable:                   z.boolean(),
+        sortOrder:                     z.number().int(),
+        createdAt:                     z.coerce.date(),
+        updatedAt:                     z.coerce.date(),
     })
 
-    /** The machines this plan's compute is made of. */
     export const getMachineRoles = (plan: Plan): Machine.Role[] =>
         plan.topology === "separate" ? ["backend", "worker"] : ["combined"]
 
-    /** The size the machine of a given role runs at. */
+    /** A worker with no size of its own runs at the backend's. */
     export const getSizeForRole = (plan: Plan, role: Machine.Role): string =>
         role === "worker" ? (plan.workerSize ?? plan.backendSize) : plan.backendSize
 
-    /** Whether anything is paid for it. */
     export const isPaid = (plan: Plan): boolean => plan.priceCents > 0
 
-    /** What a price shows as, from the amount the provider charges. */
     export const getPriceLabel = (plan: Plan): string =>
         `${(plan.priceCents / 100).toLocaleString(undefined, { style: "currency", currency: plan.currency.toUpperCase(), maximumFractionDigits: 0 })}`
 

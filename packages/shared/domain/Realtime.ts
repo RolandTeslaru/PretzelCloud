@@ -23,13 +23,7 @@ export namespace Realtime {
             type:    Type,
         })
 
-        /**
-         * Addressing: which entity a member belongs to and where it travels.
-         * Wholly determined by that entity, so it is never a construction
-         * argument — whatever publishes the member derives it and writes it.
-         *
-         * An event as constructed, before those fields are filled in.
-         */
+        /** An event as constructed, before its addressing is filled in. */
         export type Unstamped<T_Event, T_Stamped extends PropertyKey> =
             T_Event extends unknown ? Omit<T_Event, T_Stamped> : never
 
