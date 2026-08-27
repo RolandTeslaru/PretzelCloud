@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
-import { User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { requireEnv } from '@/db/table';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { PortalDB } from '@/db/portal';
 import { BillingDatabase } from './billing.database';
 import { StripeClient } from './stripe.client';
-import { getPriceForPlan } from './prices';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 
 /** A subscription in one of these is being paid on; anything else has ended. */
 const LIVE_STATUSES: Stripe.Subscription.Status[] = ['active', 'trialing', 'past_due', 'unpaid'];
@@ -25,7 +25,9 @@ export class BillingService {
         private readonly stripeClient: StripeClient,
         private readonly workspaceService: WorkspaceService,
         private readonly billingDatabase:  BillingDatabase,
+        private readonly planRegistry:     PlanRegistry,
     ) {}
+
 
     private get stripe(): Stripe {
         return this.stripeClient.client;
@@ -35,21 +37,21 @@ export class BillingService {
      * Puts a workspace on a plan. One already paying has its price swapped in
      * place and prorated; a second subscription would be a second bill.
      */
-    public async changePlan(principal: Principal.User, workspaceId: Workspace.Id, plan: Workspace.Plan, returnTo: string): Promise<{ url: string | null }> {
-        if (plan === 'free')
-            throw new Error('Free is not a purchasable plan');
+    public async changePlan(principal: Principal.User, workspaceId: Workspace.Id, planId: Plan.Id, returnTo: string): Promise<{ url: string | null }> {
+        if (!this.planRegistry.get(planId).purchasable)
+            throw new Error(`Plan ${planId} is not for sale`);
 
         const existing = await this.getLiveSubscriptionForWorkspace(workspaceId);
 
         if (existing) {
-            await this.swapPrice(existing, plan, workspaceId);
+            await this.setPriceForSubscription(existing, planId, workspaceId);
 
             // The plan still moves through the webhook, so there is one path from
             // "Stripe says so" to the machines being rebuilt.
             return { url: null };
         }
 
-        return { url: await this.getStripeCheckoutUrl(principal, workspaceId, plan, returnTo) };
+        return { url: await this.getStripeCheckoutUrl(principal, workspaceId, planId, returnTo) };
     }
 
     /** What it is actually paying on. A recorded id that has ended is not one. */
@@ -84,14 +86,14 @@ export class BillingService {
     }
 
     /** Moves an existing subscription onto another plan's price. */
-    private async swapPrice(subscription: Stripe.Subscription, plan: Exclude<Workspace.Plan, 'free'>, workspaceId: Workspace.Id): Promise<void> {
+    private async setPriceForSubscription(subscription: Stripe.Subscription, planId: Plan.Id, workspaceId: Workspace.Id): Promise<void> {
         const item = subscription.items.data[0];
 
         if (!item)
             throw new Error(`Subscription ${subscription.id} has no item to move`);
 
         await this.stripe.subscriptions.update(subscription.id, {
-            items: [{ id: item.id, price: getPriceForPlan(plan) }],
+            items: [{ id: item.id, price: this.planRegistry.getStripePriceIdForPlan(planId) }],
             proration_behavior: 'create_prorations',
             // A subscription begun outside checkout may carry none.
             metadata: { workspaceId },
@@ -99,16 +101,15 @@ export class BillingService {
     }
 
     /** For a first subscription only; a change never reaches here. */
-    private async getStripeCheckoutUrl(principal: Principal.User, workspaceId: Workspace.Id, plan: Workspace.Plan, returnTo: string): Promise<string> {
-        if (plan === 'free')
-            throw new Error('Free is not a purchasable plan');
-
+    private async getStripeCheckoutUrl(principal: Principal.User, workspaceId: Workspace.Id, planId: Plan.Id, returnTo: string): Promise<string> {
         const customer = await this.getStripeCustomerForUser(principal.userId);
+
+        const priceId = this.planRegistry.getStripePriceIdForPlan(planId)
 
         const session = await this.stripe.checkout.sessions.create({
             mode:        'subscription',
             customer,
-            line_items:  [{ price: getPriceForPlan(plan), quantity: 1 }],
+            line_items:  [{ price: priceId, quantity: 1 }],
             success_url: this.getCheckoutOutcomeUrl(returnTo, 'success', workspaceId),
             cancel_url:  this.getCheckoutOutcomeUrl(returnTo, 'cancelled', workspaceId),
             // The only thing tying a payment back to a workspace.

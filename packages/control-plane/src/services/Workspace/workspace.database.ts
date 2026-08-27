@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { AllowedDatabaseRoles, DatabaseClass } from '@/decorators/database';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 
 type UserTrx    = PortalDB.UserTransaction;
 type ServiceTrx = PortalDB.ServiceTransaction;
@@ -9,6 +10,8 @@ type ServiceTrx = PortalDB.ServiceTransaction;
 @Injectable()
 @DatabaseClass
 export class WorkspaceDatabase {
+
+    constructor(private readonly planRegistry: PlanRegistry) {}
 
     @AllowedDatabaseRoles('service')
     public async insert(trx: ServiceTrx, values: {
@@ -23,7 +26,7 @@ export class WorkspaceDatabase {
                 subdomain:       null,
                 display_name:    values.displayName,
                 lifecycle_state: 'creating',
-                plan:            'free',
+                plan_id:         Plan.DEFAULT_PLAN_ID,
                 owner_id:        values.ownerId,
             })
             .returningAll()
@@ -34,7 +37,11 @@ export class WorkspaceDatabase {
             .values({ workspace_id: values.id, user_id: values.ownerId })
             .execute();
 
-        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+        const workspaceRow = PortalDB.Workspace.Row.parse(row);
+
+        const plan = this.planRegistry.get(workspaceRow.plan_id);
+
+        return PortalDB.Workspace.toDomain(workspaceRow, plan);
     }
 
     @AllowedDatabaseRoles('service')
@@ -45,7 +52,11 @@ export class WorkspaceDatabase {
             .where('id', '=', workspaceId)
             .executeTakeFirstOrThrow();
 
-        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+        const workspaceRow = PortalDB.Workspace.Row.parse(row);
+
+        const plan = this.planRegistry.get(workspaceRow.plan_id);
+
+        return PortalDB.Workspace.toDomain(workspaceRow, plan);
     }
 
     // Null covers both "no such workspace" and "not theirs to see": the row
@@ -58,14 +69,21 @@ export class WorkspaceDatabase {
             .where('id', '=', workspaceId)
             .executeTakeFirst();
 
-        return row ? PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row)) : null;
+        if (!row)
+            return null;
+
+        const workspaceRow = PortalDB.Workspace.Row.parse(row);
+
+        const plan = this.planRegistry.get(workspaceRow.plan_id);
+
+        return PortalDB.Workspace.toDomain(workspaceRow, plan);
     }
 
     @AllowedDatabaseRoles('service')
-    public async getSpecInputs(trx: ServiceTrx, workspaceId: Workspace.Id) {
+    public async getOwnerAndPlanIdForWorkspace(trx: ServiceTrx, workspaceId: Workspace.Id) {
         return trx
             .selectFrom('workspaces')
-            .select(['owner_id', 'plan'])
+            .select(['owner_id', 'plan_id'])
             .where('id', '=', workspaceId)
             .executeTakeFirst();
     }
@@ -79,7 +97,11 @@ export class WorkspaceDatabase {
             .returningAll()
             .executeTakeFirstOrThrow();
 
-        return PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row));
+        const workspaceRow = PortalDB.Workspace.Row.parse(row);
+
+        const plan = this.planRegistry.get(workspaceRow.plan_id);
+
+        return PortalDB.Workspace.toDomain(workspaceRow, plan);
     }
 
     @AllowedDatabaseRoles('service')
@@ -110,10 +132,10 @@ export class WorkspaceDatabase {
     }
 
     @AllowedDatabaseRoles('service')
-    public async setPlan(trx: ServiceTrx, workspaceId: Workspace.Id, plan: Workspace.Plan): Promise<void> {
+    public async setPlan(trx: ServiceTrx, workspaceId: Workspace.Id, planId: Plan.Id): Promise<void> {
         await trx
             .updateTable('workspaces')
-            .set({ plan })
+            .set({ plan_id: planId })
             .where('id', '=', workspaceId)
             .execute();
     }

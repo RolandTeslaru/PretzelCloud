@@ -17,7 +17,7 @@ export class AdminController {
         const rows = await PortalDB.asService('list workspaces for operator', (db) =>
             db
                 .selectFrom('workspaces')
-                .select(['id', 'display_name', 'plan', 'lifecycle_state', 'disabled_reason', 'owner_id', 'created_at'])
+                .select(['id', 'display_name', 'plan_id', 'lifecycle_state', 'disabled_reason', 'owner_id', 'created_at'])
                 .orderBy('created_at', 'desc')
                 .execute());
 

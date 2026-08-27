@@ -99,7 +99,7 @@ export class UserService {
         const owned = await PortalDB.asUser(principal, (trx) => this.userDatabase.getOwnedWorkspaceIds(trx, principal.userId));
 
         for (const row of owned)
-            await this.workspaceService.destroy(principal, Workspace.Id.parse(row.id));
+            await this.workspaceService.destroy(principal, row.id as Workspace.Id);
 
         await this.identityAdminService.deleteUser(principal.userId);
 

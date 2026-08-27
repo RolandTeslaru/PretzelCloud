@@ -1,5 +1,6 @@
 import z from "zod"
-import { Machine } from "./Fleet/machine"
+import type { AxiosInstance } from "axios"
+import type { Machine } from "./Fleet/machine"
 
 /**
  * What a plan is: the compute it buys, and the bounds it sets.
@@ -13,6 +14,9 @@ export namespace Plan {
     export const Id = z.string().min(1).brand("Plan.Id")
     export type  Id = z.infer<typeof Id>
 
+    /** What a workspace starts on. The row decides everything after. */
+    export const DEFAULT_PLAN_ID = "free" as Id
+
     /** One machine doing everything, or a backend with its own worker beside it. */
     export const Topology = z.enum(["combined", "separate"])
     export type  Topology = z.infer<typeof Topology>
@@ -24,6 +28,7 @@ export namespace Plan {
     export const Schema = z.object({
         id:          Id,
         displayName: z.string(),
+        description: z.string(),
         // Display only. The payment provider holds what is actually charged.
         priceCents:  z.number().int(),
         currency:    z.string(),
@@ -51,7 +56,7 @@ export namespace Plan {
     })
 
     /** The machines this plan's compute is made of. */
-    export const getRoles = (plan: Plan): Machine.Role[] =>
+    export const getMachineRoles = (plan: Plan): Machine.Role[] =>
         plan.topology === "separate" ? ["backend", "worker"] : ["combined"]
 
     /** The size the machine of a given role runs at. */
@@ -64,5 +69,20 @@ export namespace Plan {
     /** What a price shows as, from the amount the provider charges. */
     export const getPriceLabel = (plan: Plan): string =>
         `${(plan.priceCents / 100).toLocaleString(undefined, { style: "currency", currency: plan.currency.toUpperCase(), maximumFractionDigits: 0 })}`
+
+    export namespace API {
+
+        export namespace List {
+            export const Response = z.object({ plans: z.array(Schema) })
+            export type  Response = z.infer<typeof Response>
+        }
+
+        /** Every plan on sale, in the order a pricing page should show them. */
+        export async function list(api: AxiosInstance): Promise<List.Response> {
+            const { data } = await api.get<List.Response>('/api/plans')
+
+            return List.Response.parse(data)
+        }
+    }
 }
 export type Plan = z.infer<typeof Plan.Schema>

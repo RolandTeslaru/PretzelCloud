@@ -3,7 +3,7 @@ import { AlertDialog, Button, Spinner } from '@pretzel-graph/standard-ui/foundat
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
-import type { Workspace } from '@pretzel-cloud/shared/domain'
+import { Plan, type Workspace } from '@pretzel-cloud/shared/domain'
 import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge } from '../status'
@@ -19,11 +19,6 @@ const DEV_CONTROLS =
     typeof location !== 'undefined' &&
     (location.hostname === 'localhost' || location.hostname.endsWith('.localhost'))
 
-const PLANS: { plan: Workspace.Plan; label: string; machines: string }[] = [
-    { plan: 'free', label: 'Free', machines: '1 machine'  },
-    { plan: 'base', label: 'Base', machines: '2 machines' },
-    { plan: 'pro',  label: 'Pro',  machines: '2 machines' },
-]
 
 const DEV_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
     { action: 'start',   label: 'Start',   icon: <SystemIcons.Play /> },
@@ -46,14 +41,17 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
     // whatever the events say — not how long a call took to return.
     const transition = WorkspaceSDK.useStore((s) => s.transitions[workspaceId])
 
-    const [converting, setConverting] = useState<Workspace.Plan | null>(null)
+    const [converting, setConverting] = useState<Plan.Id | null>(null)
 
     // Held from `rebuild:started` to `rebuilt`, so it covers the whole of it.
     const rebuilding = WorkspaceSDK.useStore((s) => s.rebuilding[workspaceId])
 
+    const plans = WorkspaceSDK.useStore((s) => s.plans)
+
+
     if (!workspace) return null
 
-    const busy = transition !== undefined || rebuilding === true
+    const isBusy = transition !== undefined || rebuilding === true
 
     // Nothing to report on success: the badge follows the events. Only the
     // request refusing outright goes unannounced otherwise.
@@ -66,13 +64,13 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
         }
     }
 
-    const convert = (plan: Workspace.Plan) => async () => {
-        setConverting(plan)
+    const convert = (plan: Plan) => async () => {
+        setConverting(plan.id)
 
         try {
-            await WorkspaceSDK.actions.setPlan(workspaceId, plan)
+            await WorkspaceSDK.actions.setPlan(workspaceId, plan.id)
 
-            NotificationSDK.toast.success(`Rebuilt on the ${plan} topology`)
+            NotificationSDK.toast.success(`Rebuilt on the ${plan.displayName} topology`)
         }
         catch (error) {
             NotificationSDK.toast.error(getMessageFromError(error, 'Could not change the topology'))
@@ -132,7 +130,7 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                     variant="input"
                     size="sm"
                     className="mr-auto"
-                    disabled={busy}
+                    disabled={isBusy}
                     onClick={run('restart')}
                 >
                     {transition === 'restart' ? <Spinner className="size-3.5" /> : <SystemIcons.RefreshCcw />}
@@ -153,7 +151,7 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                     variant="input"
                     size="sm"
                     className="mr-auto"
-                    disabled={busy}
+                    disabled={isBusy}
                     onClick={rebuild}
                 >
                     {rebuilding ? <Spinner className="size-3.5" /> : <SystemIcons.Server />}
@@ -177,7 +175,7 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                                 key={action}
                                 variant="input"
                                 size="sm"
-                                disabled={busy}
+                                disabled={isBusy}
                                 onClick={run(action)}
                             >
                                 {transition === action ? <Spinner className="size-3.5" /> : icon}
@@ -200,17 +198,19 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                        {PLANS.map(({ plan, label, machines }) => (
+                        {Object.values(plans).map((plan) => (
                             <Button
-                                key={plan}
-                                variant={workspace.plan === plan ? 'default' : 'input'}
+                                key={plan.id}
+                                variant={workspace.plan.id === plan.id ? 'default' : 'input'}
                                 size="sm"
-                                disabled={converting !== null || workspace.plan === plan}
+                                disabled={converting !== null || workspace.plan.id === plan.id}
                                 onClick={convert(plan)}
                             >
-                                {converting === plan ? <Spinner className="size-3.5" /> : <SystemIcons.Server />}
-                                {label}
-                                <span className="text-muted-foreground text-[10px]">{machines}</span>
+                                {converting === plan.id ? <Spinner className="size-3.5" /> : <SystemIcons.Server />}
+                                {plan.displayName}
+                                <span className="text-muted-foreground text-[10px]">
+                                    {Plan.getMachineRoles(plan).length === 1 ? '1 machine' : '2 machines'}
+                                </span>
                             </Button>
                         ))}
                     </div>

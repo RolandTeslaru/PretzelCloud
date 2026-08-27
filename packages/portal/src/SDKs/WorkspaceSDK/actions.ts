@@ -1,4 +1,4 @@
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Plan, Workspace } from '@pretzel-cloud/shared/domain'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { api } from '../api'
 import type { WorkspaceSDKImpl } from './sdk'
@@ -15,14 +15,20 @@ export type _WorkspaceSDKActions_ = {
     suspend:      (workspaceId: Workspace.Id) => Promise<void>
     restart:      (workspaceId: Workspace.Id) => Promise<void>
     rebuild:      (workspaceId: Workspace.Id) => Promise<void>
-    setPlan:      (workspaceId: Workspace.Id, plan: Workspace.Plan) => Promise<Workspace>
+    setPlan:      (workspaceId: Workspace.Id, planId: Plan.Id) => Promise<Workspace>
     applyEvent:   (event: Workspace.Event.Any) => void
+    /** The catalogue. Which plan a workspace is on it carries itself. */
+    plans: {
+        list:   () => Promise<Record<Plan.Id, Plan>>
+        /** A plan the fleet already holds, put where the pages that render it look. */
+        upsert: (plan: Plan) => void
+    }
 }
 
 export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKActions_ {
     const setState = sdk.useStore.setState
 
-    const merge = (workspace: Workspace) => {
+    const upsert = (workspace: Workspace) => {
         setState((s) => {
             s.workspaces[workspace.id] = workspace
 
@@ -35,25 +41,25 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
         list: async () => {
             const { workspaces } = await Workspace.API.list(api)
 
-            const byId = Object.fromEntries(workspaces.map((w) => [w.id, w])) as Record<Workspace.Id, Workspace>
+            const workspacesById = Object.fromEntries(workspaces.map((workspace) => [workspace.id, workspace])) as Record<Workspace.Id, Workspace>
 
             setState((s) => {
                 // Replaced, not merged: a workspace someone removed elsewhere
                 // has to disappear from the grid.
-                s.workspaces = byId
+                s.workspaces = workspacesById
                 // The rows just read are authoritative; anything believed to be
                 // in flight was settled by an event this client may have missed.
                 s.transitions = {}
                 s.rebuilding = {}
             })
 
-            return byId
+            return workspacesById
         },
 
         create: async (payload) => {
             const { workspace } = await Workspace.API.create(api, payload)
 
-            merge(workspace)
+            upsert(workspace)
 
             return workspace
         },
@@ -61,7 +67,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
         refresh: async (workspaceId) => {
             const { workspace } = await Workspace.API.get(api, workspaceId)
 
-            merge(workspace)
+            upsert(workspace)
 
             return workspace
         },
@@ -105,10 +111,32 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
 
         // The plan decides the topology, so the machines are rebuilt behind
         // this — re-read rather than patching the plan in place.
-        setPlan: async (workspaceId, plan) => {
-            await Workspace.API.setPlan(api, workspaceId, { plan })
+        setPlan: async (workspaceId, planId) => {
+            await Workspace.API.setPlan(api, workspaceId, { planId })
 
             return sdk.actions.refresh(workspaceId)
+        },
+
+        plans: {
+            list: async () => {
+                const { plans } = await Plan.API.list(api)
+
+                const plansById = Object.fromEntries(plans.map((plan) => [plan.id, plan])) as Record<Plan.Id, Plan>
+
+                setState((s) => {
+                    // Replaced, not merged: a plan withdrawn from sale has to
+                    // disappear from the pages that offer it.
+                    s.plans = plansById
+                })
+
+                return plansById
+            },
+
+            upsert: (plan) => {
+                setState((s) => {
+                    s.plans[plan.id] = plan
+                })
+            },
         },
 
         // Patched in place rather than re-fetched: the event already carries the
@@ -164,8 +192,13 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                     NotificationSDK.toast.error(`Could not rebuild ${card.displayName}`, { description: event.reason })
                 }
 
-                if (event.type === 'plan:changed')
+                // Into the catalogue too: a plan written for one customer is not
+                // on sale, so nothing else would ever put it there.
+                if (event.type === 'plan:changed') {
                     card.plan = event.plan
+
+                    s.plans[event.plan.id] = event.plan
+                }
             })
         },
     }

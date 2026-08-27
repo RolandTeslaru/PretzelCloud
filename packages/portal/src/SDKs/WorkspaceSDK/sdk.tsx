@@ -1,7 +1,7 @@
 import { immer } from 'zustand/middleware/immer'
 import { createWithEqualityFn } from 'zustand/traditional'
 import { shallow } from 'zustand/shallow'
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Plan, Workspace } from '@pretzel-cloud/shared/domain'
 import { RealtimeSDK } from '@/SDKs/RealtimeSDK'
 import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
@@ -26,6 +26,9 @@ const CREATE_DIALOG_ID = 'create-workspace'
 
 const WORKSPACES_STALE_TIME = 30_000
 
+// Plans change on the order of never, so a session reads them once.
+const PLANS_STALE_TIME = Infinity
+
 @SDK('Workspace')
 export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
 
@@ -34,6 +37,7 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
     public readonly useStore: BaseSDK.Store<WorkspaceSDK.State> = createWithEqualityFn(
         immer<WorkspaceSDK.State>(() => ({
             workspaces: {},
+            plans: {},
             transitions: {},
             rebuilding: {},
             selectors: workspaceSelectors,
@@ -64,6 +68,20 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
 
     /** The same query for route loaders, which run before anything renders. */
     public fetchWorkspaces = () => QuerySDK.client.fetchQuery(this.workspacesQuery)
+
+    private readonly plansQuery = {
+        queryKey:  ['plans'] as const,
+        queryFn:   () => this.actions.plans.list(),
+        staleTime: PLANS_STALE_TIME,
+    }
+
+    public usePlansQuery = () => QuerySDK.useQuery<Record<Plan.Id, Plan>, Error>(
+        this.plansQuery.queryKey,
+        this.plansQuery.queryFn,
+        { staleTime: this.plansQuery.staleTime },
+    )
+
+    public fetchPlans = () => QuerySDK.client.fetchQuery(this.plansQuery)
 
     public openCreateWorkspaceDialog = () => {
         DialogSDK.actions.push(CREATE_DIALOG_ID, (props) => (
@@ -178,6 +196,9 @@ export namespace WorkspaceSDK {
         // Keyed by id so a single workspace can be updated without walking a
         // list; ordering is a selector's job.
         workspaces: Record<Workspace.Id, Workspace>
+        // The catalogue: what a workspace may be moved onto. Which one it is on
+        // it carries itself, so nothing here is needed to name it.
+        plans: Record<Plan.Id, Plan>
         // What each workspace is in the middle of, for as long as it is. Beside
         // the workspaces rather than inside them: the machine is not in this
         // state, nothing stores it, and the next reading of the row would drop

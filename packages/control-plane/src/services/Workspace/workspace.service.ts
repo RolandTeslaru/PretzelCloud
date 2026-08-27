@@ -1,7 +1,8 @@
 import { ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Plan, Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { PermissionService } from '@/services/Permission/permission.service';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 import { ListingService } from '@/services/Listing/listing.service';
 import { WorkspaceDatabase } from './workspace.database';
 import { UserDatabase } from '@/services/User/user.database';
@@ -42,6 +43,7 @@ export class WorkspaceService {
         private readonly listingService: ListingService,
         @Inject(forwardRef(() => BillingService))
         private readonly billingService: BillingService,
+        private readonly planRegistry: PlanRegistry,
     ) {}
 
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
@@ -78,7 +80,7 @@ export class WorkspaceService {
         void (async () => {
             for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
                 try {
-                    await this.provisioningService.provision(id, owner, 'free');
+                    await this.provisioningService.provision(id, owner, Plan.DEFAULT_PLAN_ID);
 
                     // Its hostnames were unknown until a moment ago, and a probe in
                     // that window would have cached the absence.
@@ -154,7 +156,7 @@ export class WorkspaceService {
      * keep resolving. The database settles uniqueness — checking first would race.
      */
     public async setSubdomain(principal: Principal.User, workspace: Workspace, subdomain: Workspace.Subdomain | null): Promise<void> {
-        if (!Workspace.isPaid(workspace.plan))
+        if (!Plan.isPaid(workspace.plan))
             throw new ForbiddenException('A custom subdomain requires a paid plan');
 
         try {
@@ -290,17 +292,17 @@ export class WorkspaceService {
             return;
 
         const row = await PortalDB.asService('read workspace to rebuild compute', (trx) =>
-            this.workspaceDatabase.getSpecInputs(trx, workspaceId));
+            this.workspaceDatabase.getOwnerAndPlanIdForWorkspace(trx, workspaceId));
 
         if (!row)
             return;
 
         this.logger.log(`Rebuilding reclaimed machines for ${workspaceId}`);
 
-        const ownerId = User.Id.parse(row.owner_id)
-        const plan = Workspace.Plan.parse(row.plan)
+        const ownerId = row.owner_id as User.Id
+        const planId  = row.plan_id as Plan.Id
 
-        await this.provisioningService.rebuild(workspaceId, ownerId, plan);
+        await this.provisioningService.rebuild(workspaceId, ownerId, planId);
     }
 
 
@@ -385,14 +387,14 @@ export class WorkspaceService {
      * stay. The machines are destroyed rather than moved, so this announces
      * itself and the transitions inside it stay quiet.
      */
-    public async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
+    public async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
         this.emit(workspaceId, Workspace.Event.create('rebuild:started', {}));
 
         try {
             // Down for the rebuild: stopped first so executions end and pools close.
             await this.stop(workspaceId, { emitNoEvents: true });
 
-            await this.provisioningService.rebuild(workspaceId, ownerId, plan);
+            await this.provisioningService.rebuild(workspaceId, ownerId, planId);
 
             await this.start(workspaceId, { emitNoEvents: true });
         }
@@ -419,11 +421,11 @@ export class WorkspaceService {
 
 
 
-    public async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
-        await PortalDB.asService('set workspace plan', (trx) => this.workspaceDatabase.setPlan(trx, workspaceId, plan));
+    public async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
+        await PortalDB.asService('set workspace plan', (trx) => this.workspaceDatabase.setPlan(trx, workspaceId, planId));
 
         // Before the rebuild: what was bought is already true.
-        this.emit(workspaceId, Workspace.Event.create('plan:changed', { plan }));
+        this.emit(workspaceId, Workspace.Event.create('plan:changed', { plan: this.planRegistry.get(planId) }));
 
         // A bigger plan takes effect now, not at the next re-check.
         this.entitlementService.unlock(workspaceId);
@@ -432,7 +434,7 @@ export class WorkspaceService {
         await this.stop(workspaceId);
 
         try {
-            await this.provisioningService.convert(workspaceId, ownerId, plan);
+            await this.provisioningService.convert(workspaceId, ownerId, planId);
         }
         catch (error) {
             // Only when its machines could not be put back. A conversion that

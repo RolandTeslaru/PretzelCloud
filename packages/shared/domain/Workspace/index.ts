@@ -4,6 +4,7 @@ import { User } from "../User"
 import { WorkspaceId, createId as createWorkspaceId } from "./ids"
 import * as SubdomainMod from "./subdomain"
 import { Realtime } from "../Realtime"
+import { Plan } from "../Plan"
 
 // A workspace as the portal knows it: desired state. What has been materialized
 // for it lives in Fleet, on another credential.
@@ -56,12 +57,6 @@ export namespace Workspace {
     export const acceptsTraffic = (state: LifecycleState): boolean =>
         state === "running" || state === "sleeping"
 
-    export const Plan = z.enum(["free", "base", "pro"])
-    export type  Plan = z.infer<typeof Plan>
-
-    /** Everything above free. Paid plans split their compute and may set a subdomain. */
-    export const isPaid = (plan: Plan): boolean => plan !== "free"
-
 
     export const DisplayName = z.string().trim()
         .min(1, 'Workspace name is required')
@@ -75,7 +70,7 @@ export namespace Workspace {
         lifecycleState: LifecycleState,
         /** Why the fleet froze it, for the portal to render. Null unless disabled. */
         disabledReason:   z.string().nullable(),
-        plan:        Plan,
+        plan:        Plan.Schema,
         // What the payment provider says about the subscription behind the plan.
         // Null while nothing is paying for it.
         subscriptionStatus: z.string().nullable(),
@@ -254,7 +249,7 @@ export namespace Workspace {
         /** What the workspace is now paid for. Its machines follow separately. */
         export const PlanChanged = Base.extend({
             type: z.literal('plan:changed'),
-            plan: Plan,
+            plan: Plan.Schema,
         })
         export type  PlanChanged = z.infer<typeof PlanChanged>
 
@@ -384,7 +379,7 @@ export namespace Workspace {
         }
 
         export namespace SetPlan {
-            export const Request = z.object({ plan: Plan })
+            export const Request = z.object({ planId: Plan.Id })
             export type  Request = z.infer<typeof Request>
             export const Response = z.object({})
             export type  Response = z.infer<typeof Response>

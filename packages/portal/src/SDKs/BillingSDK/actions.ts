@@ -1,4 +1,4 @@
-import { Billing, type Workspace } from '@pretzel-cloud/shared/domain'
+import { Billing, type Plan, type Workspace } from '@pretzel-cloud/shared/domain'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { api } from '../api'
 import type { BillingSDKImpl } from './sdk'
@@ -9,7 +9,7 @@ export type _BillingSDKActions_ = {
      * payment page; a change to one that already exists is settled without
      * leaving, and the new plan arrives over realtime.
      */
-    changePlan: (workspaceId: Workspace.Id, plan: Workspace.Plan) => Promise<void>
+    changePlan: (workspaceId: Workspace.Id, planId: Plan.Id) => Promise<void>
     /** Sends the browser to manage cards, invoices and cancellation. */
     openBillingPortal: () => Promise<void>
 }
@@ -44,8 +44,8 @@ export function createBillingSDKActions(sdk: BillingSDKImpl): _BillingSDKActions
     }
 
     return {
-        changePlan: (workspaceId, plan) =>
-            call(plan, 'Could not change the plan', () => Billing.API.changePlan(api, workspaceId, plan), 'Plan changed'),
+        changePlan: (workspaceId, planId) =>
+            call(planId, 'Could not change the plan', () => Billing.API.changePlan(api, workspaceId, planId), 'Plan changed'),
 
         openBillingPortal: () =>
             call('portal', 'Could not open the billing portal', () => Billing.API.portal(api)),

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Badge, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import type { BadgeProps } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Plan, Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../sdk'
 
 // Keyed by the enums, so adding a state or an action fails to compile until it
@@ -51,21 +51,17 @@ export const displayStatus = (
     }
 }
 
-/** Keyed by the enum, so a new plan fails to compile until it is named here. */
-const PLAN_LABEL: Record<Workspace.Plan, string> = {
-    free: 'Free',
-    base: 'Base',
-    pro:  'Pro',
-}
-
 /**
  * The account's plan, not a state. Free is the default everyone starts on, so it
  * stays quiet and never competes with the status; a paid plan is worth pointing
  * at, and is the one thing on the card the account chose.
+ *
+ * Named from the plan itself, so a plan written for one customer shows its own
+ * name. The id is the fallback until the plans have loaded.
  */
-export const PlanBadge = ({ plan }: { plan: Workspace.Plan }) => (
-    <Badge variant={plan === 'free' ? 'outline' : 'active'} size="sm">
-        {PLAN_LABEL[plan]}
+export const PlanBadge = ({ plan }: { plan: Plan }) => (
+    <Badge variant={Plan.isPaid(plan) ? 'active' : 'outline'} size="sm">
+        {plan.displayName}
     </Badge>
 )
 

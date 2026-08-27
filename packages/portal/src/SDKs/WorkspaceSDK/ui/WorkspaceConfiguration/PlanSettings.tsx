@@ -1,6 +1,6 @@
 import { Badge, Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
-import { Billing, type Workspace } from '@pretzel-cloud/shared/domain'
+import { Plan, type Workspace } from '@pretzel-cloud/shared/domain'
 import { BillingSDK } from '@/SDKs/BillingSDK'
 import { WorkspaceSDK } from '../../sdk'
 
@@ -9,9 +9,11 @@ export const PlanSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialo
 
     const busy = BillingSDK.useStore((s) => s.pending)
 
+    const plansById = WorkspaceSDK.useStore((s) => s.plans)
+
     if (!workspace) return null
 
-    const subscribed = workspace.plan !== 'free'
+    const isPaidPlan = Plan.isPaid(workspace.plan)
 
     return (
         <div className="flex flex-col gap-4 pr-2">
@@ -23,25 +25,25 @@ export const PlanSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialo
             </div>
 
             <div className="flex flex-col gap-3">
-                {Billing.OFFERS.map(({ plan, label, price, blurb }) => {
-                    const current = workspace.plan === plan
+                {Object.values(plansById).map((plan) => {
+                    const current = workspace.plan.id === plan.id
 
                     return (
-                        <div key={plan} className="flex items-center justify-between gap-4 py-1">
+                        <div key={plan.id} className="flex items-center justify-between gap-4 py-1">
                             <div className="flex flex-col gap-0.5">
                                 <div className="flex items-center gap-2">
-                                    <p className="text-sm font-medium">{label}</p>
-                                    <span className="text-muted-foreground text-xs">{price}/month</span>
+                                    <p className="text-sm font-medium">{plan.displayName}</p>
+                                    <span className="text-muted-foreground text-xs">{Plan.getPriceLabel(plan)}/month</span>
                                     {current && (
                                         <Badge variant="success" size="xs">Current</Badge>
                                     )}
                                 </div>
-                                <p className="text-muted-foreground text-xs">{blurb}</p>
+                                <p className="text-muted-foreground text-xs">{plan.description}</p>
                             </div>
 
-                            {!current && plan !== 'free' && (
-                                <Button size="sm" variant="input" disabled={busy !== null} onClick={() => BillingSDK.actions.changePlan(workspaceId, plan)}>
-                                    {busy === plan ? <Spinner className="size-3.5" /> : <SystemIcons.Receipt />}
+                            {!current && Plan.isPaid(plan) && (
+                                <Button size="sm" variant="input" disabled={busy !== null} onClick={() => BillingSDK.actions.changePlan(workspaceId, plan.id)}>
+                                    {busy === plan.id ? <Spinner className="size-3.5" /> : <SystemIcons.Receipt />}
                                     Choose
                                 </Button>
                             )}
@@ -50,7 +52,7 @@ export const PlanSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialo
                 })}
             </div>
 
-            {subscribed && (
+            {isPaidPlan && (
                 <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
                         <p className="text-sm font-medium">Subscription</p>

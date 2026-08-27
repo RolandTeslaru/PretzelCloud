@@ -6,6 +6,7 @@ import { PortalDB } from '@/db/portal';
 import { FleetDB } from '@/db/fleet';
 import { Principal } from '@/auth/identity/principal';
 import { WorkspaceDatabase } from '@/services/Workspace/workspace.database';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 
 /** What the account says. Roles inside a workspace are that workspace's own. */
 export type AccountRole = 'owner' | 'member';
@@ -34,7 +35,10 @@ const matches = (given: string, expected: string): boolean => {
 @Injectable()
 export class PermissionService {
 
-    constructor(private readonly workspaceDatabase: WorkspaceDatabase) {}
+    constructor(
+        private readonly workspaceDatabase: WorkspaceDatabase,
+        private readonly planRegistry:      PlanRegistry,
+    ) {}
 
     private readonly siloCloudTokenCache = new TtlCache<Workspace.Id, string>(CLOUD_TOKEN_TTL_MS, CLOUD_TOKEN_CACHE_MAX);
 
@@ -107,6 +111,12 @@ export class PermissionService {
                 .orderBy('workspaces.created_at', 'desc')
                 .execute());
 
-        return rows.map((row) => PortalDB.Workspace.toDomain(PortalDB.Workspace.Row.parse(row)));
+        return rows.map((row) => {
+            const workspaceRow = PortalDB.Workspace.Row.parse(row);
+
+            const plan = this.planRegistry.get(workspaceRow.plan_id)
+
+            return PortalDB.Workspace.toDomain(workspaceRow, plan);
+        });
     }
 }

@@ -35,6 +35,21 @@ export class PlanRegistry implements OnModuleInit {
         return this.plans.get(planId);
     }
 
+    /** What the payment provider charges for a plan. One with no price is not for sale. */
+    public getStripePriceIdForPlan(planId: Plan.Id): string {
+        const { stripePriceId } = this.get(planId);
+
+        if (!stripePriceId)
+            throw new Error(`Plan ${planId} has no price to charge`);
+
+        return stripePriceId;
+    }
+
+    /** The plan a price sells, or nothing if it sells none of ours. */
+    public findPlanForStripePriceId(stripePriceId: string): Plan | undefined {
+        return [...this.plans.values()].find((plan) => plan.stripePriceId === stripePriceId);
+    }
+
     /** Everything on sale, in the order a pricing page should show it. */
     public list(): Plan[] {
         return [...this.plans.values()]

@@ -1,8 +1,8 @@
 import { forwardRef, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { Workspace } from '@pretzel-cloud/shared/domain';
-import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
+import { Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 import { WorkspaceService } from './workspace.service';
 
 /** Quiet for this long and a workspace whose plan allows it is put to sleep. */
@@ -47,6 +47,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
         @Inject(forwardRef(() => WorkspaceService))
         private readonly workspaceService: WorkspaceService,
         private readonly hardwareService:   HardwareService,
+        private readonly planRegistry:      PlanRegistry,
     ) {}
 
     onModuleInit(): void {
@@ -88,32 +89,35 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
             if (idle.length === 0)
                 return;
 
-            const ids        = idle.map(({ workspaceId }) => workspaceId);
-            const plans      = await this.getPlans(ids);
-            const states     = await this.hardwareService.getStates(ids);
-            const lifecycleStates = await this.getLifecycleStates(ids);
+            const workspaceIds = idle.map(({ workspaceId }) => workspaceId);
 
-            const quietFor = new Map(idle.map(({ workspaceId, lastSeenAt }) => [workspaceId, Date.now() - lastSeenAt.getTime()]));
+            const planIdByWorkspaceId        = await this.getPlanIdsForWorkspaces(workspaceIds);
+            const machineStateByWorkspaceId  = await this.hardwareService.getStates(workspaceIds);
+            const lifecycleStateByWorkspaceId = await this.getLifecycleStatesForWorkspaces(workspaceIds);
 
-            for (const workspaceId of ids) {
-                const plan = plans.get(workspaceId);
+            const quietForByWorkspaceId = new Map(idle.map(({ workspaceId, lastSeenAt }) => [workspaceId, Date.now() - lastSeenAt.getTime()]));
 
-                if (!plan || Provisioning.getIdlePolicy(plan) === 'none')
+            for (const workspaceId of workspaceIds) {
+                const planId = planIdByWorkspaceId.get(workspaceId);
+
+                const plan = planId ? this.planRegistry.find(planId) : undefined;
+
+                if (!plan || plan.idleBackendPolicy === 'none')
                     continue;
 
                 // Stopped or disabled is where its owner or its billing put it.
-                if (!Workspace.acceptsTraffic(lifecycleStates.get(workspaceId) ?? 'creating'))
+                if (!Workspace.acceptsTraffic(lifecycleStateByWorkspaceId.get(workspaceId) ?? 'creating'))
                     continue;
 
                 // Longest rung first: a workspace due to be reclaimed is past
                 // caring whether it is running.
-                if ((quietFor.get(workspaceId) ?? 0) >= RECLAIM_MS) {
+                if ((quietForByWorkspaceId.get(workspaceId) ?? 0) >= RECLAIM_MS) {
                     await this.reclaim(workspaceId);
 
                     continue;
                 }
 
-                if (states.get(workspaceId) !== 'running')
+                if (machineStateByWorkspaceId.get(workspaceId) !== 'running')
                     continue;
 
                 await this.suspend(workspaceId);
@@ -154,18 +158,18 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** The plans live in the portal database, so they are a separate read. */
-    private async getPlans(ids: Workspace.Id[]): Promise<Map<Workspace.Id, Workspace.Plan>> {
+    /** Which plan each workspace is on. The row behind the id is held in memory. */
+    private async getPlanIdsForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, Plan.Id>> {
         const rows = await PortalDB.asService('read plans for activity sweep', (db) =>
-            db.selectFrom('workspaces').select(['id', 'plan']).where('id', 'in', ids).execute());
+            db.selectFrom('workspaces').select(['id', 'plan_id']).where('id', 'in', workspaceIds).execute());
 
-        return new Map(rows.map((row) => [Workspace.Id.parse(row.id), Workspace.Plan.parse(row.plan)]));
+        return new Map(rows.map((row) => [row.id as Workspace.Id, row.plan_id as Plan.Id]));
     }
 
-    private async getLifecycleStates(ids: Workspace.Id[]): Promise<Map<Workspace.Id, Workspace.LifecycleState>> {
+    private async getLifecycleStatesForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, Workspace.LifecycleState>> {
         const rows = await PortalDB.asService('read lifecycles for activity sweep', (db) =>
-            db.selectFrom('workspaces').select(['id', 'lifecycle_state']).where('id', 'in', ids).execute());
+            db.selectFrom('workspaces').select(['id', 'lifecycle_state']).where('id', 'in', workspaceIds).execute());
 
-        return new Map(rows.map((row) => [Workspace.Id.parse(row.id), Workspace.LifecycleState.parse(row.lifecycle_state)]));
+        return new Map(rows.map((row) => [row.id as Workspace.Id, row.lifecycle_state as Workspace.LifecycleState]));
     }
 }

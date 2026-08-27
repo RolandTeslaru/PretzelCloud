@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
 import { FleetDB } from '@/db/fleet';
 import { requireEnv } from '@/db/table';
@@ -37,25 +37,26 @@ export class HardwareService {
 
     constructor(
         private readonly hardwareDriverRegistry: HardwareDriverRegistry,
-        private readonly machineService:  MachineService,
-        private readonly machineDatabase: MachineDatabase,
-        private readonly hardwareDatabase:        HardwareDatabase,
+        private readonly machineService:         MachineService,
+        private readonly machineDatabase:        MachineDatabase,
+        private readonly hardwareDatabase:       HardwareDatabase,
     ) {}
 
     /** Creates the hardware row and the machines the plan calls for; the caller never names roles. Idempotent. */
     async build(
-        workspaceId: Workspace.Id,
-        plan:        Workspace.Plan,
+        workspaceId:    Workspace.Id,
+        plan:           Plan,
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
     ): Promise<void> {
         const hardware = await FleetDB.asService('build hardware', (trx) => this.hardwareDatabase.insert(trx, workspaceId, this.hardwareDriverRegistry.getKindForNewWorkspaces()));
 
-        const machineRoles = Provisioning.getMachineRoles(plan)
+        const machineRoles = Plan.getMachineRoles(plan)
+
+        const driver = this.hardwareDriverRegistry.getDriverForKind(hardware.driver)
 
         await this.createTopology(
-            this.hardwareDriverRegistry.getDriverForKind(hardware.driver),
-            hardware.id, workspaceId, machineRoles, baseEnvKeys, backendEnvKeys, null,
+            driver, hardware.id, workspaceId, plan, machineRoles, baseEnvKeys, backendEnvKeys, null,
         );
     }
 
@@ -64,6 +65,7 @@ export class HardwareService {
         driver:         AbstractHardwareDriver,
         hardwareId:     Fleet.Hardware.Id,
         workspaceId:    Workspace.Id,
+        plan:           Plan,
         roles:          Fleet.Machine.Role[],
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
@@ -72,7 +74,7 @@ export class HardwareService {
         const ordered = Fleet.Machine.inLifecycleOrder('start', roles.map((role) => ({ role })));
 
         for (const { role } of ordered) {
-            const spec = this.getSpecForMachine(role, workspaceId, baseEnvKeys, backendEnvKeys, backendHost)
+            const spec = this.getSpecForMachine(role, workspaceId, plan, baseEnvKeys, backendEnvKeys, backendHost)
             const handle = await this.machineService.create(driver, hardwareId, workspaceId, spec);
 
             if (role === 'backend')
@@ -84,6 +86,7 @@ export class HardwareService {
     private getSpecForMachine(
         role:        Fleet.Machine.Role,
         workspaceId: Workspace.Id,
+        plan:        Plan,
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
         backendHost: string | null,
@@ -92,7 +95,7 @@ export class HardwareService {
             return {
                 role,
                 image: requireEnv('WORKSPACE_IMAGE'),
-                size:  process.env.WORKSPACE_SIZE ?? 'shared-1x-512',
+                size:  Plan.getSizeForRole(plan, role),
                 env:   backendEnvKeys,
             };
 
@@ -100,7 +103,7 @@ export class HardwareService {
             return {
                 role,
                 image: requireEnv('WORKSPACE_IMAGE_BACKEND'),
-                size:  requireEnv('WORKSPACE_SIZE_BACKEND'),
+                size:  Plan.getSizeForRole(plan, role),
                 env:   backendEnvKeys,
             };
 
@@ -111,7 +114,7 @@ export class HardwareService {
         return {
             role,
             image: requireEnv('WORKSPACE_IMAGE_WORKER'),
-            size:  requireEnv('WORKSPACE_SIZE_WORKER'),
+            size:  Plan.getSizeForRole(plan, role),
             env:   {
                 ...baseEnvKeys,
                 REDIS_HOST: backendHost,
@@ -124,7 +127,7 @@ export class HardwareService {
     /** Replaces every machine from the current spec; database, hostnames and secrets survive. The caller stops the hardware first. */
     async rebuild(
         workspaceId: Workspace.Id,
-        plan:        Workspace.Plan,
+        plan:        Plan,
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
     ): Promise<void> {
@@ -136,7 +139,7 @@ export class HardwareService {
     /** Reconciles the machines to a new plan's topology; the database survives. A no-op while every plan is one combined machine. */
     async convertTo(
         workspaceId: Workspace.Id,
-        plan:        Workspace.Plan,
+        plan:        Plan,
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
     ): Promise<void> {
@@ -147,7 +150,7 @@ export class HardwareService {
 
         const driver  = this.hardwareDriverRegistry.getDriverForKind(hardware.driver);
         const current = await this.machineService.getAll(workspaceId);
-        const desired = new Set(Provisioning.getMachineRoles(plan));
+        const desired = new Set(Plan.getMachineRoles(plan));
         const have    = new Set(current.map((machine) => machine.role));
 
         // Outgoing first, so the two topologies never exist at once; the caller has already stopped the hardware.
@@ -162,6 +165,7 @@ export class HardwareService {
                 driver,
                 hardware.id,
                 workspaceId,
+                plan,
                 [...desired].filter((role) => !have.has(role)),
                 baseEnvKeys,
                 backendEnvKeys,
@@ -174,7 +178,7 @@ export class HardwareService {
             // before reporting it: nothing on a machine is the workspace's, so
             // rebuilding one is only slow, never lossy.
             try {
-                await this.rollbackTopology(driver, hardware.id, workspaceId, [...have], baseEnvKeys, backendEnvKeys);
+                await this.rollbackTopology(driver, hardware.id, workspaceId, plan, [...have], baseEnvKeys, backendEnvKeys);
             }
             catch (restoreError) {
                 throw new TopologyNotRestored(workspaceId, conversionError, restoreError);
@@ -195,6 +199,9 @@ export class HardwareService {
         driver:         AbstractHardwareDriver,
         hardwareId:     Fleet.Hardware.Id,
         workspaceId:    Workspace.Id,
+        // The plan being converted to, since the one being restored is no longer
+        // recorded anywhere. It decides sizes only, and the roles say the shape.
+        plan:           Plan,
         roles:          Fleet.Machine.Role[],
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
@@ -207,7 +214,7 @@ export class HardwareService {
             if (!wanted.has(machine.role))
                 await this.machineService.destroy(driver, machine);
 
-        await this.createTopology(driver, hardwareId, workspaceId, roles, baseEnvKeys, backendEnvKeys, null);
+        await this.createTopology(driver, hardwareId, workspaceId, plan, roles, baseEnvKeys, backendEnvKeys, null);
 
         this.logger.log(`Restored the previous topology of ${workspaceId} after a failed conversion`);
     }

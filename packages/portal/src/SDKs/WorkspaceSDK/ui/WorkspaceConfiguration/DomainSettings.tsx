@@ -3,7 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Badge, Button, Form, Input, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Plan, Workspace } from '@pretzel-cloud/shared/domain'
 import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../../sdk'
 
@@ -23,7 +23,7 @@ export const DomainSettings = ({ workspaceId }: { workspaceId: Workspace.Id }) =
 
     if (!workspace) return null
 
-    const paid = Workspace.isPaid(workspace.plan)
+    const isPaidPlan = Plan.isPaid(workspace.plan)
 
     const onSubmit = async (values: Values) => {
         try {
@@ -60,10 +60,10 @@ export const DomainSettings = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                             <Form.Item>
                                 <Form.Label className="flex items-center gap-2">
                                     Custom subdomain
-                                    {!paid && <Badge variant="outline" size="xs">Pro</Badge>}
+                                    {!isPaidPlan && <Badge variant="outline" size="xs">Pro</Badge>}
                                 </Form.Label>
                                 <Form.Control>
-                                    <Input {...field} disabled={!paid} placeholder="my-team" />
+                                    <Input {...field} disabled={!isPaidPlan} placeholder="my-team" />
                                 </Form.Control>
                                 <Form.Description className="text-muted-foreground text-xs">
                                     An extra address. The permanent one stays registered either way.
@@ -77,7 +77,7 @@ export const DomainSettings = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                         type="submit"
                         size="sm"
                         className="mr-auto"
-                        disabled={!paid || form.formState.isSubmitting || !form.formState.isDirty}
+                        disabled={!isPaidPlan || form.formState.isSubmitting || !form.formState.isDirty}
                     >
                         {form.formState.isSubmitting && <Spinner className="mr-2 h-4 w-4" />}
                         Save

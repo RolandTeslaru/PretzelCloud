@@ -29,10 +29,10 @@ export class BillingDatabase {
     }
 
     @AllowedDatabaseRoles('service')
-    public getWorkspacePlan(trx: Trx, workspaceId: Workspace.Id) {
+    public getOwnerAndPlanIdForWorkspace(trx: Trx, workspaceId: Workspace.Id) {
         return trx
             .selectFrom('workspaces')
-            .select(['owner_id', 'plan'])
+            .select(['owner_id', 'plan_id'])
             .where('id', '=', workspaceId)
             .executeTakeFirst();
     }

@@ -1,19 +1,10 @@
 import z from "zod"
 import type { AxiosInstance } from "axios"
+import { Plan } from "./Plan"
 import { Workspace } from "./Workspace"
 
 /** Paying for workspaces. What a plan then means is the workspace's own concern. */
 export namespace Billing {
-
-    /** What each plan costs and what it buys, for the pages that offer them. */
-    export const OFFERS: { plan: Workspace.Plan; label: string; price: string; blurb: string }[] = [
-        { plan: "free", label: "Free",  price: "$0",  blurb: "One machine. Sleeps when unused." },
-        { plan: "base", label: "Base",  price: "$25", blurb: "Always on. Runs on its own machine." },
-        { plan: "pro",  label: "Pro",   price: "$60", blurb: "Always on, with more room to run." },
-    ]
-
-    export const getOfferForPlan = (plan: Workspace.Plan) =>
-        OFFERS.find((offer) => offer.plan === plan) ?? OFFERS[0]!
 
     export namespace API {
 
@@ -29,9 +20,9 @@ export namespace Billing {
         export async function changePlan(
             api: AxiosInstance,
             workspaceId: Workspace.Id,
-            plan: Workspace.Plan,
+            planId: Plan.Id,
         ): Promise<Redirect> {
-            const { data } = await api.post<Redirect>(`/api/billing/workspaces/${workspaceId}/plan`, { plan })
+            const { data } = await api.post<Redirect>(`/api/billing/workspaces/${workspaceId}/plan`, { planId })
 
             return Redirect.parse(data)
         }

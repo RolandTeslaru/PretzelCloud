@@ -28,7 +28,7 @@ export class BillingController {
         @WorkspaceIdParam() workspaceId: Workspace.Id,
         @ZodBody(Workspace.API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
     ): Promise<{ url: string | null }> {
-        return this.billingService.changePlan(principal, workspaceId, body.plan, getPortalAppOrigin());
+        return this.billingService.changePlan(principal, workspaceId, body.planId, getPortalAppOrigin());
     }
 
     @Post('portal')

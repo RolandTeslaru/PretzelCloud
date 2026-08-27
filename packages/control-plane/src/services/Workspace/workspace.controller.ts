@@ -83,7 +83,7 @@ export class WorkspaceController {
         @WorkspaceScope() workspace: Workspace,
         @ZodBody(API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
     ): Promise<Workspace.API.SetPlan.Response> {
-        await this.workspaceService.setPlan(workspace.id, workspace.ownerId, body.plan);
+        await this.workspaceService.setPlan(workspace.id, workspace.ownerId, body.planId);
 
         return {};
     }
@@ -133,7 +133,7 @@ export class WorkspaceController {
     @RequireEnabled()
     @HttpCode(202)
     async rebuild(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
-        void this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan)
+        void this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan.id)
             .catch((error: unknown) => this.logger.error(`Rebuilding ${workspace.id} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};

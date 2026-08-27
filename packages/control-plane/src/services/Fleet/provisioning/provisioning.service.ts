@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
 import { ClusterService } from '../cluster/cluster.service';
 import { WorkspaceSecretsService } from '../WorkspaceSecrets/workspace-secrets.service';
@@ -7,6 +7,7 @@ import { HardwareService } from '../Hardware/hardware.service';
 import { HostnameService } from '../Hostname/hostname.service';
 import { requireEnv } from '@/db/table';
 import { WorkspaceTokenIssuer } from '@/services/WorkspaceSession/token-issuer.service';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 
 export class ProvisioningError extends Error {
     constructor(readonly step: string, cause: unknown) {
@@ -28,9 +29,11 @@ export class ProvisioningService {
         private readonly hardwareService: HardwareService,
         private readonly hostnameService: HostnameService,
         private readonly workspaceTokenIssuer: WorkspaceTokenIssuer,
+        private readonly planRegistry: PlanRegistry,
     ) {}
 
-    async provision(workspaceId: Workspace.Id, owner: User, plan: Workspace.Plan): Promise<void> {
+
+    async provision(workspaceId: Workspace.Id, owner: User, planId: Plan.Id): Promise<void> {
         // The workspace names its database and role; the cluster only creates what it is told.
         const databaseName = Provisioning.getDatabaseName(workspaceId);
         const dbRoleName   = Provisioning.getRoleName(workspaceId);
@@ -46,6 +49,8 @@ export class ProvisioningService {
 
         const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, owner.id, secrets);
 
+        const plan = this.planRegistry.get(planId);
+
         await this.step('hardware', () => this.hardwareService.build(workspaceId, plan, baseEnvKeys, backendEnvKeys));
 
         // Before hostnames: a machine that never serves should not be published.
@@ -60,25 +65,31 @@ export class ProvisioningService {
     }
 
     /** Rebuilds the machines for another plan's topology; the database is untouched. */
-    async convert(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
+    async convert(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
         const secrets = await this.workspaceSecretsService.get(workspaceId);
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
         const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, secrets);
+
+        const plan = this.planRegistry.get(planId);
+
         // No health wait: the caller stops the hardware around a conversion and starts it after.
         await this.step('convert', () => this.hardwareService.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
     /** Rebuilds a workspace's machines from the current spec, keeping its data. */
-    async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, plan: Workspace.Plan): Promise<void> {
+    async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
         const secrets = await this.workspaceSecretsService.get(workspaceId);
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
         const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, secrets);
+
+        const plan = this.planRegistry.get(planId);
+
         // No health wait: the caller stops the hardware around a rebuild and starts it after.
         await this.step('rebuild', () => this.hardwareService.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }

@@ -27,7 +27,7 @@ function celebrate() {
 function CheckoutSuccess() {
     const { workspaceId } = Route.useParams()
 
-    const workspace = WorkspaceSDK.useStore((s) => s.workspaces[Workspace.Id.parse(workspaceId)])
+    const workspace = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId as Workspace.Id])
 
     useEffect(() => { celebrate() }, [])
 

@@ -12,15 +12,9 @@ import {
     useTable,
 } from '@tanstack/react-table'
 import { Badge, Button, Table } from '@pretzel-graph/standard-ui/foundations'
-import { Billing, type Workspace } from '@pretzel-cloud/shared/domain'
+import { Plan, type Workspace } from '@pretzel-cloud/shared/domain'
 import { FilterHeader, SortIcon, getFacets, includesSome } from '@/components/table-headers'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
-
-const PLAN_VARIANT: Record<Workspace.Plan, 'success' | 'secondary' | 'outline'> = {
-    free: 'outline',
-    base: 'secondary',
-    pro:  'success',
-}
 
 /** What the payment provider says, and whether it wants attention. */
 const STATUS_VARIANT: Record<string, 'success' | 'destructive' | 'secondary' | 'outline'> = {
@@ -44,13 +38,12 @@ const features = tableFeatures({
 // the facet counts are the same function, so the dropdown cannot drift from the
 // column it filters.
 const FILTERABLE: Record<string, (w: Workspace) => unknown> = {
-    plan:   w => w.plan,
+    plan:   w => w.plan.displayName,
     status: w => w.subscriptionStatus ?? 'none',
 }
 
 /** How a facet value reads in the filter menu. */
 const FACET_LABEL: Record<string, (value: unknown) => string> = {
-    plan:   value => Billing.getOfferForPlan(value as Workspace.Plan).label,
     status: value => value === 'none' ? 'Not subscribed' : String(value),
 }
 
@@ -73,14 +66,12 @@ const columns: ColumnDef<typeof features, Workspace, any>[] = [
         header: 'Plan',
         enableSorting: false,
         filterFn: includesSome,
-        cell: ({ getValue }) => {
-            const plan = getValue() as Workspace.Plan
-
-            return <span className='text-xs font-mono text-muted-foreground'>{Billing.getOfferForPlan(plan).label}</span>
-        },
+        cell: ({ getValue }) => (
+            <span className='text-xs font-mono text-muted-foreground'>{getValue() as string}</span>
+        ),
     }),
 
-    columnHelper.accessor(row => Billing.getOfferForPlan(row.plan).price, {
+    columnHelper.accessor(row => Plan.getPriceLabel(row.plan), {
         id: 'price',
         header: 'Price',
         enableSorting: false,
@@ -144,7 +135,9 @@ const HEAD_WIDTH: Record<string, string> = {
 const EMPTY_FACETS = new Map<unknown, number>()
 
 export function WorkspacesBillingTable() {
-    const workspaces = WorkspaceSDK.useStore((s) => Object.values(s.workspaces))
+    const workspacesById = WorkspaceSDK.useStore((s) => s.workspaces)
+
+    const workspaces = useMemo(() => Object.values(workspacesById), [workspacesById])
 
     const table = useTable(
         {

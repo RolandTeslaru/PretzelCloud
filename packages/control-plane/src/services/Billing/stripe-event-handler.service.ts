@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
-import { User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
 import { PortalDB } from '@/db/portal';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { BillingDatabase } from './billing.database';
 import { StripeClient } from './stripe.client';
-import { getPlanForSubscription } from './prices';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 
 /**
  * What Stripe tells the fleet, and what it means here. Nothing in this file
@@ -22,7 +22,20 @@ export class StripeEventHandlerService {
         private readonly stripeClient: StripeClient,
         private readonly workspaceService: WorkspaceService,
         private readonly billingDatabase: BillingDatabase,
+        private readonly planRegistry:    PlanRegistry,
     ) { }
+
+    /** The plan a subscription's price sells, or null if it sells none of ours. */
+    private getPlanIdForSubscription(subscription: Stripe.Subscription): Plan.Id | null {
+        const priceId = subscription.items.data[0]?.price.id;
+
+        if (!priceId)
+            return null;
+
+        const plan = this.planRegistry.findPlanForStripePriceId(priceId);
+
+        return plan ? plan.id : null;
+    }
 
     private get stripe(): Stripe {
         return this.stripeClient.client;
@@ -139,29 +152,29 @@ export class StripeEventHandlerService {
 
     /** Moves the workspace to the plan its subscription now pays for. */
     private async changeWorkspaceSubscription(workspaceId: Workspace.Id, subscription: Stripe.Subscription): Promise<void> {
-        const plan = getPlanForSubscription(subscription);
+        const planId = this.getPlanIdForSubscription(subscription);
 
-        if (!plan) {
+        if (!planId) {
             this.logger.error(`No plan matches the price on ${subscription.id}`);
 
             return;
         }
 
-        const row = await PortalDB.asService('read workspace plan', (trx) => this.billingDatabase.getWorkspacePlan(trx, workspaceId));
+        const row = await PortalDB.asService('read workspace plan', (trx) => this.billingDatabase.getOwnerAndPlanIdForWorkspace(trx, workspaceId));
 
         if (!row)
             return;
 
         // A rebuild for nothing is a stopped workspace for nothing.
-        if (row.plan === plan)
+        if (row.plan_id === planId)
             return;
 
         // Detached: rebuilding machines outlasts what Stripe will wait for, and a
         // delivery it gives up on is redelivered. Caught here because nothing is
         // left on the stack to catch it by the time it fails.
-        void this.workspaceService.setPlan(workspaceId, User.Id.parse(row.owner_id), plan)
+        void this.workspaceService.setPlan(workspaceId, row.owner_id as User.Id, planId)
             .catch((error: unknown) => this.logger.error(
-                `Moving ${workspaceId} to ${plan} failed: ${error instanceof Error ? error.message : error}`,
+                `Moving ${workspaceId} to ${planId} failed: ${error instanceof Error ? error.message : error}`,
             ));
     }
 

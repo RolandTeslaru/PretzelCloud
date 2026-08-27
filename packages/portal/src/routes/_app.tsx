@@ -3,6 +3,7 @@ import { createFileRoute, Link, Outlet, redirect, useMatches, useRouterState } f
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { BaseIconProps } from '@pretzel-graph/standard-ui/icons/baseIcon'
 import { PretzelGraphDropdown } from '@/components/PretzelGraphDropdown'
+import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK'
 
 // What a page beneath this layout may declare about itself.
 declare module '@tanstack/react-router' {
@@ -24,6 +25,13 @@ export const Route = createFileRoute('/_app')({
         if (!context.auth.isAuthenticated) {
             throw redirect({ to: '/auth' })
         }
+    },
+    // Every page beneath this names a plan somewhere, and they change on the
+    // order of never. A failure is swallowed so the shell still mounts.
+    loader: async () => {
+        await WorkspaceSDK.fetchPlans().catch(() => null)
+
+        return null
     },
     component: AppLayout,
 })

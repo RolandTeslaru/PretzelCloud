@@ -16,7 +16,9 @@ export const Route = createFileRoute('/_app/usage')({
 function UsagePage() {
     const { isPending } = WorkspaceSDK.useWorkspacesQuery()
 
-    const workspaces = WorkspaceSDK.useStore((s) => Object.values(s.workspaces))
+    const workspacesById = WorkspaceSDK.useStore((s) => s.workspaces)
+
+    const workspaces = Object.values(workspacesById)
 
     if (isPending && workspaces.length === 0)
         return (

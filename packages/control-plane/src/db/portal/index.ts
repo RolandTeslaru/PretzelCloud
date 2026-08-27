@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import {
     Fleet,
     Plan      as PlanD,
-    Listing as ListingD,
+    Listing   as ListingD,
     User      as UserD,
     Workspace as WorkspaceD,
 } from '@pretzel-cloud/shared/domain';
@@ -22,14 +22,14 @@ export namespace PortalDB {
 
     export namespace User {
         export const Row = z.object({
-            id:           UserD.Id,
-            email:        z.string(),
-            username:     z.string(),
-            display_name: z.string(),
-            avatar_url:   z.string().nullable(),
+            id:                 UserD.Id,
+            email:              z.string(),
+            username:           z.string(),
+            display_name:       z.string(),
+            avatar_url:         z.string().nullable(),
             stripe_customer_id: z.string().nullable(),
-            created_at:   z.coerce.date(),
-            updated_at:   z.coerce.date(),
+            created_at:         z.coerce.date(),
+            updated_at:         z.coerce.date(),
         });
         export type Row = z.infer<typeof Row>;
 
@@ -47,37 +47,40 @@ export namespace PortalDB {
     export namespace Workspace {
         export const Row = z.object({
             id:           WorkspaceD.Id,
+            owner_id:     UserD.Id,
             subdomain:    z.string().nullable(),
             display_name: z.string(),
-            lifecycle_state: WorkspaceD.LifecycleState,
-            disabled_at:       z.coerce.date().nullable(),
-            disabled_reason:   z.string().nullable(),
+            plan_id:      PlanD.Id,
+
+            disabled_at:     z.coerce.date().nullable(),
+            disabled_reason: z.string().nullable(),
             abandoned_at:    z.coerce.date().nullable(),
-            plan:         WorkspaceD.Plan,
-            owner_id:     UserD.Id,
+            lifecycle_state: WorkspaceD.LifecycleState,
+
             stripe_subscription_id: z.string().nullable(),
             subscription_status:    z.string().nullable(),
             current_period_start:   z.coerce.date().nullable(),
             current_period_end:     z.coerce.date().nullable(),
-            created_at:   z.coerce.date(),
-            updated_at:   z.coerce.date(),
+
+            created_at: z.coerce.date(),
+            updated_at: z.coerce.date(),
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row) => WorkspaceD.Schema.parse({
-            id:          row.id,
-            subdomain:   row.subdomain,
-            displayName: row.display_name,
-            lifecycleState: row.lifecycle_state,
-            disabledReason:   row.disabled_reason,
-            plan:        row.plan,
+        export const toDomain = (row: Row, plan: PlanD) => WorkspaceD.Schema.parse({
+            id:                 row.id,
+            subdomain:          row.subdomain,
+            displayName:        row.display_name,
+            lifecycleState:     row.lifecycle_state,
+            disabledReason:     row.disabled_reason,
+            plan,
             subscriptionStatus: row.subscription_status,
             currentPeriodStart: row.current_period_start,
             currentPeriodEnd:   row.current_period_end,
-            ownerId:     row.owner_id,
-            appUrl:      Fleet.Hostname.Host.getOrigin(WorkspaceD.Subdomain.canonical(row.id), 'app'),
-            createdAt:   row.created_at,
-            updatedAt:   row.updated_at,
+            ownerId:            row.owner_id,
+            appUrl:             Fleet.Hostname.Host.getOrigin(WorkspaceD.Subdomain.canonical(row.id), 'app'),
+            createdAt:          row.created_at,
+            updatedAt:          row.updated_at,
         });
     }
 
@@ -94,50 +97,52 @@ export namespace PortalDB {
 
     export namespace Plan {
         export const Row = z.object({
-            id:                  PlanD.Id,
-            display_name:        z.string(),
-            price_cents:         z.number().int(),
-            currency:            z.string(),
-            stripe_price_id:     z.string().nullable(),
-            stripe_product_id:   z.string().nullable(),
-            topology:            PlanD.Topology,
-            backend_size:        z.string(),
-            worker_size:         z.string().nullable(),
-            idle_backend_policy: PlanD.IdleBackendPolicy,
-            execution_concurrency_limit: z.number().int(),
-            max_workflows:            z.number().int().nullable(),
-            max_executions_monthly:   z.number().int().nullable(),
-            max_workspace_members:    z.number().int().nullable(),
-            max_uptime_hours_monthly: z.number().int().nullable(),
-            execution_session_retention_days:           z.number().int().nullable(),
-            purchasable:         z.boolean(),
-            sort_order:          z.number().int(),
-            created_at:          z.coerce.date(),
-            updated_at:          z.coerce.date(),
+            id:                               PlanD.Id,
+            description:                      z.string(),
+            display_name:                     z.string(),
+            price_cents:                      z.number().int(),
+            currency:                         z.string(),
+            stripe_price_id:                  z.string().nullable(),
+            stripe_product_id:                z.string().nullable(),
+            topology:                         PlanD.Topology,
+            backend_size:                     z.string(),
+            worker_size:                      z.string().nullable(),
+            idle_backend_policy:              PlanD.IdleBackendPolicy,
+            execution_concurrency_limit:      z.number().int(),
+            max_workflows:                    z.number().int().nullable(),
+            max_executions_monthly:           z.number().int().nullable(),
+            max_workspace_members:            z.number().int().nullable(),
+            max_uptime_hours_monthly:         z.number().int().nullable(),
+            execution_session_retention_days: z.number().int().nullable(),
+            purchasable:                      z.boolean(),
+            sort_order:                       z.number().int(),
+            created_at:                       z.coerce.date(),
+            updated_at:                       z.coerce.date(),
         });
         export type Row = z.infer<typeof Row>;
 
         export const toDomain = (row: Row) => PlanD.Schema.parse({
-            id:          row.id,
-            displayName: row.display_name,
-            priceCents:  row.price_cents,
-            currency:    row.currency,
-            stripePriceId:   row.stripe_price_id,
-            stripeProductId: row.stripe_product_id,
-            topology:          row.topology,
-            backendSize:       row.backend_size,
-            workerSize:        row.worker_size,
-            idleBackendPolicy: row.idle_backend_policy,
-            executionConcurrencyLimit: row.execution_concurrency_limit,
-            maxWorkflows:          row.max_workflows,
-            maxExecutionsMonthly:  row.max_executions_monthly,
-            maxWorkspaceMembers:   row.max_workspace_members,
-            maxUptimeHoursMonthly: row.max_uptime_hours_monthly,
-            executionSessionRetentionDays:         row.execution_session_retention_days,
-            purchasable: row.purchasable,
-            sortOrder:   row.sort_order,
-            createdAt:   row.created_at,
-            updatedAt:   row.updated_at,
+            id:                            row.id,
+            displayName:                   row.display_name,
+            description:                   row.description,
+            priceCents:                    row.price_cents,
+            currency:                      row.currency,
+            stripePriceId:                 row.stripe_price_id,
+            stripeProductId:               row.stripe_product_id,
+            topology:                      row.topology,
+            backendSize:                   row.backend_size,
+            workerSize:                    row.worker_size,
+            idleBackendPolicy:             row.idle_backend_policy,
+            executionConcurrencyLimit:     row.execution_concurrency_limit,
+            maxWorkflows:                  row.max_workflows,
+            maxExecutionsMonthly:          row.max_executions_monthly,
+            maxWorkspaceMembers:           row.max_workspace_members,
+            maxUptimeHoursMonthly:         row.max_uptime_hours_monthly,
+            executionSessionRetentionDays: row.execution_session_retention_days,
+            purchasable:                   row.purchasable,
+            sortOrder:                     row.sort_order,
+            createdAt:                     row.created_at,
+            updatedAt:                     row.updated_at,
         });
     }
 
@@ -209,9 +214,9 @@ export namespace PortalDB {
      */
     export type Transaction<R extends Role> = KyselyTransaction<Tables> & { readonly __as: R };
 
-    export type UserTransaction      = Transaction<typeof Role.User>;
-    export type SiloTransaction = Transaction<typeof Role.Silo>;
-    export type ServiceTransaction   = Transaction<typeof Role.Service>;
+    export type UserTransaction    = Transaction<typeof Role.User>;
+    export type SiloTransaction    = Transaction<typeof Role.Silo>;
+    export type ServiceTransaction = Transaction<typeof Role.Service>;
 
     const ROLE = Symbol.for('pretzel.cloud.portal.role');
 

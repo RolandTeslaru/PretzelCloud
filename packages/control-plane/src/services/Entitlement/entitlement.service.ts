@@ -43,7 +43,7 @@ export class EntitlementService {
             const rows = await FleetDB.asService('count executions for many', (trx) =>
                 this.usageDatabase.executions.getCountsIn(trx, workspaceIds, period));
 
-            return new Map(rows.map((row) => [Workspace.Id.parse(row.workspace_id), Number(row.count)]));
+            return new Map(rows.map((row) => [row.workspace_id as Workspace.Id, Number(row.count)]));
         },
 
         /** Executions per day over a period, days with none omitted. */
@@ -86,14 +86,14 @@ export class EntitlementService {
             const row = await PortalDB.asService('read execution allowance', (db) =>
                 db
                     .selectFrom('workspaces')
-                    .select(['plan', 'current_period_start', 'current_period_end'])
+                    .select(['plan_id', 'current_period_start', 'current_period_end'])
                     .where('id', '=', workspaceId)
                     .executeTakeFirst());
 
             if (!row)
                 return null;
 
-            const plan = this.planRegistry.find(Plan.Id.parse(row.plan));
+            const plan = this.planRegistry.find(row.plan_id as Plan.Id);
 
             return {
                 limit:       plan?.maxExecutionsMonthly ?? null,

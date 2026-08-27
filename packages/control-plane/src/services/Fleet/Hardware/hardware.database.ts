@@ -50,7 +50,7 @@ export class HardwareDatabase {
             .execute();
 
         return rows.map((row) => ({
-            workspaceId: Workspace.Id.parse(row.workspace_id),
+            workspaceId: row.workspace_id as Workspace.Id,
             lastSeenAt:  row.last_seen_at ?? row.last_boot_at ?? row.created_at,
         }));
     }
