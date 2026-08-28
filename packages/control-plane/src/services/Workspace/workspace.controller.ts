@@ -8,6 +8,8 @@ import { WorkspaceScope, WorkspaceIdParam } from '@/auth/guarded-params';
 import { AuthenticatedUser } from '@/auth/identity/principal.decorator';
 import { Principal } from '@/auth/identity/principal';
 import { Throttle } from '@nestjs/throttler';
+import { RefuseIfBusy } from '@/decorators/operation';
+import { LockService } from '@/services/Locking/lock.service';
 import { WorkspaceService } from './workspace.service';
 
 const API = Workspace.API;
@@ -22,7 +24,10 @@ export class WorkspaceController {
 
     private readonly logger = new Logger(WorkspaceController.name);
 
-    constructor(private readonly workspaceService: WorkspaceService) {}
+    constructor(
+        private readonly workspaceService: WorkspaceService,
+        public  readonly lockService:      LockService,
+    ) {}
 
     @Get()
     async list(
@@ -92,6 +97,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
+    @RefuseIfBusy()
     @HttpCode(202)
     async start(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         // Accepted, not done: bringing a workspace up waits on machines, and a
@@ -107,6 +113,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
+    @RefuseIfBusy()
     @HttpCode(202)
     async stop(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.stop(workspaceId)
@@ -119,6 +126,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
+    @RefuseIfBusy()
     @HttpCode(202)
     async suspend(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.suspend(workspaceId)
@@ -131,6 +139,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
+    @RefuseIfBusy()
     @HttpCode(202)
     async rebuild(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan.id)
@@ -143,6 +152,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
+    @RefuseIfBusy()
     @HttpCode(202)
     async restart(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.restart(workspaceId)

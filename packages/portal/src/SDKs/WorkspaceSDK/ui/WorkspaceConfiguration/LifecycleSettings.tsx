@@ -51,7 +51,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
 
     if (!workspace) return null
 
-    const isBusy = transition !== undefined || rebuilding === true
 
     // Nothing to report on success: the badge follows the events. Only the
     // request refusing outright goes unannounced otherwise.
@@ -130,7 +129,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                     variant="input"
                     size="sm"
                     className="mr-auto"
-                    disabled={isBusy}
                     onClick={run('restart')}
                 >
                     {transition === 'restart' ? <Spinner className="size-3.5" /> : <SystemIcons.RefreshCcw />}
@@ -151,7 +149,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                     variant="input"
                     size="sm"
                     className="mr-auto"
-                    disabled={isBusy}
                     onClick={rebuild}
                 >
                     {rebuilding ? <Spinner className="size-3.5" /> : <SystemIcons.Server />}
@@ -175,7 +172,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                                 key={action}
                                 variant="input"
                                 size="sm"
-                                disabled={isBusy}
                                 onClick={run(action)}
                             >
                                 {transition === action ? <Spinner className="size-3.5" /> : icon}

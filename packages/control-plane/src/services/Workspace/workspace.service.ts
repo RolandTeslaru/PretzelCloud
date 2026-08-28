@@ -3,6 +3,8 @@ import { Plan, Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { PermissionService } from '@/services/Permission/permission.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
+import { LockService } from '@/services/Locking/lock.service';
+import { Operation } from '@/decorators/operation';
 import { ListingService } from '@/services/Listing/listing.service';
 import { WorkspaceDatabase } from './workspace.database';
 import { UserDatabase } from '@/services/User/user.database';
@@ -44,6 +46,7 @@ export class WorkspaceService {
         @Inject(forwardRef(() => BillingService))
         private readonly billingService:      BillingService,
         private readonly planRegistry:        PlanRegistry,
+        private readonly lockService:         LockService,
     ) {}
 
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
@@ -268,6 +271,7 @@ export class WorkspaceService {
 
 
 
+    @Operation()
     public async start(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
         await this.ensureCompute(workspaceId);
 
@@ -278,6 +282,7 @@ export class WorkspaceService {
 
 
     /** Gives the machines back. Hardware row, database, hostnames and secrets stay, and traffic rebuilds it. */
+    @Operation()
     public async reclaimCompute(workspaceId: Workspace.Id): Promise<void> {
         // Quiet: the state announced is `sleeping` below, not the `stopped` a stop lands on.
         await this.stop(workspaceId, { emitNoEvents: true });
@@ -312,6 +317,7 @@ export class WorkspaceService {
 
 
     /** Stopping means nothing is left running, worker included. */
+    @Operation()
     public stop(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'stop', options);
     }
@@ -319,6 +325,7 @@ export class WorkspaceService {
 
 
 
+    @Operation()
     public suspend(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'suspend', options);
     }
@@ -327,6 +334,7 @@ export class WorkspaceService {
 
 
     /** Everything down, then answerable again. The worker returns on demand. */
+    @Operation()
     public restart(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'restart', options);
     }
@@ -390,6 +398,7 @@ export class WorkspaceService {
      * stay. The machines are destroyed rather than moved, so this announces
      * itself and the transitions inside it stay quiet.
      */
+    @Operation()
     public async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
         this.emit(workspaceId, Workspace.Event.create('rebuild:started', {}));
 
@@ -424,6 +433,7 @@ export class WorkspaceService {
 
 
 
+    @Operation()
     public async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
         await PortalDB.asService('set workspace plan', (trx) => this.workspaceDatabase.setPlan(trx, workspaceId, planId));
 
@@ -459,6 +469,7 @@ export class WorkspaceService {
 
 
 
+    @Operation(1)
     public async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
         await this.billingService.cancelSubscription(workspaceId);
 

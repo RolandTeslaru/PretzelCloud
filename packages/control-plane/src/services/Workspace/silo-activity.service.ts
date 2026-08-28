@@ -3,6 +3,7 @@ import { Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
+import { LockService } from '@/services/Locking/lock.service';
 import { WorkspaceService } from './workspace.service';
 
 /** Quiet for this long and a workspace whose plan allows it is put to sleep. */
@@ -17,6 +18,11 @@ const RECLAIM_MS = 7 * 24 * 60 * 60_000;
 
 /** How often the fleet is checked over. */
 const SWEEP_MS = 60_000;
+
+// Namespaces the advisory lock. One sweeper at a time however many instances run:
+// every transition below is locked per workspace anyway, so a second sweeper
+// would only re-read the fleet and then be refused, once per workspace, in the log.
+const SWEEP_LOCK = 'fleet-sweep';
 
 /**
  * At most one write per workspace per window, however busy it is: the record
@@ -48,6 +54,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
         private readonly workspaceService: WorkspaceService,
         private readonly hardwareService:   HardwareService,
         private readonly planRegistry:      PlanRegistry,
+        private readonly lockService:       LockService,
     ) {}
 
     onModuleInit(): void {
@@ -81,6 +88,14 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
 
     /** What has gone quiet long enough to act on, and what to do about it. */
     private async sweep(): Promise<void> {
+        // Silent when refused: another instance sweeping is the expected case.
+        await this.lockService.withDurableLock(SWEEP_LOCK, 'all', () => this.sweepHeld());
+    }
+
+
+
+
+    private async sweepHeld(): Promise<void> {
         try {
             const seen = await this.hardwareService.getLastSeen();
 
@@ -91,8 +106,8 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
 
             const workspaceIds = idle.map(({ workspaceId }) => workspaceId);
 
-            const planIdByWorkspaceId        = await this.getPlanIdsForWorkspaces(workspaceIds);
-            const machineStateByWorkspaceId  = await this.hardwareService.getStates(workspaceIds);
+            const planIdByWorkspaceId         = await this.getPlanIdsForWorkspaces(workspaceIds);
+            const machineStateByWorkspaceId   = await this.hardwareService.getStates(workspaceIds);
             const lifecycleStateByWorkspaceId = await this.getLifecycleStatesForWorkspaces(workspaceIds);
 
             const quietForByWorkspaceId = new Map(idle.map(({ workspaceId, lastSeenAt }) => [workspaceId, Date.now() - lastSeenAt.getTime()]));
