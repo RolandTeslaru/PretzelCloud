@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import { Workspace } from '@pretzel-cloud/shared/domain';
-import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { PortalDB } from '@/db/portal';
 import { FleetDB } from '@/db/fleet';
 import { Principal } from '@/auth/identity/principal';
 import { WorkspaceDatabase } from '@/services/Workspace/workspace.database';
+import { GlobalCaching, GlobalCachingService } from '@/services/Caching/caching.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 
 /** What the account says. Roles inside a workspace are that workspace's own. */
@@ -18,6 +18,12 @@ export type AccountRole = 'owner' | 'member';
  */
 const CLOUD_TOKEN_TTL_MS = 600_000;
 const CLOUD_TOKEN_CACHE_MAX = 10_000;
+
+/**
+ * Shared so a rotation reaches every instance rather than each waiting out its
+ * own window. The value stays local — it is the credential itself.
+ */
+const CLOUD_TOKEN_CHANNEL = GlobalCaching.Channel.parse('cache:silo-cloud-tokens');
 
 const matches = (given: string, expected: string): boolean => {
     const a = Buffer.from(given);
@@ -38,9 +44,11 @@ export class PermissionService {
     constructor(
         private readonly workspaceDatabase: WorkspaceDatabase,
         private readonly planRegistry:      PlanRegistry,
-    ) {}
+        private readonly globalCachingService: GlobalCachingService,
+    ) {
+        this.globalCachingService.create(CLOUD_TOKEN_CHANNEL, CLOUD_TOKEN_TTL_MS, CLOUD_TOKEN_CACHE_MAX, false);
+    }
 
-    private readonly siloCloudTokenCache = new TtlCache<Workspace.Id, string>(CLOUD_TOKEN_TTL_MS, CLOUD_TOKEN_CACHE_MAX);
 
     /** Whether this token is the one that proves the named workspace. */
     public async doesWorkspaceMatchCloudToken(workspaceId: Workspace.Id, given: string): Promise<boolean> {
@@ -51,11 +59,11 @@ export class PermissionService {
 
     /** Call when the token is rotated or the workspace is torn down. */
     public invalidateCloudToken(workspaceId: Workspace.Id): void {
-        this.siloCloudTokenCache.delete(workspaceId);
+        this.globalCachingService.delete(CLOUD_TOKEN_CHANNEL, workspaceId);
     }
 
     private async getCloudToken(workspaceId: Workspace.Id): Promise<string | undefined> {
-        const cached = this.siloCloudTokenCache.get(workspaceId);
+        const cached = this.globalCachingService.get(CLOUD_TOKEN_CHANNEL, workspaceId) as string | undefined;
 
         if (cached)
             return cached;
@@ -72,7 +80,7 @@ export class PermissionService {
         if (!row)
             return undefined;
 
-        this.siloCloudTokenCache.set(workspaceId, row.cloud_token);
+        this.globalCachingService.set(CLOUD_TOKEN_CHANNEL, workspaceId, row.cloud_token);
 
         return row.cloud_token;
     }

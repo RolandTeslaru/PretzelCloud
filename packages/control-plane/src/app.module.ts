@@ -6,6 +6,7 @@ import { FleetModule } from './services/Fleet/fleet.module';
 import { RouterModule } from './services/SiloRouter/router.module';
 import { BillingModule } from './services/Billing/billing.module';
 import { PlanModule } from './services/Plan/plan.module';
+import { CachingModule } from './services/Caching/caching.module';
 import { EntitlementModule } from './services/Entitlement/entitlement.module';
 import { AdminModule } from './services/Admin/admin.module';
 import { PermissionModule } from './services/Permission/permission.module';
@@ -20,7 +21,7 @@ import { ZodExceptionFilter } from './filters/zod-exception.filter';
 // A ceiling for every route, raised or lowered where a route earns it. The
 // silos carry their own; this is the control plane's own surface.
 @Module({
-    imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 120 }] }), PermissionModule, AdminModule, EntitlementModule, PlanModule, BillingModule, AuthModule, FleetModule, RouterModule, SiloSessionModule, UserModule, WorkspaceModule, RealtimeModule, ListingModule, ExtendedShelfModule],
+    imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 120 }] }), PermissionModule, AdminModule, EntitlementModule, PlanModule, CachingModule, BillingModule, AuthModule, FleetModule, RouterModule, SiloSessionModule, UserModule, WorkspaceModule, RealtimeModule, ListingModule, ExtendedShelfModule],
     providers: [
         { provide: APP_FILTER, useClass: ZodExceptionFilter },
         { provide: APP_GUARD,  useClass: ThrottlerGuard },

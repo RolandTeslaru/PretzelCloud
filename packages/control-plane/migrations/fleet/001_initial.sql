@@ -81,6 +81,11 @@ create table clusters (
     updated_at timestamp with time zone default now() not null
 );
 
+-- One to begin with, addressed as the compose service is. A deployment updates
+-- the row rather than editing this: the host differs per environment, and its
+-- admin credential is read from CLUSTER_ADMIN_URL_ALPHA either way.
+insert into clusters (name, host, port, region) values ('alpha', 'postgres-alpha', 5432, 'local');
+
 create table hardware (
     id           uuid default gen_random_uuid() not null,
     workspace_id uuid not null,

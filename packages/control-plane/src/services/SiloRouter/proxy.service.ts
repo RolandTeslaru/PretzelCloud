@@ -2,12 +2,12 @@ import { forwardRef, Inject, Injectable, Logger, type OnModuleInit, type OnModul
 import { Agent, createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import httpProxy from 'http-proxy';
-import { TtlCache } from '@pretzel-cloud/shared/server/ttl-cache';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 import { requireEnv } from '@/db/table';
 import { Router } from './router.service';
+import { GlobalCaching, GlobalCachingService } from '@/services/Caching/caching.service';
 
 const DEFAULT_PORT = 8080;
 
@@ -46,6 +46,13 @@ const SESSION_COOKIE = 'pretzel.auth.token.0';
 const WAKE_LOCK_MS  = 15_000;
 const WAKE_LOCK_MAX = 1_000;
 
+/**
+ * Shared, since a second instance waking the same machine buys nothing. Best
+ * effort rather than a lock: the bus has no delivery guarantee, so two that
+ * decide at once still both wake. A real bound on wakes wants an atomic hold.
+ */
+const WAKING_CHANNEL = GlobalCaching.Channel.parse('cache:waking');
+
 // On the request, so it survives the hop into the proxy's response event.
 const METERED = Symbol('pretzel.metered');
 
@@ -79,7 +86,6 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         agent,
     });
 
-    private readonly waking = new TtlCache<Workspace.Id, true>(WAKE_LOCK_MS, WAKE_LOCK_MAX);
 
     private server?: Server;
 
@@ -89,7 +95,11 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         private readonly workspaceService: WorkspaceService,
 
         private readonly entitlementService: EntitlementService,
-    ) {}
+
+        private readonly globalCachingService: GlobalCachingService,
+    ) {
+        this.globalCachingService.create(WAKING_CHANNEL, WAKE_LOCK_MS, WAKE_LOCK_MAX);
+    }
 
     onModuleInit(): void {
         // Where upgrade failures land; a socket has no status code to send.
@@ -487,10 +497,10 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         const { workspaceId } = resolution;
 
         // A cooldown too: one that cannot come up must not be kicked repeatedly.
-        if (this.waking.get(workspaceId))
+        if (this.globalCachingService.get(WAKING_CHANNEL, workspaceId))
             return;
 
-        this.waking.set(workspaceId, true);
+        this.globalCachingService.set(WAKING_CHANNEL, workspaceId, true);
 
         this.logger.log(`Waking ${workspaceId}`);
 
@@ -499,7 +509,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         void this.workspaceService.ensureStarted(workspaceId).catch((error) => {
             this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);
 
-            this.waking.delete(workspaceId);
+            this.globalCachingService.delete(WAKING_CHANNEL, workspaceId);
         });
     }
 }

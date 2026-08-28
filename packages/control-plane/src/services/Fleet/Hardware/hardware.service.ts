@@ -12,10 +12,7 @@ import { ClusterService } from '../cluster/cluster.service';
 
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-/**
- * A conversion failed and the topology it took apart could not be rebuilt, so
- * the workspace has no machines and cannot get them back by itself.
- */
+/** A conversion failed and could not rebuild what it took apart, leaving the workspace with no machines. */
 export class TopologyNotRestored extends Error {
 
     constructor(
@@ -30,7 +27,7 @@ export class TopologyNotRestored extends Error {
     }
 }
 
-/** A workspace's compute as one thing; state, health and lifecycle collapse over the machines beneath it. */
+/** A workspace's compute as one thing; state, health and lifecycle collapse over its machines. */
 @Injectable()
 export class HardwareService {
 
@@ -45,12 +42,8 @@ export class HardwareService {
     ) {}
 
     /**
-     * Everything a workspace is given before it runs: the platform, the cluster,
-     * and its own database on that cluster. Idempotent — the row is written
-     * before the database it names, so a retry finds both.
-     *
-     * The connection URL is the return value because it is the only thing that
-     * carries the password, which is minted here.
+     * The platform, the cluster, and the workspace's own database on it. Idempotent — the row
+     * is written before the database it names. The returned URL carries the password, minted here.
      */
     async provision(workspaceId: Workspace.Id): Promise<Fleet.Cluster.Database.ConnectionURL> {
         const cluster = await this.clusterService.getClusterForNewWorkspace();
@@ -70,7 +63,7 @@ export class HardwareService {
 
 
 
-    /** The row, or a throw: everything below acts on hardware that was allocated first. */
+    /** The row, or a throw — everything below needs hardware allocated first. */
     async getHardware(workspaceId: Workspace.Id): Promise<FleetDB.Hardware.Row> {
         const hardware = await FleetDB.asService('read hardware', (trx) =>
             this.hardwareDatabase.getByWorkspace(trx, workspaceId));
@@ -84,7 +77,7 @@ export class HardwareService {
 
 
 
-    /** The machines the plan calls for, on hardware already allocated; the caller never names roles. */
+    /** The machines the plan calls for; the caller never names roles. */
     async assemble(
         workspaceId:    Workspace.Id,
         plan:           Plan,
@@ -105,12 +98,8 @@ export class HardwareService {
 
 
     /**
-     * Creates roles in bring-up order, so a worker is built from a backend
-     * address that exists.
-     *
-     * The plan decides sizes and the roles decide shape; a conversion builds
-     * only what is missing and a rollback builds a shape the plan no longer
-     * calls for, so the two are given separately.
+     * Creates roles in bring-up order, so a worker is built from a backend address that exists.
+     * Plan and roles are given separately: the plan decides sizes, the roles decide shape.
      */
     private async buildCompute(
         workspaceId:    Workspace.Id,
@@ -139,7 +128,7 @@ export class HardwareService {
 
 
 
-    /** One role's spec: the backend gets the credential and wake endpoint, the worker only where its sibling is. */
+    /** One role's spec: the backend gets the credentials, the worker only where its sibling is. */
     private getSpecForMachine(
         role:        Fleet.Machine.Role,
         workspaceId: Workspace.Id,
@@ -185,7 +174,7 @@ export class HardwareService {
 
 
 
-    /** Replaces every machine from the current spec; the hardware row, database, hostnames and secrets survive. The caller stops the hardware first. */
+    /** Replaces every machine; row, database, hostnames and secrets survive. The caller stops it first. */
     async rebuild(
         workspaceId: Workspace.Id,
         plan:        Plan,
@@ -201,7 +190,7 @@ export class HardwareService {
 
 
 
-    /** Reconciles the machines to a new plan's topology; the database survives. A no-op while every plan is one combined machine. */
+    /** Reconciles the machines to a new plan's topology; the database survives. */
     async convertTo(
         workspaceId: Workspace.Id,
         plan:        Plan,
@@ -218,7 +207,7 @@ export class HardwareService {
         const desired = new Set(Plan.getMachineRoles(plan));
         const have    = new Set(current.map((machine) => machine.role));
 
-        // Outgoing first, so the two topologies never exist at once; the caller has already stopped the hardware.
+        // Outgoing first, so the two topologies never exist at once.
         for (const machine of current)
             if (!desired.has(machine.role))
                 await this.machineService.destroy(driver, machine);
@@ -236,10 +225,7 @@ export class HardwareService {
             );
         }
         catch (conversionError) {
-            // The machines the old topology needed are already gone, so a failure
-            // here leaves the workspace with nothing to run on. Put them back
-            // before reporting it: nothing on a machine is the workspace's, so
-            // rebuilding one is only slow, never lossy.
+            // The old topology's machines are already gone, so put them back before reporting.
             try {
                 await this.rollbackTopology(workspaceId, plan, [...have], baseEnvKeys, backendEnvKeys);
             }
@@ -247,8 +233,7 @@ export class HardwareService {
                 throw new TopologyNotRestored(workspaceId, conversionError, restoreError);
             }
 
-            // Back as it was, so only the plan change failed. Still an error: the
-            // caller asked for a topology it has not got.
+            // Back as it was, but still an error: the caller asked for a topology it has not got.
             throw conversionError;
         }
     }
@@ -257,15 +242,10 @@ export class HardwareService {
 
 
 
-    /**
-     * Rebuilds a topology a failed conversion took apart. Whatever it made
-     * before failing goes first, so the roles it is asked for are the only ones
-     * left afterwards.
-     */
+    /** Rebuilds a topology a failed conversion took apart. */
     private async rollbackTopology(
         workspaceId:    Workspace.Id,
-        // The plan being converted to, since the one being restored is no longer
-        // recorded anywhere. It decides sizes only, and the roles say the shape.
+        // The plan converted to; the old one is recorded nowhere. Sizes only — the roles say the shape.
         plan:           Plan,
         machineRoles:   Fleet.Machine.Role[],
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
@@ -277,8 +257,7 @@ export class HardwareService {
 
         const driver = this.hardwareDriverRegistry.getDriverForKind(hardware.driver);
 
-        // Whatever the failed attempt managed to make goes first, so the roles
-        // asked for are the only ones left.
+        // Whatever the failed attempt made goes first, so only the wanted roles are left.
         for (const machine of await this.machineService.getAll(workspaceId))
             if (!wanted.has(machine.role))
                 await this.machineService.destroy(driver, machine);
@@ -292,7 +271,7 @@ export class HardwareService {
 
 
 
-    /** Blocks until every recorded machine reports serving; the DB says which should exist, the driver whether each is healthy. */
+    /** Blocks until every recorded machine reports serving. */
     async awaitHealthy(workspaceId: Workspace.Id): Promise<void> {
         const machines = await this.machineService.getAll(workspaceId);
 
@@ -302,9 +281,7 @@ export class HardwareService {
         await Promise.all(machines.map((machine) =>
             this.machineService.awaitHealthy(this.hardwareDriverRegistry.getDriverForKind(machine.driver), machine.resourceId)));
 
-        // Recorded here because this is where it stops being what `create`
-        // returned. Nothing else runs after a first provision, and a machine
-        // still reading `creating` is one the idle sweep will not act on.
+        // Nothing else runs after a first provision, and the idle sweep skips a machine reading `creating`.
         await this.refreshStates(workspaceId);
     }
 
@@ -312,13 +289,13 @@ export class HardwareService {
 
 
 
-    /** Starts the machine that answers HTTP; the worker is demand-driven and left alone. */
+    /** Starts the machine that answers HTTP; the worker is demand-driven. */
     async startBackend(workspaceId: Workspace.Id): Promise<void> {
         const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
 
         const driver = this.hardwareDriverRegistry.getDriverForKind(backend!.driver)
 
-        // A suspended machine resumes, a stopped one starts; asking for the wrong one leaves it where it was.
+        // A suspended machine resumes, a stopped one starts.
         if (backend?.state === 'suspended')
             await this.machineService.resume(driver, backend.resourceId);
         else if (backend?.state === 'stopped')
@@ -331,7 +308,7 @@ export class HardwareService {
 
 
 
-    /** Starts the queue drainer, called before enqueueing: a sleeping worker is not watching Redis. */
+    /** Starts the queue drainer before enqueueing — a sleeping worker is not watching Redis. */
     async startWorker(workspaceId: Workspace.Id): Promise<void> {
         const worker = await this.machineService.getByRole(workspaceId, ['worker']);
 
@@ -369,7 +346,7 @@ export class HardwareService {
 
 
 
-    /** Whether the workspace answers right now — the cheap check before waking, so it writes and announces nothing. */
+    /** Whether the workspace answers right now. The cheap check before waking: writes nothing. */
     async isServing(workspaceId: Workspace.Id): Promise<boolean> {
         const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
 
@@ -389,7 +366,7 @@ export class HardwareService {
 
 
 
-    /** Whether there is anything to start. Asked of the machines, since the hardware row outlives them. */
+    /** Whether there is anything to start; the hardware row outlives the machines. */
     async hasMachines(workspaceId: Workspace.Id): Promise<boolean> {
         return (await this.machineService.getAll(workspaceId)).length > 0;
     }
@@ -407,7 +384,7 @@ export class HardwareService {
 
 
 
-    /** When each workspace was last used, for deciding what to do about idleness. */
+    /** When each workspace was last used, for the idle sweep. */
     getLastSeen(): Promise<{ workspaceId: Workspace.Id; lastSeenAt: Date }[]> {
         return FleetDB.asService('read workspace activity', (trx) => this.hardwareDatabase.getLastSeen(trx));
     }
@@ -416,7 +393,7 @@ export class HardwareService {
 
 
 
-    /** Whether the job runner is still up; a running worker means work is in flight. */
+    /** A running worker means work is in flight. */
     async hasRunningWorker(workspaceId: Workspace.Id): Promise<boolean> {
         const worker = await this.machineService.getByRole(workspaceId, ['worker']);
 
@@ -430,7 +407,7 @@ export class HardwareService {
 
 
 
-    /** Stops the queue drainer, leaving the backend answering; a combined machine is the workspace, so it is left alone. */
+    /** Stops the queue drainer, leaving the backend answering. A combined machine is left alone. */
     async stopWorker(workspaceId: Workspace.Id): Promise<void> {
         const worker = await this.machineService.getByRole(workspaceId, ['worker']);
 
@@ -450,7 +427,7 @@ export class HardwareService {
 
 
 
-    /** Freezes what can be frozen; a worker exceeds the snapshot ceiling and is skipped. */
+    /** Freezes what can be frozen; a worker exceeds the snapshot ceiling. */
     suspendBackend(workspaceId: Workspace.Id): Promise<void> {
         return this.fanOut(workspaceId, 'suspend');
     }
@@ -469,9 +446,9 @@ export class HardwareService {
 
 
 
-    /** One action across every machine it applies to, then the resulting states; inapplicable machines are skipped, not failed. */
+    /** One action across every machine it applies to; inapplicable ones are skipped, not failed. */
     private async fanOut(workspaceId: Workspace.Id, action: Fleet.Machine.LifecycleAction): Promise<void> {
-        // Ordered: stopping the backend first would strand the worker, whose shutdown needs the queue.
+        // Stopping the backend first would strand the worker, whose shutdown needs the queue.
         const machines = Fleet.Machine.inLifecycleOrder(action, await this.machineService.getAll(workspaceId));
 
         for (const machine of machines)
@@ -518,7 +495,7 @@ export class HardwareService {
 
         const map = new Map<Workspace.Id, Fleet.Machine.State>();
 
-        // The backend's state is the hardware's: a worker between jobs is not a workspace being down.
+        // The backend's state is the hardware's; a worker between jobs is not a workspace down.
         for (const row of rows)
             if (row.role === 'backend' || row.role === 'combined')
                 map.set(row.workspace_id, Fleet.Machine.State.parse(row.state));
@@ -541,21 +518,19 @@ export class HardwareService {
 
 
 
-    /** Destroys the machines and their network; the hardware row stays, so the workspace keeps its driver and its activity record. */
+    /** Destroys the machines and their network; the hardware row stays. */
     async destroyCompute(workspaceId: Workspace.Id): Promise<void> {
-        // Read from the row when there is one. A workspace whose hardware is
-        // already gone is torn down on the driver new ones are built with —
-        // there is nothing left to say which it was.
+        // From the row when there is one; nothing else records which driver it was.
         const hardware = await FleetDB.asService('read hardware', (trx) => this.hardwareDatabase.getByWorkspace(trx, workspaceId));
 
         const driver = hardware
             ? this.hardwareDriverRegistry.getDriverForKind(hardware.driver)
             : this.hardwareDriverRegistry.getDriverForNewWorkspaces();
 
-        // Asked of the driver, not the rows, so teardown also catches machines no record knows about.
+        // Asked of the driver, so teardown catches machines no record knows about.
         const handles = await driver.findByWorkspace(workspaceId);
 
-        // Removal is a kill that abandons database connections; stopping is the caller's, never done here by accident.
+        // Removal is a kill that abandons connections; stopping is the caller's.
         const live = handles.filter((handle) => handle.state === 'running' || handle.state === 'suspended');
 
         if (live.length > 0)
@@ -579,10 +554,9 @@ export class HardwareService {
 
 
 
-    /** Gives back everything `provision` allocated; nothing of the workspace's fleet presence is left. */
+    /** Gives back everything `provision` allocated. */
     async destroy(workspaceId: Workspace.Id): Promise<void> {
-        // Read before the row goes: it is the only record of which cluster holds
-        // this workspace's database.
+        // Read before the row goes: the only record of which cluster holds the database.
         const hardware = await this.getHardware(workspaceId);
 
         const cluster = await this.clusterService.getClusterById(hardware.cluster_id);
