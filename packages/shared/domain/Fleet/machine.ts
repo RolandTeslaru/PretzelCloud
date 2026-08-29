@@ -33,6 +33,7 @@ export namespace Machine {
         }).extend({
             BLOCK_OUTBOUND_SMTP:     z.string(),
             REFUSE_PRIVATE_NETWORK:  z.string(),
+            EXECUTION_CONCURRENCY:   z.string(),
         })
         export type Base = z.infer<typeof Base>
 

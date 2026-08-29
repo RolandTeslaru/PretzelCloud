@@ -52,9 +52,9 @@ export class ProvisioningService {
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
 
-        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, owner.id, secrets);
-
         const plan = this.planRegistry.get(planId);
+
+        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, owner.id, plan, secrets);
 
         await this.step(workspaceId, 'machines', () => 
             this.hardwareService.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys)
@@ -84,9 +84,9 @@ export class ProvisioningService {
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
-        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, secrets);
-
         const plan = this.planRegistry.get(planId);
+
+        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, plan, secrets);
 
         // No health wait: the caller stops the hardware around a conversion and starts it after.
         await this.step(workspaceId, 'convert', () => 
@@ -101,9 +101,9 @@ export class ProvisioningService {
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
 
-        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, secrets);
-
         const plan = this.planRegistry.get(planId);
+
+        const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, plan, secrets);
 
         // No health wait: the caller stops the hardware around a rebuild and starts it after.
         await this.step(workspaceId, 'rebuild', () => this.hardwareService.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
@@ -113,17 +113,22 @@ export class ProvisioningService {
     private async assembleMachineEnvKeys(
         workspaceId: Workspace.Id,
         ownerId:     User.Id,
+        plan:        Plan,
         secrets:     Fleet.SiloSecrets.MachineEnv,
     ): Promise<{ baseEnvKeys: Fleet.Machine.EnvKeys.Base; backendEnvKeys: Fleet.Machine.EnvKeys.Backend }> {
         // Every machine the fleet runs, whatever a self-hoster does with theirs.
         const hardening = { BLOCK_OUTBOUND_SMTP: '1', REFUSE_PRIVATE_NETWORK: '1' };
 
+        // What the plan row bounds, delivered as the machine's own configuration.
+        const limits = { EXECUTION_CONCURRENCY: String(plan.executionConcurrencyLimit) };
+
         return {
-            baseEnvKeys: Fleet.Machine.EnvKeys.Base.parse({ ...secrets, ...hardening }),
+            baseEnvKeys: Fleet.Machine.EnvKeys.Base.parse({ ...secrets, ...hardening, ...limits }),
 
             backendEnvKeys: Fleet.Machine.EnvKeys.Backend.parse({
                 ...secrets,
                 ...hardening,
+                ...limits,
                 PRETZEL_CLOUD_TOKEN:        await this.siloSecretsService.getCloudToken(workspaceId) ?? '',
                 AUTH_URL:                   requireEnv('WORKSPACE_AUTH_URL'),
                 TOKEN_ISSUER:               this.siloTokenIssuer.issuer(),
