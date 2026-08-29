@@ -4,6 +4,8 @@
     "private": true,
     "scripts": {
         "migrate": "ts-node -r tsconfig-paths/register src/db/migrate.ts",
+        "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && cp -R migrations dist/control-plane/migrations",
+        "start": "node dist/control-plane/src/main.js",
         "typecheck": "tsc --noEmit",
         "dev": "nodemon -w src -e ts,json --exec ts-node -r tsconfig-paths/register src/main.ts",
         "token": "ts-node -r tsconfig-paths/register scripts/token.ts"
@@ -36,6 +38,7 @@
         "@types/ws": "^8.18.1",
         "nodemon": "^3.1.14",
         "ts-node": "^10.9.2",
+        "tsc-alias": "^1.9.2",
         "tsconfig-paths": "^4.2.0"
     }
 }

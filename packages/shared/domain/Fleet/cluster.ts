@@ -20,6 +20,7 @@ export namespace Cluster {
         name:      Name,
         host:      z.string(),
         port:      z.number().int(),
+        ssl:       z.boolean(),
         region:    z.string(),
         accepting: z.boolean(),
         createdAt: z.coerce.date(),
@@ -58,8 +59,9 @@ export namespace Cluster {
             password: Role.Password,
             host: string,
             databaseName: Name,
+            ssl: boolean,
         }) => ConnectionURL.parse(
-            `postgres://${parts.roleName}:${parts.password}@${parts.host}/${parts.databaseName}`,
+            `postgres://${parts.roleName}:${parts.password}@${parts.host}/${parts.databaseName}${parts.ssl ? '?sslmode=require' : ''}`,
         )
 
         /** For logs and errors. The password is the only part worth hiding. */

@@ -12,7 +12,7 @@ import { AuthSDK } from '@/SDKs/AuthSDK/sdk'
 export const Route = createFileRoute('/auth/')({
     beforeLoad: ({ context }) => {
         if (context.auth.isAuthenticated) {
-            throw redirect({ to: '/workspaces' })
+            throw redirect({ to: '/' })
         }
     },
     component: AuthPage,
@@ -71,7 +71,7 @@ function AuthPage() {
         setDisabled(false)
 
         if (success) {
-            router.navigate({ to: '/workspaces' })
+            router.navigate({ to: '/' })
         }
     }
 

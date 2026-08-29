@@ -1,0 +1,45 @@
+# The fleet's identity issuer, deployed from the stock Supabase image. Secrets
+# (GOTRUE_JWT_SECRET, GOTRUE_DB_DATABASE_URL) are set with `fly secrets set`.
+
+app            = "pretzel-gotrue"
+primary_region = "iad"
+
+[build]
+  image = "supabase/auth:v2.177.0"
+
+[env]
+  GOTRUE_API_HOST  = "0.0.0.0"
+  PORT             = "9999"
+  API_EXTERNAL_URL = "https://auth.pretzelgraph.ai"
+
+  GOTRUE_DB_DRIVER = "postgres"
+
+  GOTRUE_SITE_URL       = "https://portal.pretzelgraph.ai"
+  GOTRUE_URI_ALLOW_LIST = "https://portal.pretzelgraph.ai"
+  GOTRUE_DISABLE_SIGNUP = "false"
+
+  GOTRUE_JWT_EXP                = "3600"
+  GOTRUE_JWT_AUD                = "authenticated"
+  GOTRUE_JWT_DEFAULT_GROUP_NAME = "authenticated"
+
+  # Autoconfirm until an SMTP provider is wired in.
+  GOTRUE_MAILER_AUTOCONFIRM     = "true"
+  GOTRUE_EXTERNAL_EMAIL_ENABLED = "true"
+
+[http_service]
+  internal_port        = 9999
+  force_https          = true
+  auto_stop_machines   = false
+  auto_start_machines  = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval     = "15s"
+    timeout      = "4s"
+    method       = "GET"
+    path         = "/health"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "256mb"

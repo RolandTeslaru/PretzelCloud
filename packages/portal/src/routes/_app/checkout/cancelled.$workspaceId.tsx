@@ -24,7 +24,7 @@ function CheckoutCancelled() {
 
                 <div className="flex items-center gap-2">
                     <Button asChild size="sm">
-                        <Link to="/workspaces">
+                        <Link to="/">
                         <SystemIcons.ArrowLeft/>
                             Back to workspaces
                         </Link>

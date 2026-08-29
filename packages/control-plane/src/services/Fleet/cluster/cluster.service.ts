@@ -86,6 +86,10 @@ export class ClusterService {
             else
                 await client.query(`create role "${roleName}" login password '${password}'`);
 
+            // Creating a database owned by a role requires membership in it,
+            // which an admin that is not superuser does not hold implicitly.
+            await client.query(`grant "${roleName}" to current_user`);
+
             const dbExists = await client.query('select 1 from pg_database where datname = $1', [databaseName]);
 
             // Cannot run inside a transaction block, which is why this service uses a plain client.
@@ -104,6 +108,7 @@ export class ClusterService {
             password,
             host: Cluster.getAddress(cluster),
             databaseName,
+            ssl:  cluster.ssl,
         });
     }
 

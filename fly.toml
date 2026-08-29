@@ -1,0 +1,48 @@
+# The control plane: the router and the API, one process.
+#
+# Only the router is published. The API listens on loopback and the router
+# forwards to it — Fly routes by port rather than by hostname, so one app can
+# only give 443 to one place, and the router is the one that reads the Host.
+
+app            = "pretzel-control-plane"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # The port the router publishes. PORT is the API's, and stays internal.
+  FLEET_ROUTER_PORT = "8080"
+  PORT              = "4000"
+  NODE_ENV          = "production"
+
+  # Everything a browser is told. Secrets are set with `fly secrets set`, never
+  # here: this file is committed.
+  FLEET_DOMAIN = "pretzelgraph.ai"
+  PORTAL_URL   = "https://portal.pretzelgraph.ai"
+
+  # The router forwards everything on this host to the API. Must be the host the
+  # portal was built to call.
+  CONTROL_PLANE_HOST = "api.pretzelgraph.ai"
+
+[http_service]
+  internal_port        = 8080
+  force_https          = true
+  # Never to zero: the router is what wakes a sleeping workspace, so something
+  # has to be listening when the first request for one arrives.
+  auto_stop_machines   = false
+  auto_start_machines  = false
+  min_machines_running = 1
+
+  # A socket that accepts is enough to say the process came up: a failed
+  # migration or a module that cannot resolve exits before it listens.
+  [[http_service.checks]]
+    grace_period  = "20s"
+    interval      = "15s"
+    timeout       = "4s"
+    method        = "GET"
+    path          = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

@@ -9,23 +9,22 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppUsageRouteImport } from './routes/_app/usage'
-import { Route as AppWorkspacesRouteImport } from './routes/_app/workspaces'
 import { Route as AuthIndexRouteImport } from './routes/auth/index'
 import { Route as AppCheckoutCancelledWorkspaceIdRouteImport } from './routes/_app/checkout/cancelled.$workspaceId'
 import { Route as AppCheckoutSuccessWorkspaceIdRouteImport } from './routes/_app/checkout/success.$workspaceId'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppBillingRoute = AppBillingRouteImport.update({
   id: '/billing',
@@ -35,11 +34,6 @@ const AppBillingRoute = AppBillingRouteImport.update({
 const AppUsageRoute = AppUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppWorkspacesRoute = AppWorkspacesRouteImport.update({
-  id: '/workspaces',
-  path: '/workspaces',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthIndexRoute = AuthIndexRouteImport.update({
@@ -61,30 +55,27 @@ const AppCheckoutSuccessWorkspaceIdRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/billing': typeof AppBillingRoute
   '/usage': typeof AppUsageRoute
-  '/workspaces': typeof AppWorkspacesRoute
   '/auth/': typeof AuthIndexRoute
   '/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
   '/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/billing': typeof AppBillingRoute
   '/usage': typeof AppUsageRoute
-  '/workspaces': typeof AppWorkspacesRoute
+  '/': typeof AppIndexRoute
   '/auth': typeof AuthIndexRoute
   '/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
   '/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/_app/billing': typeof AppBillingRoute
   '/_app/usage': typeof AppUsageRoute
-  '/_app/workspaces': typeof AppWorkspacesRoute
+  '/_app/': typeof AppIndexRoute
   '/auth/': typeof AuthIndexRoute
   '/_app/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
   '/_app/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
@@ -95,52 +86,48 @@ export interface FileRouteTypes {
     | '/'
     | '/billing'
     | '/usage'
-    | '/workspaces'
     | '/auth/'
     | '/checkout/cancelled/$workspaceId'
     | '/checkout/success/$workspaceId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/billing'
     | '/usage'
-    | '/workspaces'
+    | '/'
     | '/auth'
     | '/checkout/cancelled/$workspaceId'
     | '/checkout/success/$workspaceId'
   id:
     | '__root__'
-    | '/'
     | '/_app'
     | '/_app/billing'
     | '/_app/usage'
-    | '/_app/workspaces'
+    | '/_app/'
     | '/auth/'
     | '/_app/checkout/cancelled/$workspaceId'
     | '/_app/checkout/success/$workspaceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AuthIndexRoute: typeof AuthIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_app': {
       id: '/_app'
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/billing': {
       id: '/_app/billing'
@@ -154,13 +141,6 @@ declare module '@tanstack/react-router' {
       path: '/usage'
       fullPath: '/usage'
       preLoaderRoute: typeof AppUsageRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/workspaces': {
-      id: '/_app/workspaces'
-      path: '/workspaces'
-      fullPath: '/workspaces'
-      preLoaderRoute: typeof AppWorkspacesRouteImport
       parentRoute: typeof AppRoute
     }
     '/auth/': {
@@ -190,7 +170,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
   AppUsageRoute: typeof AppUsageRoute
-  AppWorkspacesRoute: typeof AppWorkspacesRoute
+  AppIndexRoute: typeof AppIndexRoute
   AppCheckoutCancelledWorkspaceIdRoute: typeof AppCheckoutCancelledWorkspaceIdRoute
   AppCheckoutSuccessWorkspaceIdRoute: typeof AppCheckoutSuccessWorkspaceIdRoute
 }
@@ -198,7 +178,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppBillingRoute: AppBillingRoute,
   AppUsageRoute: AppUsageRoute,
-  AppWorkspacesRoute: AppWorkspacesRoute,
+  AppIndexRoute: AppIndexRoute,
   AppCheckoutCancelledWorkspaceIdRoute: AppCheckoutCancelledWorkspaceIdRoute,
   AppCheckoutSuccessWorkspaceIdRoute: AppCheckoutSuccessWorkspaceIdRoute,
 }
@@ -206,7 +186,6 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AuthIndexRoute: AuthIndexRoute,
 }

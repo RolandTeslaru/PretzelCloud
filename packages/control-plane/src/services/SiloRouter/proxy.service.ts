@@ -154,6 +154,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         return (req.headers.accept ?? '').includes('text/html');
     }
 
+    // is it the control plane's own host? → the control plane, whatever the path
     // does the host resolve?           → 404
     // is it a control-plane path?      → the control plane answers it, no machine needed
     // a page load carrying no session? → the portal
@@ -162,6 +163,16 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     // is the machine asleep or gone?   → wake, or hold a webhook, or ask for a retry
     //                                  → forward
     private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        // Before resolving: this host names no workspace, and asking would 404.
+        // Everything arrives on the router's port because the platform routes by
+        // port rather than by host, so the control plane's own traffic reaches
+        // its process from here.
+        if (this.isControlPlaneHost(req)) {
+            this.serveControlPlane(req, res);
+
+            return;
+        }
+
         const resolution = await this.router.resolve(req);
 
         // The hooks hostname serves webhooks and nothing else.
@@ -171,6 +182,15 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (!resolution) {
+            // The router's own health, asked on a hostname that names no
+            // workspace. A workspace's own `/health` is forwarded to it above,
+            // so the two cannot be confused.
+            if (req.url === '/health') {
+                res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok\n');
+
+                return;
+            }
+
             res.writeHead(404, { 'Content-Type': 'text/plain' }).end('No such workspace\n');
             return;
         }
@@ -412,6 +432,21 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     }
 
     /** This same process, on its HTTP port. */
+    /** Its own hostname, set where the portal is told to call it. Unset in a compose deployment, where nothing shares a port. */
+    private isControlPlaneHost(req: IncomingMessage): boolean {
+        const configured = process.env.CONTROL_PLANE_HOST;
+
+        if (!configured)
+            return false;
+
+        const host = (req.headers.host ?? '').trim().toLowerCase();
+
+        return host === configured.trim().toLowerCase();
+    }
+
+
+
+
     private serveControlPlane(req: IncomingMessage, res: ServerResponse): void {
         const origin = `http://127.0.0.1:${process.env.PORT ?? 4000}`;
 

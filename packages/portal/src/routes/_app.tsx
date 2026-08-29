@@ -69,7 +69,7 @@ type NavEntry = {
 }
 
 const NAV_TOP: NavEntry[] = [
-    { id: 'workspaces', label: 'Workspaces', to: '/workspaces', icon: SystemIcons.Server },
+    { id: 'workspaces', label: 'Workspaces', to: '/', icon: SystemIcons.Server },
     { id: 'usage', label: 'Usage', to: '/usage', icon: SystemIcons.ChartNoAxesCombined },
     { id: 'billing', label: 'Billing', to: '/billing', icon: SystemIcons.Receipt },
 ]

@@ -554,10 +554,18 @@ export class HardwareService {
 
 
 
-    /** Gives back everything `provision` allocated. */
+    /** Gives back everything `provision` allocated. Absence means it is already given back. */
     async destroy(workspaceId: Workspace.Id): Promise<void> {
         // Read before the row goes: the only record of which cluster holds the database.
-        const hardware = await this.getHardware(workspaceId);
+        const hardware = await FleetDB.asService('read hardware', (trx) => this.hardwareDatabase.getByWorkspace(trx, workspaceId));
+
+        // The row goes last, so no row means the rest already went; only machines
+        // no record knows about are left to look for.
+        if (!hardware) {
+            await this.destroyCompute(workspaceId);
+
+            return;
+        }
 
         const cluster = await this.clusterService.getClusterById(hardware.cluster_id);
 

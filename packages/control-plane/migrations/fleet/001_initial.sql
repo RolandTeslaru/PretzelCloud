@@ -74,6 +74,8 @@ create table clusters (
     -- What a machine connects to. The admin credential is not held here.
     host       text not null,
     port       integer not null default 5432,
+    -- Whether connections must use TLS. On for clusters reached over the open internet.
+    ssl        boolean not null default false,
     region     text not null,
     -- Whether new workspaces may be placed here. Draining is flipping this off.
     accepting  boolean not null default true,
