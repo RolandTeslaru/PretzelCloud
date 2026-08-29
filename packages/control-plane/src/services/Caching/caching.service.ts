@@ -36,6 +36,17 @@ export namespace GlobalCaching {
             })
         }
 
+        export namespace SetBatch {
+            export const Schema = Base.extend({
+                type:    z.literal("setBatch"),
+                entries: z.array(z.object({
+                    key:       z.string(),
+                    value:     z.any(),
+                    expiresAt: z.number()
+                }))
+            })
+        }
+
         export namespace Delete {
             export const Schema = Base.extend({
                 type: z.literal("delete"),
@@ -49,7 +60,7 @@ export namespace GlobalCaching {
             })
         }
 
-        export const Schema = z.discriminatedUnion("type", [Set.Schema, Delete.Schema, Clear.Schema])
+        export const Schema = z.discriminatedUnion("type", [Set.Schema, SetBatch.Schema, Delete.Schema, Clear.Schema])
     }
     export type GlobalEvent = z.infer<typeof Event.Schema>
 }
@@ -97,6 +108,11 @@ export class GlobalCachingService implements OnModuleInit, OnModuleDestroy {
             if(event.type === "set"){
                 cache?.delete(event.key)
                 cache?.set(event.key, { value: event.value, expiresAt: event.expiresAt })
+            } else if (event.type === "setBatch"){
+                for(const entry of event.entries){
+                    cache?.delete(entry.key)
+                    cache?.set(entry.key, { value: entry.value, expiresAt: entry.expiresAt })
+                }
             } else if (event.type === "delete"){
                 cache?.delete(event.key)
             } else if (event.type === "clear"){
@@ -152,6 +168,37 @@ export class GlobalCachingService implements OnModuleInit, OnModuleDestroy {
             value,
             key,
             expiresAt
+        })
+
+        this.realtime.publish(channel, event)
+    }
+
+    /** Every entry in one write and one message, instead of one of each per entry. */
+    public setBatch(channel: GlobalCaching.Channel, entries: Array<[EntryKey, any]>){
+        const cache = this.caches.get(channel)
+        const registration = this.registry.get(channel)
+        if(!cache || !registration)
+            throw new Error(`Cache for channel ${channel} doesnt exist.`)
+
+        if(entries.length === 0)
+            return
+
+        const expiresAt = Date.now() + registration.ttlMs
+
+        for(const [key, value] of entries){
+            this.makeRoom(channel)
+
+            cache.delete(key)
+            cache.set(key, { value, expiresAt })
+        }
+
+        if(!registration.replicate)
+            return
+
+        const event = GlobalCaching.Event.Schema.parse({
+            channel,
+            type: "setBatch",
+            entries: entries.map(([key, value]) => ({ key, value, expiresAt }))
         })
 
         this.realtime.publish(channel, event)

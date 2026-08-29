@@ -221,7 +221,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
         // Turned off rather than parked: nothing arriving may bring it back, and
         // which route it asked for makes no difference.
-        if (!Workspace.acceptsTraffic(resolution.lifecycleState)) {
+        if (!Workspace.Lifecycle.acceptsTraffic(resolution.lifecycleState)) {
             // A person gets the workspace's card, which says why; a program gets
             // the reason in the shape it already reads errors in.
             if (ProxyService.isPageRequest(req))
@@ -241,7 +241,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
         // A suspended machine still has an address, so asleep is asked about
         // separately: forwarding into one hangs until the proxy gives up.
-        if (!resolution.target || Workspace.isWakeable(resolution.lifecycleState)) {
+        if (!resolution.target || Workspace.Lifecycle.isWakeable(resolution.lifecycleState)) {
             // A webhook URL is itself the credential; anything else has to carry
             // one, or a stranger who knows the hostname could spend a boot.
             if (!Router.isWebhookPath(req.url) && !ProxyService.hasCredential(req)) {

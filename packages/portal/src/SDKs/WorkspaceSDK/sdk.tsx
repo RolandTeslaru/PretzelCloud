@@ -40,6 +40,8 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
             plans: {},
             transitions: {},
             rebuilding: {},
+            provisioning: {},
+            hardwareStatistics: {},
             selectors: workspaceSelectors,
         })),
         shallow
@@ -158,10 +160,7 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
 
 export const WorkspaceSDK = SDK.get<WorkspaceSDKImpl>('Workspace')
 
-// Every workspace in the store is subscribed for as long as it is there, so an
-// event lands whatever is on screen.
 WorkspaceSDK.subscribe((state, prevState) => {
-    // Immer keeps the reference when the slice was not touched.
     if (state.workspaces === prevState.workspaces)
         return
 
@@ -178,8 +177,6 @@ WorkspaceSDK.subscribe((state, prevState) => {
         unsubscribeByWorkspaceId.delete(workspaceId)
     }
 
-    // Only the new ones: resubscribing an unchanged workspace would drop the
-    // events published while the socket carried the swap.
     for (const workspaceId of workspaceIds) {
         if (unsubscribeByWorkspaceId.has(workspaceId))
             continue
@@ -193,20 +190,13 @@ WorkspaceSDK.subscribe((state, prevState) => {
 
 export namespace WorkspaceSDK {
     export type State = {
-        // Keyed by id so a single workspace can be updated without walking a
-        // list; ordering is a selector's job.
         workspaces: Record<Workspace.Id, Workspace>
-        // The catalogue: what a workspace may be moved onto. Which one it is on
-        // it carries itself, so nothing here is needed to name it.
         plans: Record<Plan.Id, Plan>
-        // What each workspace is in the middle of, for as long as it is. Beside
-        // the workspaces rather than inside them: the machine is not in this
-        // state, nothing stores it, and the next reading of the row would drop
-        // it anyway.
-        transitions: Partial<Record<Workspace.Id, Workspace.LifecycleAction>>
-        // Beside the transitions rather than among them: a rebuild is not one,
-        // and the stop and start inside it never announce themselves.
+        transitions: Partial<Record<Workspace.Id, Workspace.Lifecycle.Action>>
         rebuilding: Partial<Record<Workspace.Id, boolean>>
+        provisioning: Partial<Record<Workspace.Id, Workspace.Provisioning.Step>>
+        /** Streamed over the workspace channel while the machines are running. */
+        hardwareStatistics: Partial<Record<Workspace.Id, Workspace.HardwareStatistics>>
         selectors: WorkspaceSDKSelectors
     }
 

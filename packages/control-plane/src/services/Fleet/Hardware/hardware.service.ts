@@ -554,6 +554,44 @@ export class HardwareService {
 
 
 
+    /** One reading per running machine. Null when nothing is running to read. */
+    public async getStatisticsForWorkspace(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
+        const hardware = await FleetDB.asService('read hardware', (trx) => this.hardwareDatabase.getByWorkspace(trx, workspaceId));
+
+        if (!hardware)
+            return null;
+
+        const machines = await FleetDB.asService('read machines', (trx) => this.machineDatabase.getAll(trx, workspaceId));
+
+        const driver = this.hardwareDriverRegistry.getDriverForKind(hardware.driver);
+
+        const readings = await Promise.all(machines.map(async (machine) => ({
+            machine,
+            statistics: await driver.statistics(machine.resourceId).catch(() => null),
+        })));
+
+        const statisticsByMachineId: Record<Fleet.Machine.Id, Fleet.Machine.Statistics> = {};
+
+        for (const { machine, statistics } of readings) {
+            statisticsByMachineId[machine.id] = {
+                role:          machine.role,
+                // A reading proves it is running whatever the row last recorded.
+                state:         statistics ? 'running' : machine.state,
+                cpuPercent:    statistics?.cpuPercent    ?? null,
+                memUsedBytes:  statistics?.memUsedBytes  ?? null,
+                memTotalBytes: statistics?.memTotalBytes ?? null,
+            };
+        }
+
+        if (Object.keys(statisticsByMachineId).length === 0)
+            return null;
+
+        return { machines: statisticsByMachineId, capturedAt: new Date() };
+    }
+
+
+
+
     /** Gives back everything `provision` allocated. Absence means it is already given back. */
     async destroy(workspaceId: Workspace.Id): Promise<void> {
         // Read before the row goes: the only record of which cluster holds the database.

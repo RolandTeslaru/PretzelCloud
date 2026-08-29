@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, Logger, Patch, Post, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Logger, Patch, Post, UseGuards, Query } from '@nestjs/common';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { ZodBody } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
 import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
@@ -11,6 +11,7 @@ import { Throttle } from '@nestjs/throttler';
 import { RefuseIfBusy } from '@/decorators/operation';
 import { LockService } from '@/services/Locking/lock.service';
 import { WorkspaceService } from './workspace.service';
+import { HardwareStatisticsSampler } from '@/services/Fleet/Hardware/hardware-statistics.sampler';
 
 const API = Workspace.API;
 
@@ -25,15 +26,32 @@ export class WorkspaceController {
     private readonly logger = new Logger(WorkspaceController.name);
 
     constructor(
-        private readonly workspaceService: WorkspaceService,
-        public  readonly lockService:      LockService,
+        private readonly workspaceService:         WorkspaceService,
+        private readonly hardwareStatisticsSampler: HardwareStatisticsSampler,
+        public  readonly lockService:              LockService,
     ) {}
 
     @Get()
     async list(
         @AuthenticatedUser() principal: Principal.User,
+        @Query('getHardwareStatistics') getHardwareStatistics?: string,
     ): Promise<Workspace.API.List.Response> {
-        return { workspaces: await this.workspaceService.list(principal) };
+        const workspaces = await this.workspaceService.list(principal);
+
+        if (getHardwareStatistics !== 'true')
+            return { workspaces };
+
+        const readings = await Promise.all(workspaces.map(async (workspace) =>
+            [workspace.id, await this.hardwareStatisticsSampler.get(workspace.id)] as const));
+
+        const hardwareStatistics: NonNullable<Workspace.API.List.Response['hardwareStatistics']> = {};
+
+        for (const [workspaceId, statistics] of readings) {
+            if (statistics)
+                hardwareStatistics[workspaceId] = statistics;
+        }
+
+        return { workspaces, hardwareStatistics };
     }
 
     // A database, a role, containers and hostnames per call, with retries.

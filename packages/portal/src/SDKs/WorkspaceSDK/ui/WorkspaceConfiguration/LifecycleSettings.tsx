@@ -8,7 +8,7 @@ import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge } from '../status'
 
-type Action = Workspace.LifecycleAction
+type Action = Workspace.Lifecycle.Action
 
 const REBUILD_CONFIRM_ID = 'rebuild-workspace'
 
@@ -43,7 +43,7 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
 
     const [converting, setConverting] = useState<Plan.Id | null>(null)
 
-    // Held from `rebuild:started` to `rebuilt`, so it covers the whole of it.
+    // Held from `rebuild:started` to `rebuild:succeeded`, so it covers the whole of it.
     const rebuilding = WorkspaceSDK.useStore((s) => s.rebuilding[workspaceId])
 
     const plans = WorkspaceSDK.useStore((s) => s.plans)

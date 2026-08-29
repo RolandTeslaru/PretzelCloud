@@ -67,6 +67,10 @@ export class FlyDriver extends AbstractHardwareDriver {
         return process.env.FLY_REGION ?? 'ams';
     }
 
+    private get org(): string {
+        return requireEnv('FLY_ORG');
+    }
+
     /**
      * A macaroon is itself the authorization scheme, so it is sent verbatim.
      * Older personal access tokens are bearer tokens and are not.
@@ -102,6 +106,45 @@ export class FlyDriver extends AbstractHardwareDriver {
 
             throw error;
         }
+    }
+
+    /** The first value an instant query returns, or null when the series is absent. */
+    private async promInstant(query: string): Promise<number | null> {
+        const url = new URL(`https://api.fly.io/prometheus/${this.org}/api/v1/query`);
+
+        url.searchParams.set('query', query);
+
+        const response = await fetch(url, { headers: { Authorization: this.authorization() } });
+
+        if (!response.ok)
+            throw new Error(`Fly metrics query failed: ${response.status} ${await response.text()}`);
+
+        const body = await response.json() as { data?: { result?: { value: [number, string] }[] } };
+
+        const value = body.data?.result?.[0]?.value?.[1];
+
+        return value === undefined ? null : Number(value);
+    }
+
+    /** From the platform's metrics: a machine that is not running has no series, and null is the answer. */
+    async statistics(resourceId: Fleet.Machine.ResourceId): Promise<AbstractHardwareDriver.Statistics | null> {
+        const instance = `instance="${resourceId}"`;
+
+        const [memTotalBytes, memAvailableBytes, idleTicksPerSecond] = await Promise.all([
+            this.promInstant(`fly_instance_memory_mem_total{${instance}}`),
+            this.promInstant(`fly_instance_memory_mem_available{${instance}}`),
+            this.promInstant(`avg(rate(fly_instance_cpu{${instance},mode="idle"}[60s]))`),
+        ]);
+
+        if (memTotalBytes === null || memAvailableBytes === null || idleTicksPerSecond === null)
+            return null;
+
+        // The counter ticks 100 times a second per fully idle CPU, so the averaged idle rate is already a percentage.
+        return {
+            cpuPercent:    Math.min(100, Math.max(0, 100 - idleTicksPerSecond)),
+            memUsedBytes:  memTotalBytes - memAvailableBytes,
+            memTotalBytes,
+        };
     }
 
     private toState(state: string): Fleet.Machine.State {

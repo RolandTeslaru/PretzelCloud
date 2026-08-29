@@ -120,8 +120,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
                 if (!plan || plan.idleBackendPolicy === 'none')
                     continue;
 
+                const state = lifecycleStateByWorkspaceId.get(workspaceId)
+
                 // Stopped or disabled is where its owner or its billing put it.
-                if (!Workspace.acceptsTraffic(lifecycleStateByWorkspaceId.get(workspaceId) ?? 'creating'))
+                if (!Workspace.Lifecycle.acceptsTraffic(state ?? 'creating'))
                     continue;
 
                 // Longest rung first: a workspace due to be reclaimed is past
@@ -185,10 +187,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
         return new Map(rows.map((row) => [row.id as Workspace.Id, row.plan_id as Plan.Id]));
     }
 
-    private async getLifecycleStatesForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, Workspace.LifecycleState>> {
+    private async getLifecycleStatesForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, Workspace.Lifecycle.State>> {
         const rows = await PortalDB.asService('read lifecycles for activity sweep', (db) =>
             db.selectFrom('workspaces').select(['id', 'lifecycle_state']).where('id', 'in', workspaceIds).execute());
 
-        return new Map(rows.map((row) => [row.id as Workspace.Id, row.lifecycle_state as Workspace.LifecycleState]));
+        return new Map(rows.map((row) => [row.id as Workspace.Id, row.lifecycle_state as Workspace.Lifecycle.State]));
     }
 }

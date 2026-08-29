@@ -123,6 +123,19 @@ export class LockService implements OnModuleDestroy {
 
 
 
+    /**
+     * Claims the key until `ttlMs` passes and never releases it early: for work
+     * that runs at most once per window, whichever instance gets there first.
+     */
+    public async claimWindow(namespace: string, key: string, ttlMs: number): Promise<boolean> {
+        const claimed = await this.redis.set(`lock:${namespace}:${key}`, 'claimed', 'PX', ttlMs, 'NX');
+
+        return claimed === 'OK';
+    }
+
+
+
+
     public onModuleDestroy() {
         this.redis.disconnect();
     }

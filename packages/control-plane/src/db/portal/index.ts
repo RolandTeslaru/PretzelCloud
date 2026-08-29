@@ -55,7 +55,7 @@ export namespace PortalDB {
             disabled_at:     z.coerce.date().nullable(),
             disabled_reason: z.string().nullable(),
             abandoned_at:    z.coerce.date().nullable(),
-            lifecycle_state: WorkspaceD.LifecycleState,
+            lifecycle_state: WorkspaceD.Lifecycle.State,
 
             stripe_subscription_id: z.string().nullable(),
             subscription_status:    z.string().nullable(),

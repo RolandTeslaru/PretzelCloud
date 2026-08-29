@@ -16,17 +16,29 @@ const spinner = <Spinner className="size-2.5" />
  * spinner already says it is in motion, so the colour names the state it will
  * settle on rather than the one it is leaving. None of these is a machine state.
  */
-const IN_FLIGHT: Record<Workspace.LifecycleAction, Omit<Appearance, 'icon'>> = {
+const IN_FLIGHT: Record<Workspace.Lifecycle.Action, Omit<Appearance, 'icon'>> = {
     start:   { label: 'Starting',   variant: 'success' },
     stop:    { label: 'Stopping',   variant: 'destructive' },
     suspend: { label: 'Sleeping',   variant: 'nightly' },
     restart: { label: 'Restarting', variant: 'success' },
 }
 
+/** What a build is doing right now, named for the stage it is on. */
+export const PROVISIONING_STEP: Record<Workspace.Provisioning.Step, string> = {
+    hardware:   'Allocating hardware',
+    secrets:    'Creating environment',
+    machines:   'Building compute',
+    health:     'Awaiting health',
+    owner:      'Setting up account',
+    hostnames:  'Registering hostnames',
+    convert:    'Applying plan',
+    rebuild:    'Rebuilding',
+}
+
 /** One badge for the lifecycle, or for whatever is moving it right now. */
 export const displayStatus = (
     workspace:   Workspace,
-    transition?: Workspace.LifecycleAction,
+    transition?: Workspace.Lifecycle.Action,
     rebuilding?: boolean,
 ): Appearance => {
     const settling = workspace.lifecycleState === 'creating' || workspace.lifecycleState === 'provisioning_failed'
@@ -72,10 +84,10 @@ export const PlanBadge = ({ plan }: { plan: Plan }) => (
  */
 export const isReachable = (
     workspace:   Workspace,
-    transition?: Workspace.LifecycleAction,
+    transition?: Workspace.Lifecycle.Action,
     rebuilding?: boolean,
 ) =>
-    Workspace.acceptsTraffic(workspace.lifecycleState)
+    Workspace.Lifecycle.acceptsTraffic(workspace.lifecycleState)
     && !transition
     && !rebuilding
 

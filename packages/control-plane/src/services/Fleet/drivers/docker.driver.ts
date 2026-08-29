@@ -33,6 +33,26 @@ const PUBLISH = `127.0.0.1::${SERVICE_PORT}`;
 // this leaves margin rather than sitting exactly on it.
 const STOP_TIMEOUT_SECONDS = 15;
 
+// The units `docker stats` prints sizes in.
+const BYTE_UNITS: Record<string, number> = {
+    B:   1,
+    kB:  1e3,  KB:  1e3,  KiB: 1024,
+    MB:  1e6,  MiB: 1024 ** 2,
+    GB:  1e9,  GiB: 1024 ** 3,
+    TB:  1e12, TiB: 1024 ** 4,
+};
+
+const parseByteSize = (text: string): number | null => {
+    const match = /^([\d.]+)\s*([A-Za-z]+)$/.exec(text.trim());
+
+    if (!match)
+        return null;
+
+    const unit = BYTE_UNITS[match[2]];
+
+    return unit === undefined ? null : Number(match[1]) * unit;
+};
+
 @Injectable()
 export class DockerDriver extends AbstractHardwareDriver {
 
@@ -244,6 +264,25 @@ export class DockerDriver extends AbstractHardwareDriver {
             return status;
 
         return 'unknown';
+    }
+
+    async statistics(resourceId: Fleet.Machine.ResourceId): Promise<AbstractHardwareDriver.Statistics | null> {
+        const line = await this.dockerTolerating(ABSENT, ['stats', '--no-stream', '--format', '{{json .}}', resourceId]);
+
+        if (!line)
+            return null;
+
+        const stats = JSON.parse(line) as { CPUPerc?: string; MemUsage?: string };
+
+        const cpuPercent = Number((stats.CPUPerc ?? '').replace('%', ''));
+
+        const [used, total] = (stats.MemUsage ?? '').split('/').map(parseByteSize);
+
+        // A stopped container reports zeros rather than being absent.
+        if (!Number.isFinite(cpuPercent) || used == null || total == null || total === 0)
+            return null;
+
+        return { cpuPercent, memUsedBytes: used, memTotalBytes: total };
     }
 
     async findByWorkspace(workspaceId: Workspace.Id): Promise<AbstractHardwareDriver.Handle[]> {

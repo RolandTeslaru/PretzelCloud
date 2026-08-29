@@ -126,7 +126,7 @@ export class HostCache {
             workspaceId,
             kind:         Fleet.Hostname.Kind.parse(row.hostname_kind),
             routerSecret: row.router_secret,
-            lifecycleState: Workspace.LifecycleState.parse(desired?.lifecycle_state ?? 'running'),
+            lifecycleState: Workspace.Lifecycle.State.parse(desired?.lifecycle_state ?? 'running'),
             disabledReason:   desired?.disabled_reason ?? null,
             // Null when there is no machine, which a request rebuilds.
             target: await this.hardwareService.getBackendAddress(workspaceId),

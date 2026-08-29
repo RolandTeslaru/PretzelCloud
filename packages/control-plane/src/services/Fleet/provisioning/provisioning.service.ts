@@ -8,9 +8,10 @@ import { HostnameService } from '../Hostname/hostname.service';
 import { requireEnv } from '@/db/table';
 import { SiloTokenIssuer } from '@/services/SiloSession/token-issuer.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
+import { RealtimeService } from '@/services/Realtime/realtime.service';
 
 export class ProvisioningError extends Error {
-    constructor(readonly step: string, cause: unknown) {
+    constructor(readonly step: Workspace.Provisioning.Step, cause: unknown) {
         // Kept, not just described: the caller decides what to do from the kind
         // of failure this was, and a message cannot say.
         super(`Provisioning failed at ${step}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
@@ -31,15 +32,22 @@ export class ProvisioningService {
         private readonly planRegistry: PlanRegistry,
         private readonly siloDatabaseService: SiloDatabaseService,
         private readonly siloDatabase: SiloDatabase,
+        private readonly realtimeService: RealtimeService,
     ) {}
 
 
     async provision(workspaceId: Workspace.Id, owner: User, planId: Plan.Id): Promise<void> {
-        const databaseUrl = await this.step('hardware', () => this.hardwareService.provision(workspaceId));
+        const databaseUrl = await this.step(workspaceId, 'hardware', () => 
+            this.hardwareService.provision(workspaceId)
+        );
 
-        await this.step('secrets', () => this.siloSecretsService.ensure(workspaceId, databaseUrl));
+        await this.step(workspaceId, 'secrets', () =>     
+            this.siloSecretsService.ensure(workspaceId, databaseUrl)
+        );
 
-        const secrets = await this.step('secrets', () => this.siloSecretsService.get(workspaceId));
+        const secrets = await this.step(workspaceId, 'secrets', () => 
+            this.siloSecretsService.get(workspaceId)
+        );
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets after writing them');
@@ -48,19 +56,23 @@ export class ProvisioningService {
 
         const plan = this.planRegistry.get(planId);
 
-        await this.step('machines', () => this.hardwareService.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys));
+        await this.step(workspaceId, 'machines', () => 
+            this.hardwareService.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys)
+        );
 
         // Before hostnames: a machine that never serves should not be published.
-        await this.step('health', () => this.hardwareService.awaitHealthy(workspaceId));
+        await this.step(workspaceId, 'health', () => 
+            this.hardwareService.awaitHealthy(workspaceId)
+        );
 
         // After health, which is what says the workspace has run its migrations.
-        await this.step('owner', () => 
+        await this.step(workspaceId, 'owner', () => 
             this.siloDatabaseService.transact('seed workspace owner', workspaceId, (trx) => 
                 this.siloDatabase.seedOwner(trx, owner)
             )
         );
 
-        await this.step('hostnames', () => this.hostnameService.registerCanonical(workspaceId));
+        await this.step(workspaceId, 'hostnames', () => this.hostnameService.registerCanonical(workspaceId));
 
         this.logger.log(`Provisioned ${workspaceId}`);
     }
@@ -77,7 +89,9 @@ export class ProvisioningService {
         const plan = this.planRegistry.get(planId);
 
         // No health wait: the caller stops the hardware around a conversion and starts it after.
-        await this.step('convert', () => this.hardwareService.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys));
+        await this.step(workspaceId, 'convert', () => 
+            this.hardwareService.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys)
+        );
     }
 
     /** Rebuilds a workspace's machines from the current spec, keeping its data. */
@@ -92,7 +106,7 @@ export class ProvisioningService {
         const plan = this.planRegistry.get(planId);
 
         // No health wait: the caller stops the hardware around a rebuild and starts it after.
-        await this.step('rebuild', () => this.hardwareService.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
+        await this.step(workspaceId, 'rebuild', () => this.hardwareService.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
     /** The two env shapes a machine is built from; both need what only provisioning knows — owner, issuer, key material. */
@@ -133,12 +147,29 @@ export class ProvisioningService {
         await this.siloSecretsService.delete(workspaceId);
     }
 
-    private async step<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    private emit(workspaceId: Workspace.Id, step: Workspace.Provisioning.Step, failed?: boolean): void {
+        const channel = Workspace.Event.getChannel(workspaceId);
+
+        const type = failed ? 'provisioning:step:failed' : 'provisioning:step'
+
+        const event = Workspace.Event.create(type, { step });
+
+        this.realtimeService.publish(channel, { ...event, channel, workspaceId });
+    }
+
+    private async step<T>(
+        workspaceId: Workspace.Id,
+        name:        Workspace.Provisioning.Step,
+        fn:          () => Promise<T>,
+    ): Promise<T> {
         try {
+            this.emit(workspaceId, name);
             return await fn();
         }
         catch (cause) {
+            this.emit(workspaceId, name, true);
             throw new ProvisioningError(name, cause);
+            this
         }
     }
 }

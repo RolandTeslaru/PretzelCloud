@@ -123,7 +123,7 @@ export namespace Router {
         /** Stamped on forwarded traffic, so the silo can require it. */
         routerSecret:   string;
         /** Decides whether traffic may wake it. */
-        lifecycleState: Workspace.LifecycleState;
+        lifecycleState: Workspace.Lifecycle.State;
         disabledReason: string | null;
         /** Null when the backend is not serving. */
         target:         URL | null;

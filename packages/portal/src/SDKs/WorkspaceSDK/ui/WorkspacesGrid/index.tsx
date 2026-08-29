@@ -65,6 +65,7 @@ const SortMenu = ({ sort, onChange }: {
  */
 export const WorkspacesGrid = () => {
 
+    // Keep so the data stays fresh
     const { error, isPending } = WorkspaceSDK.useWorkspacesQuery()
 
     const [query, setQuery] = useState('')

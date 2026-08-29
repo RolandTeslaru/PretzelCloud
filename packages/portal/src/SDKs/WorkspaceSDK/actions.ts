@@ -34,23 +34,22 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
 
             delete s.transitions[workspace.id]
             delete s.rebuilding[workspace.id]
+            delete s.provisioning[workspace.id]
         })
     }
 
     return {
         list: async () => {
-            const { workspaces } = await Workspace.API.list(api)
+            const { workspaces, hardwareStatistics } = await Workspace.API.list(api, { getHardwareStatistics: true })
 
             const workspacesById = Object.fromEntries(workspaces.map((workspace) => [workspace.id, workspace])) as Record<Workspace.Id, Workspace>
 
             setState((s) => {
-                // Replaced, not merged: a workspace someone removed elsewhere
-                // has to disappear from the grid.
                 s.workspaces = workspacesById
-                // The rows just read are authoritative; anything believed to be
-                // in flight was settled by an event this client may have missed.
                 s.transitions = {}
                 s.rebuilding = {}
+                s.provisioning = {}
+                s.hardwareStatistics = hardwareStatistics ?? {}
             })
 
             return workspacesById
@@ -148,6 +147,8 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                     delete s.workspaces[event.workspaceId]
                     delete s.transitions[event.workspaceId]
                     delete s.rebuilding[event.workspaceId]
+                    delete s.provisioning[event.workspaceId]
+                    delete s.hardwareStatistics[event.workspaceId]
 
                     return
                 }
@@ -157,47 +158,72 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 if (!card)
                     return
 
-                // Held only until the machine reports what it settled on.
-                if (event.type === 'transition:started')
-                    s.transitions[event.workspaceId] = event.action
+                switch (event.type) {
 
-                // Cleared here too: the state that follows is the one it was
-                // already in, so nothing else would take the card out of it.
-                if (event.type === 'transition:failed') {
-                    delete s.transitions[event.workspaceId]
+                    case 'transition:started':
+                        s.transitions[event.workspaceId] = event.action
 
-                    NotificationSDK.toast.error(`Could not ${event.action} ${card.displayName}`, { description: event.reason })
-                }
+                        break
 
-                if (event.type === 'lifecycle:changed') {
-                    card.lifecycleState = event.lifecycleState
+                    case 'transition:failed':
+                        delete s.transitions[event.workspaceId]
 
-                    delete s.transitions[event.workspaceId]
-                }
+                        NotificationSDK.toast.error(`Could not ${event.action} ${card.displayName}`, { description: event.reason })
 
-                // Held for the whole rebuild, since the stop and start it runs
-                // report nothing of their own.
-                if (event.type === 'rebuild:started')
-                    s.rebuilding[event.workspaceId] = true
+                        break
 
-                if (event.type === 'rebuilt') {
-                    delete s.rebuilding[event.workspaceId]
+                    case 'lifecycle:changed':
+                        card.lifecycleState = event.lifecycleState
 
-                    NotificationSDK.toast.success(`${card.displayName} rebuilt`)
-                }
+                        delete s.transitions[event.workspaceId]
+                        delete s.provisioning[event.workspaceId]
+                        // Readings from before the change describe machines that no longer run that way.
+                        delete s.hardwareStatistics[event.workspaceId]
 
-                if (event.type === 'rebuild:failed') {
-                    delete s.rebuilding[event.workspaceId]
+                        break
 
-                    NotificationSDK.toast.error(`Could not rebuild ${card.displayName}`, { description: event.reason })
-                }
+                    case 'hardware:statistics':
+                        s.hardwareStatistics[event.workspaceId] = event.statistics
 
-                // Into the catalogue too: a plan written for one customer is not
-                // on sale, so nothing else would ever put it there.
-                if (event.type === 'plan:changed') {
-                    card.plan = event.plan
+                        break
 
-                    s.plans[event.plan.id] = event.plan
+                    case 'provisioning:step':
+                        s.provisioning[event.workspaceId] = event.step
+
+                        break
+
+                    case 'provisioning:step:failed':
+                        delete s.provisioning[event.workspaceId]
+
+                        NotificationSDK.toast.error(`Could not provision ${card.displayName}`, { description: `Failed at the ${event.step} stage` })
+
+                        break
+
+                    case 'rebuild:started':
+                        s.rebuilding[event.workspaceId] = true
+
+                        break
+
+                    case 'rebuild:succeeded':
+                        delete s.rebuilding[event.workspaceId]
+
+                        NotificationSDK.toast.success(`${card.displayName} rebuilt`)
+
+                        break
+
+                    case 'rebuild:failed':
+                        delete s.rebuilding[event.workspaceId]
+
+                        NotificationSDK.toast.error(`Could not rebuild ${card.displayName}`, { description: event.reason })
+
+                        break
+
+                    case 'plan:changed':
+                        card.plan = event.plan
+
+                        s.plans[event.plan.id] = event.plan
+
+                        break
                 }
             })
         },

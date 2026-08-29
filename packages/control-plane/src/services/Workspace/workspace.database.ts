@@ -89,7 +89,7 @@ export class WorkspaceDatabase {
     }
 
     @AllowedDatabaseRoles('service')
-    public async setLifecycleState(trx: ServiceTrx, workspaceId: Workspace.Id, lifecycleState: Workspace.LifecycleState): Promise<Workspace> {
+    public async setLifecycleState(trx: ServiceTrx, workspaceId: Workspace.Id, lifecycleState: Workspace.Lifecycle.State): Promise<Workspace> {
         const row = await trx
             .updateTable('workspaces')
             .set({ lifecycle_state: lifecycleState })

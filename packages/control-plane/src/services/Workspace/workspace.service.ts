@@ -56,13 +56,7 @@ export class WorkspaceService {
         this.realtimeService.publish(channel, { ...event, channel, workspaceId });
     }
 
-    /**
-     * The id is minted first and every step keyed by it, so a killed run can be
-     * repeated. The row is written before anything is built — a machine nobody
-     * has a record of is the expensive orphan. A build that cannot be finished
-     * leaves the row in `provisioning_failed` for the owner to retry, keyed by
-     * the same id, so the retry reuses its database and role names.
-     */
+
     public async create(principal: Principal.User, displayName: string): Promise<Workspace> {
         const id = Workspace.createId();
 
@@ -95,9 +89,6 @@ export class WorkspaceService {
                     this.logger.error(`Provisioning ${id} failed (attempt ${attempt}/${PROVISION_ATTEMPTS}): ${error instanceof Error ? error.message : error}`);
                 }
             }
-            // Nothing is waiting to be told, so this records the outcome rather
-            // than reporting it: the row lands on `provisioning_failed` and the
-            // portal hears it as a lifecycle change.
             await this.abandonCreation(id);
         })().catch((error: unknown) => this.logger.error(
             `Creating ${id} failed: ${error instanceof Error ? error.message : error}`,
@@ -109,8 +100,8 @@ export class WorkspaceService {
     /** Writes the state and tells anyone watching. */
     private async setLifecycleState(
         id:             Workspace.Id,
-        lifecycleState: Workspace.LifecycleState,
-        { emitNoEvents }: Workspace.TransitionOptions = {},
+        lifecycleState: Workspace.Lifecycle.State,
+        { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
     ): Promise<Workspace> {
         const workspace = await PortalDB.asService('set workspace lifecycle state', (trx) =>
             this.workspaceDatabase.setLifecycleState(trx, id, lifecycleState));
@@ -226,7 +217,7 @@ export class WorkspaceService {
         if (lifecycleState === 'running')
             return;
 
-        if (!Workspace.isWakeable(lifecycleState))
+        if (!Workspace.Lifecycle.isWakeable(lifecycleState))
             throw new ConflictException(`This workspace is ${lifecycleState}`);
 
         if (await this.hardwareService.isServing(workspaceId))
@@ -272,7 +263,7 @@ export class WorkspaceService {
 
 
     @Operation()
-    public async start(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
+    public async start(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         await this.ensureCompute(workspaceId);
 
         return this.runTransition(workspaceId, 'start', options);
@@ -318,7 +309,7 @@ export class WorkspaceService {
 
     /** Stopping means nothing is left running, worker included. */
     @Operation()
-    public stop(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
+    public stop(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'stop', options);
     }
 
@@ -326,7 +317,7 @@ export class WorkspaceService {
 
 
     @Operation()
-    public suspend(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
+    public suspend(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'suspend', options);
     }
 
@@ -335,7 +326,7 @@ export class WorkspaceService {
 
     /** Everything down, then answerable again. The worker returns on demand. */
     @Operation()
-    public restart(workspaceId: Workspace.Id, options: Workspace.TransitionOptions = {}): Promise<void> {
+    public restart(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'restart', options);
     }
 
@@ -345,8 +336,8 @@ export class WorkspaceService {
     /** What every transition shares: machines move, route drops, subscribers hear. */
     private async runTransition(
         workspaceId: Workspace.Id,
-        action:      Workspace.LifecycleAction,
-        { emitNoEvents }: Workspace.TransitionOptions = {},
+        action:      Workspace.Lifecycle.Action,
+        { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
     ): Promise<void> {
         // Written nowhere: a transition is not a state a workspace can be in.
         if (!emitNoEvents)
@@ -369,7 +360,7 @@ export class WorkspaceService {
 
             // Written either way, only unannounced: a caller that dies partway
             // leaves a row saying what the machines are, not what they were.
-            await this.setLifecycleState(workspaceId, Workspace.getLifecycleStateFromAction(action), { emitNoEvents });
+            await this.setLifecycleState(workspaceId, Workspace.Lifecycle.getStateFromAction(action), { emitNoEvents });
         }
         catch (error) {
             if (!emitNoEvents) {
@@ -427,7 +418,7 @@ export class WorkspaceService {
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'running' }));
 
-        this.emit(workspaceId, Workspace.Event.create('rebuilt', {}));
+        this.emit(workspaceId, Workspace.Event.create('rebuild:succeeded', {}));
     }
 
 

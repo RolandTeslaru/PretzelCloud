@@ -5,6 +5,7 @@ import { WorkspaceId, createId as createWorkspaceId } from "./ids"
 import * as SubdomainMod from "./subdomain"
 import { Realtime } from "../Realtime"
 import { Plan } from "../Plan"
+import { Fleet } from "../Fleet"
 
 // A workspace as the portal knows it: desired state. What has been materialized
 // for it lives in Fleet, on another credential.
@@ -16,46 +17,64 @@ export namespace Workspace {
 
     export import Subdomain = SubdomainMod.Subdomain
 
-    /**
-     * What a workspace should be doing. Its machines follow; what they are
-     * observed doing is `Fleet.Machine.LifecycleState` and stays in the fleet.
-     */
-    export const LifecycleState = z.enum([
-        "creating",
-        "running",
-        // Parked to save money. Which rung — suspended, stopped, or given back
-        // entirely — is the ladder's business; traffic brings it back either way.
-        "sleeping",
-        "stopped",   // The owner turned it off. Traffic does not wake it.
-        "disabled",  // The fleet turned it off. The owner cannot undo it.
-        "provisioning_failed",
-    ])
-    export type LifecycleState = z.infer<typeof LifecycleState>
+    export namespace Lifecycle {
 
-    /** What can be asked of a workspace. The machines follow from where it lands. */
-    export const LifecycleAction = z.enum(["start", "stop", "suspend", "restart"])
-    export type  LifecycleAction = z.infer<typeof LifecycleAction>
+        /**
+         * What a workspace should be doing. Its machines follow; what they are
+         * observed doing is `Fleet.Machine.State` and stays in the fleet.
+         */
+        export const State = z.enum([
+            "creating",
+            "running",
+            // Parked to save money. Which rung — suspended, stopped, or given back
+            // entirely — is the ladder's business; traffic brings it back either way.
+            "sleeping",
+            "stopped",   // The owner turned it off. Traffic does not wake it.
+            "disabled",  // The fleet turned it off. The owner cannot undo it.
+            "provisioning_failed",
+        ])
+        export type  State = z.infer<typeof State>
 
-    const LANDS_ON: Record<LifecycleAction, LifecycleState> = {
-        start:   "running",
-        stop:    "stopped",
-        suspend: "sleeping",
-        restart: "running",
+        /** What can be asked of a workspace. The machines follow from where it lands. */
+        export const Action = z.enum(["start", "stop", "suspend", "restart"])
+        export type  Action = z.infer<typeof Action>
+
+        const LANDS_ON: Record<Action, State> = {
+            start:   "running",
+            stop:    "stopped",
+            suspend: "sleeping",
+            restart: "running",
+        }
+
+        export const getStateFromAction = (action: Action): State =>
+            LANDS_ON[action]
+
+        /** How a transition is run when something larger is doing the announcing. */
+        export type TransitionOptions = { emitNoEvents?: boolean }
+
+        /** Whether traffic arriving may bring it up. */
+        export const isWakeable = (state: State): boolean =>
+            state === "sleeping"
+
+        /** Whether a request arriving may be served, after a wake if need be. */
+        export const acceptsTraffic = (state: State): boolean =>
+            state === "running" || state === "sleeping"
     }
 
-    export const getLifecycleStateFromAction = (action: LifecycleAction): LifecycleState =>
-        LANDS_ON[action]
+    export namespace Provisioning {
 
-    /** How a transition is run when something larger is doing the announcing. */
-    export type TransitionOptions = { emitNoEvents?: boolean }
-
-    /** Whether traffic arriving may bring it up. */
-    export const isWakeable = (state: LifecycleState): boolean =>
-        state === "sleeping"
-
-    /** Whether a request arriving may be served, after a wake if need be. */
-    export const acceptsTraffic = (state: LifecycleState): boolean =>
-        state === "running" || state === "sleeping"
+        export const Step = z.enum([
+            "hardware",
+            "secrets",
+            "machines",
+            "health",
+            "owner",
+            "hostnames",
+            "convert",
+            "rebuild",
+        ])
+        export type  Step = z.infer<typeof Step>
+    }
 
     export const DisplayName = z.string().trim()
         .min(1, 'Workspace name is required')
@@ -66,7 +85,7 @@ export namespace Workspace {
         // Null until a paid plan sets one; the canonical host is derived.
         subdomain:          Subdomain.Schema.nullable(),
         displayName:        z.string(),
-        lifecycleState:     LifecycleState,
+        lifecycleState:     Lifecycle.State,
         /** Why the fleet froze it, for the portal to render. Null unless disabled. */
         disabledReason:     z.string().nullable(),
         plan:               Plan.Schema,
@@ -82,6 +101,13 @@ export namespace Workspace {
         createdAt:          z.coerce.date(),
         updatedAt:          z.coerce.date(),
     })
+
+
+
+
+
+
+
 
     /**
      * What a workspace has used, as the fleet recorded it. Counted here rather
@@ -204,8 +230,19 @@ export namespace Workspace {
     }
     export type Usage = z.infer<typeof Usage.Schema>
 
-    // One channel per workspace: workspace:<id>. Outbound only — commands travel
-    // over the API below.
+
+
+
+
+    export namespace HardwareStatistics {
+        export const Schema = z.object({
+            machines: z.record(Fleet.Machine.Id, Fleet.Machine.Statistics.Schema),
+            capturedAt: z.date()
+        })
+    }
+    export type HardwareStatistics = z.infer<typeof HardwareStatistics.Schema>
+
+
     export namespace Event {
 
         export const Channel = Realtime.Channel.brand("Workspace.Event.Channel")
@@ -230,69 +267,92 @@ export namespace Workspace {
             channel:     Channel,
             workspaceId: Id,
         })
-        export type  Base = z.infer<typeof Base>
 
-        /** Where the workspace settled. Clears whatever transition was in flight. */
         export const LifecycleChanged = Base.extend({
             type:           z.literal('lifecycle:changed'),
-            lifecycleState: LifecycleState,
+            lifecycleState: Lifecycle.State,
         })
-        export type  LifecycleChanged = z.infer<typeof LifecycleChanged>
 
-        /** What the workspace is now paid for. Its machines follow separately. */
         export const PlanChanged = Base.extend({
             type: z.literal('plan:changed'),
             plan: Plan.Schema,
         })
-        export type  PlanChanged = z.infer<typeof PlanChanged>
 
         export const Destroyed = Base.extend({ type: z.literal('destroyed') })
+
+        export namespace Rebuild {
+
+            export const Started = Base.extend({ type: z.literal('rebuild:started') })
+
+            export const Succeeded = Base.extend({ type: z.literal('rebuild:succeeded') })
+
+            export const Failed = Base.extend({
+                type:   z.literal('rebuild:failed'),
+                reason: z.string(),
+            })
+
+            export type  Started = z.infer<typeof Started>
+            export type  Succeeded = z.infer<typeof Succeeded>
+            export type  Failed = z.infer<typeof Failed>
+        }
+
+        export namespace Transition {
+
+            export const Started = Base.extend({
+                type:   z.literal('transition:started'),
+                action: Lifecycle.Action,
+            })
+
+            export const Failed = Base.extend({
+                type:   z.literal('transition:failed'),
+                action: Lifecycle.Action,
+                reason: z.string(),
+            })
+
+            export type  Started = z.infer<typeof Started>
+            export type  Failed = z.infer<typeof Failed>
+        }
+
+        export namespace Provisioning {
+
+            export const Step = Base.extend({
+                type: z.literal('provisioning:step'),
+                step: Workspace.Provisioning.Step
+            })
+            
+            export const StepFailed = Base.extend({
+                type: z.literal('provisioning:step:failed'),
+                step: Workspace.Provisioning.Step    
+            })
+        }
+
+
+
+        export const HardwareStatistics = Base.extend({
+            type:       z.literal('hardware:statistics'),
+            statistics: Workspace.HardwareStatistics.Schema,
+        })
+
+        export type  Base = z.infer<typeof Base>
+        export type  LifecycleChanged = z.infer<typeof LifecycleChanged>
+        export type  PlanChanged = z.infer<typeof PlanChanged>
         export type  Destroyed = z.infer<typeof Destroyed>
+        export type  HardwareStatistics = z.infer<typeof HardwareStatistics>
 
-        /**
-         * Its machines are being replaced. Not a transition: they are destroyed
-         * and made again, and the stop and start inside it stay quiet so this
-         * covers the whole of it.
-         */
-        export const RebuildStarted = Base.extend({ type: z.literal('rebuild:started') })
-        export type  RebuildStarted = z.infer<typeof RebuildStarted>
-
-        /** Its machines were replaced. Nothing it holds changed — only what runs it. */
-        export const Rebuilt = Base.extend({ type: z.literal('rebuilt') })
-        export type  Rebuilt = z.infer<typeof Rebuilt>
-
-        /** They were not. Whatever it is left on, `lifecycle:changed` says. */
-        export const RebuildFailed = Base.extend({
-            type:   z.literal('rebuild:failed'),
-            reason: z.string(),
-        })
-        export type  RebuildFailed = z.infer<typeof RebuildFailed>
-
-        /**
-         * A transition in flight. Never stored — the row keeps saying what it
-         * last settled on until `lifecycle:changed` says what this turned out
-         * to be.
-         */
-        export const TransitionStarted = Base.extend({
-            type:   z.literal('transition:started'),
-            action: LifecycleAction,
-        })
-        export type  TransitionStarted = z.infer<typeof TransitionStarted>
-
-        /**
-         * A transition that did not get there. The workspace is wherever it was
-         * before it was asked, which `lifecycle:changed` says separately — this
-         * carries the only thing that is otherwise lost when the caller is not
-         * waiting for an answer.
-         */
-        export const TransitionFailed = Base.extend({
-            type:   z.literal('transition:failed'),
-            action: LifecycleAction,
-            reason: z.string(),
-        })
-        export type  TransitionFailed = z.infer<typeof TransitionFailed>
-
-        export const Schema = z.discriminatedUnion('type', [LifecycleChanged, PlanChanged, Destroyed, RebuildStarted, Rebuilt, RebuildFailed, TransitionStarted, TransitionFailed])
+        
+        export const Schema = z.discriminatedUnion('type', [
+            LifecycleChanged,
+            PlanChanged,
+            Destroyed,
+            HardwareStatistics,
+            Provisioning.Step,
+            Provisioning.StepFailed,
+            Rebuild.Started,
+            Rebuild.Succeeded,
+            Rebuild.Failed,
+            Transition.Started,
+            Transition.Failed,
+        ])
 
         export type Any = z.infer<typeof Schema>
 

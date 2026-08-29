@@ -40,6 +40,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         });
     }
 
+    /** The workspaces a socket on this instance is watching right now. */
+    public getSubscribedWorkspaceIds(): Workspace.Id[] {
+        const workspaceIds: Workspace.Id[] = [];
+
+        for (const channel of this.wsSubscriptions.keys()) {
+            const workspaceId = Workspace.Event.parseChannel(channel);
+
+            if (workspaceId)
+                workspaceIds.push(workspaceId);
+        }
+
+        return workspaceIds;
+    }
+
     async handleConnection(ws: WebSocket, req: IncomingMessage) {
 
         // Buffered rather than dropped: a subscribe can arrive while the token
