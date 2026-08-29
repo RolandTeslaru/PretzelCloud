@@ -8,7 +8,7 @@ import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../status'
 import { MachineStatistic } from './MachineStatistic'
-import { AlertTriangle } from '@pretzel-graph/standard-ui/icons/system'
+import { DatabaseStatistic } from './DatabaseStatistic'
 import { ShinyText } from '@pretzel-graph/standard-ui/components/ShinyText'
 
 
@@ -25,14 +25,19 @@ const copyWorkspaceId = async (id: Workspace.Id) => {
 
 
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
+
     const [transition, provision, rebuilding, hardwareStatistics] = WorkspaceSDK.useStore(s => [
-        s.transitions[workspace.id], s.provisioning[workspace.id], s.rebuilding[workspace.id], s.hardwareStatistics[workspace.id]])
+        s.transitions[workspace.id], 
+        s.provisioning[workspace.id], 
+        s.rebuilding[workspace.id], 
+        s.hardwareStatistics[workspace.id]
+    ])
 
     const reachable = isReachable(workspace, transition, rebuilding)
 
 
     return (
-        <Frame.Root className='shadow-md shadow-black/10'>
+        <Frame.Root className=' w-full overflow-hidden'>
             <Frame.Panel
                 className={cn('h-[100px] flex flex-col transition-shadow p-0 pt-3 pb-2', reachable ? 'cursor-pointer' : 'cursor-default')}
                 aria-disabled={!reachable}
@@ -95,25 +100,28 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                         }
                     </Card.Content>
             </Frame.Panel>
-            <Frame.Footer className='flex flex-row gap-2 px-1! py-1!'>
-                {provision ? (
-                    <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium"/>
-                ) : (
-                    hardwareStatistics ? (
-                        <>
-                            {Object.entries(hardwareStatistics.machines).map(([machineId, machineStatistics]) => (
-                                <MachineStatistic key={machineId} machineStatistics={machineStatistics}/>
-                            ))}
-                        </>
-                    ) : (
-                        <></>
-                    )
-                )}
-                {provision && (
-                    <>
+            <Frame.Footer className='flex flex-row gap-1 px-1! py-1! overflow-x-auto w-full h-[35px] [scrollbar-width:none]'>
+                    {provision ? (
                         <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium"/>
-                    </>
-                )}
+                    ) : (
+                        hardwareStatistics ? (
+                            <>
+                                {Object.entries(hardwareStatistics.machines).map(([machineId, machineStatistics]) => (
+                                    <MachineStatistic key={machineId} machineStatistics={machineStatistics}/>
+                                ))}
+                                {hardwareStatistics.databaseSizeBytes !== null && (
+                                    <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes}/>
+                                )}
+                            </>
+                        ) : (
+                            <></>
+                        )
+                    )}
+                    {provision && (
+                        <>
+                            <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium"/>
+                        </>
+                    )}
             </Frame.Footer>
         </Frame.Root>
     )

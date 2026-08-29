@@ -236,8 +236,10 @@ export namespace Workspace {
 
     export namespace HardwareStatistics {
         export const Schema = z.object({
-            machines: z.record(Fleet.Machine.Id, Fleet.Machine.Statistics.Schema),
-            capturedAt: z.date()
+            machines:          z.record(Fleet.Machine.Id, Fleet.Machine.Statistics.Schema),
+            /** The workspace database's size on its cluster. Null when it could not be asked. */
+            databaseSizeBytes: z.number().nullable(),
+            capturedAt:        z.coerce.date(),
         })
     }
     export type HardwareStatistics = z.infer<typeof HardwareStatistics.Schema>
@@ -371,12 +373,18 @@ export namespace Workspace {
     export namespace API {
 
         export namespace List {
-            export const Response = z.object({ workspaces: z.array(Schema) })
+            export const Response = z.object({
+                workspaces: z.array(Schema),
+                /** Only when asked for, and only workspaces a fresh reading exists for. */
+                hardwareStatistics: z.record(Id, HardwareStatistics.Schema).optional(),
+            })
             export type  Response = z.infer<typeof Response>
         }
 
-        export async function list(api: AxiosInstance): Promise<List.Response> {
-            const { data } = await api.get<List.Response>('/api/workspaces')
+        export async function list(api: AxiosInstance, options?: { getHardwareStatistics?: boolean }): Promise<List.Response> {
+            const { data } = await api.get<List.Response>('/api/workspaces', {
+                params: options?.getHardwareStatistics ? { getHardwareStatistics: 'true' } : undefined,
+            })
             return List.Response.parse(data)
         }
 

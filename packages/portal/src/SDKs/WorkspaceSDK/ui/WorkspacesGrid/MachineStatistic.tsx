@@ -17,14 +17,14 @@ export const MachineStatistic = ({ machineStatistics }: { machineStatistics: Fle
 
     const { cpuPercent, memUsedBytes, memTotalBytes } = machineStatistics
 
-    const isRunning = cpuPercent !== null && memUsedBytes !== null && memTotalBytes !== null
+    const isComputeRunning = cpuPercent !== null && memUsedBytes !== null && memTotalBytes !== null
 
     return (
         <Tooltip.Root>
-            <Tooltip.Trigger>
+            <Tooltip.Trigger className='flex flex-row gap-1 shrink-0'>
                 <div className='flex flex-row gap-2 bg-card/50 border border-border/50 px-1.5 py-1 rounded-sm'>
-                    <RoleIcon className={`size-4 ${!isRunning && "text-destructive"}`}/>
-                    {isRunning && (
+                    <RoleIcon className={`size-4 ${!isComputeRunning && "text-destructive"}`}/>
+                    {isComputeRunning && (
                         <>
                             <p className='text-xs font-mono'>
                                 CPU:
@@ -39,7 +39,7 @@ export const MachineStatistic = ({ machineStatistics }: { machineStatistics: Fle
                 </div>
             </Tooltip.Trigger>
             <Tooltip.Content side="bottom" className='w-[200px]'>
-                {isRunning ? (
+                {isComputeRunning ? (
                     <div className='flex flex-col gap-2 text-xs font-mono'>
                         <div className='flex flex-row w-full justify-between'>
                             <p>

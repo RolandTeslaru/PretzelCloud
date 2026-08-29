@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Client } from 'pg';
+import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { Pool, type PoolClient } from 'pg';
 import { Fleet } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
 import { FleetDB } from '@/db/fleet';
@@ -13,11 +13,21 @@ const Cluster = Fleet.Cluster;
  * opens exactly one database.
  */
 @Injectable()
-export class ClusterService {
+export class ClusterService implements OnModuleDestroy {
 
     private readonly logger = new Logger(ClusterService.name);
 
+    /** One small pool per cluster, so repeated admin work reuses a connection instead of dialing. */
+    private readonly poolByClusterId = new Map<Fleet.Cluster.Id, Pool>();
+
     constructor(private readonly clusterDatabase: ClusterDatabase) {}
+
+
+
+
+    public async onModuleDestroy(): Promise<void> {
+        await Promise.all([...this.poolByClusterId.values()].map((pool) => pool.end()));
+    }
 
 
 
@@ -54,18 +64,26 @@ export class ClusterService {
         return requireEnv(`CLUSTER_ADMIN_URL_${cluster.name.toUpperCase()}`);
     }
 
-    private async admin<T>(cluster: Fleet.Cluster, fn: (client: Client) => Promise<T>): Promise<T> {
-        const client = new Client({
-            connectionString: this.getAdminUrlForCluster(cluster),
-        });
+    private async admin<T>(cluster: Fleet.Cluster, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+        let pool = this.poolByClusterId.get(cluster.id);
 
-        await client.connect();
+        if (!pool) {
+            pool = new Pool({
+                connectionString: this.getAdminUrlForCluster(cluster),
+                max: 2,
+                idleTimeoutMillis: 30_000,
+            });
+
+            this.poolByClusterId.set(cluster.id, pool);
+        }
+
+        const client = await pool.connect();
 
         try {
             return await fn(client);
         }
         finally {
-            await client.end();
+            client.release();
         }
     }
 
@@ -111,6 +129,21 @@ export class ClusterService {
             ssl:  cluster.ssl,
         });
     }
+
+    /** The database's size on disk, or null when it does not exist there. */
+    async getDatabaseSizeBytes(cluster: Fleet.Cluster, databaseName: Fleet.Cluster.Database.Name): Promise<number | null> {
+        return this.admin(cluster, async (client) => {
+            const result = await client.query<{ size: string }>(
+                'select pg_database_size(datname) as size from pg_database where datname = $1',
+                [databaseName],
+            );
+
+            const size = result.rows[0]?.size;
+
+            return size === undefined ? null : Number(size);
+        });
+    }
+
 
     /** Idempotent. Open sessions are closed first — CONNECT is checked at connect time only. */
     async dropDatabase(

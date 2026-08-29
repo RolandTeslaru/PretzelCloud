@@ -44,18 +44,19 @@ function AppLayout() {
     const title = [...matches].reverse().find((m) => m.staticData?.title)?.staticData?.title
 
     return (
-        <div className="w-fit relative z-10 flex flex-row bg-background/80 backdrop-blur-lg max-h-screen rounded-tr-2xl min-h-screen mr-auto">
+        <div className="w-fit relative z-10 flex flex-row bg-background/80 max-w-7xl w-full backdrop-blur-lg max-h-screen rounded-tr-2xl min-h-screen mr-auto">
 
             <Sidebar />
-
-            <div className="flex flex-col max-h-screen overflow-hidden">
-                <nav className="min-h-[60px] px-4 flex items-center">
+            
+            <div className='relative w-full'>
+                <nav className="absolute z-20 top-0 min-h-[60px] px-4 flex items-center">
                     <h1 className="text-xl font-semibold">{title}</h1>
                 </nav>
-
-                <main className="flex-1 min-h-0 overflow-y-auto pl-3 w-6xl pr-10 pt-6 pb-10">
-                    <Outlet />
-                </main>
+                <div className="flex flex-col relative w-full max-h-screen overflow-hidden">
+                    <main className="flex-1 pt-[60px] min-h-0 w-full overflow-y-auto pl-3 pr-10 pt-6 pb-10 [mask-image:linear-gradient(to_bottom,transparent_8px,black_72px)]">
+                        <Outlet />
+                    </main>
+                </div>
             </div>
         </div>
     )

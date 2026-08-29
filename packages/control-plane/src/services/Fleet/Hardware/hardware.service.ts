@@ -586,7 +586,13 @@ export class HardwareService {
         if (Object.keys(statisticsByMachineId).length === 0)
             return null;
 
-        return { machines: statisticsByMachineId, capturedAt: new Date() };
+        const cluster = await this.clusterService.getClusterById(hardware.cluster_id);
+
+        const databaseSizeBytes = await this.clusterService
+            .getDatabaseSizeBytes(cluster, Provisioning.getDatabaseName(workspaceId))
+            .catch(() => null);
+
+        return { machines: statisticsByMachineId, databaseSizeBytes, capturedAt: new Date() };
     }
 
 
