@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
-import { PortalDB } from '@/db/portal';
-import { BillingDatabase } from './billing.database';
+import { BillingRepository } from './billing.repository';
 import { StripeClient } from './stripe.client';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 
@@ -21,7 +20,7 @@ export class BillingService {
 
     constructor(
         private readonly stripeClient: StripeClient,
-        private readonly billingDatabase:  BillingDatabase,
+        private readonly billingRepository: BillingRepository,
         private readonly planRegistry:     PlanRegistry,
     ) {}
 
@@ -53,7 +52,7 @@ export class BillingService {
 
     /** What it is actually paying on. A recorded id that has ended is not one. */
     private async getLiveSubscriptionForWorkspace(workspaceId: Workspace.Id): Promise<Stripe.Subscription | null> {
-        const subscriptionId = await PortalDB.asService('read subscription id', (trx) => this.billingDatabase.getSubscriptionId(trx, workspaceId));
+        const subscriptionId = await this.billingRepository.getSubscriptionId(Principal.SELF, workspaceId);
 
         if (!subscriptionId)
             return null;
@@ -139,7 +138,7 @@ export class BillingService {
 
     /** Created the first time they pay, then remembered. */
     private async getStripeCustomerForUser(userId: User.Id): Promise<string> {
-        const user = await PortalDB.asService('read user for billing', (trx) => this.billingDatabase.getCustomerFields(trx, userId));
+        const user = await this.billingRepository.getCustomerFields(Principal.SELF, userId);
 
         if (user.stripe_customer_id)
             return user.stripe_customer_id;
@@ -150,7 +149,7 @@ export class BillingService {
             metadata: { userId },
         });
 
-        await PortalDB.asService('save stripe customer', (trx) => this.billingDatabase.saveCustomerId(trx, userId, customer.id));
+        await this.billingRepository.saveCustomerId(Principal.SELF, userId, customer.id);
 
         return customer.id;
     }

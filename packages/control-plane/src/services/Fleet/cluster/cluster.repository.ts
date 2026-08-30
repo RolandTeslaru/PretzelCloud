@@ -1,17 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Fleet } from '@pretzel-cloud/shared/domain';
 import { FleetDB } from '@/db/fleet';
-import { AllowedDatabaseRoles, DatabaseClass } from '@/decorators/database';
+import { Repository, Transactional } from '@/db/repository';
+import { Principal } from '@/auth/identity/principal';
 
-type Trx = FleetDB.Transaction;
-
+/** Row operations on `clusters`. */
 @Injectable()
-@DatabaseClass
-export class ClusterDatabase {
+export class ClusterRepository extends Repository(FleetDB) {
 
-    @AllowedDatabaseRoles('service')
-    public async getById(trx: Trx, clusterId: Fleet.Cluster.Id): Promise<Fleet.Cluster> {
-        const row = await trx
+    @Transactional('service')
+    public async getById(principal: Principal.Service, clusterId: Fleet.Cluster.Id): Promise<Fleet.Cluster> {
+        const row = await this.trx
             .selectFrom('clusters')
             .selectAll()
             .where('id', '=', clusterId)
@@ -21,9 +20,9 @@ export class ClusterDatabase {
     }
 
     /** The clusters new workspaces may be placed on, oldest first. */
-    @AllowedDatabaseRoles('service')
-    public async getAccepting(trx: Trx): Promise<Fleet.Cluster[]> {
-        const rows = await trx
+    @Transactional('service')
+    public async getAccepting(principal: Principal.Service): Promise<Fleet.Cluster[]> {
+        const rows = await this.trx
             .selectFrom('clusters')
             .selectAll()
             .where('accepting', '=', true)

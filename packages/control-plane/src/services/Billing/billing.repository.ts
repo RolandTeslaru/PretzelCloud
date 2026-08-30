@@ -2,20 +2,18 @@ import { Injectable } from '@nestjs/common';
 import Stripe from 'stripe';
 import { User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
-import { AllowedDatabaseRoles, DatabaseClass } from '@/decorators/database';
-
-type Trx = PortalDB.ServiceTransaction;
+import { Repository, Transactional } from '@/db/repository';
+import { Principal } from '@/auth/identity/principal';
 
 /** Stripe stays the record; these are mirrors. */
 @Injectable()
-@DatabaseClass
-export class BillingDatabase {
+export class BillingRepository extends Repository(PortalDB) {
 
-    @AllowedDatabaseRoles('service')
-    public async saveSubscription(trx: Trx, workspaceId: Workspace.Id, subscription: Stripe.Subscription): Promise<void> {
+    @Transactional('service')
+    public async saveSubscription(principal: Principal.Service, workspaceId: Workspace.Id, subscription: Stripe.Subscription): Promise<void> {
         const item = subscription.items.data[0];
 
-        await trx
+        await this.trx
             .updateTable('workspaces')
             .set({
                 stripe_subscription_id: subscription.id,
@@ -28,18 +26,18 @@ export class BillingDatabase {
             .execute();
     }
 
-    @AllowedDatabaseRoles('service')
-    public getOwnerAndPlanIdForWorkspace(trx: Trx, workspaceId: Workspace.Id) {
-        return trx
+    @Transactional('service')
+    public getOwnerAndPlanIdForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id) {
+        return this.trx
             .selectFrom('workspaces')
             .select(['owner_id', 'plan_id'])
             .where('id', '=', workspaceId)
             .executeTakeFirst();
     }
 
-    @AllowedDatabaseRoles('service')
-    public async getSubscriptionId(trx: Trx, workspaceId: Workspace.Id): Promise<string | null> {
-        const row = await trx
+    @Transactional('service')
+    public async getSubscriptionId(principal: Principal.Service, workspaceId: Workspace.Id): Promise<string | null> {
+        const row = await this.trx
             .selectFrom('workspaces')
             .select('stripe_subscription_id')
             .where('id', '=', workspaceId)
@@ -48,18 +46,18 @@ export class BillingDatabase {
         return row?.stripe_subscription_id ?? null;
     }
 
-    @AllowedDatabaseRoles('service')
-    public getCustomerFields(trx: Trx, userId: User.Id) {
-        return trx
+    @Transactional('service')
+    public getCustomerFields(principal: Principal.Service, userId: User.Id) {
+        return this.trx
             .selectFrom('users')
             .select(['email', 'display_name', 'stripe_customer_id'])
             .where('id', '=', userId)
             .executeTakeFirstOrThrow();
     }
 
-    @AllowedDatabaseRoles('service')
-    public async saveCustomerId(trx: Trx, userId: User.Id, customerId: string): Promise<void> {
-        await trx
+    @Transactional('service')
+    public async saveCustomerId(principal: Principal.Service, userId: User.Id, customerId: string): Promise<void> {
+        await this.trx
             .updateTable('users')
             .set({ stripe_customer_id: customerId })
             .where('id', '=', userId)
@@ -67,9 +65,9 @@ export class BillingDatabase {
     }
 
     // Insert-first: two deliveries at once would both pass a check.
-    @AllowedDatabaseRoles('service')
-    public async claimEvent(trx: Trx, eventId: string): Promise<boolean> {
-        const claimed = await trx
+    @Transactional('service')
+    public async claimEvent(principal: Principal.Service, eventId: string): Promise<boolean> {
+        const claimed = await this.trx
             .insertInto('stripe_events')
             .values({ id: eventId })
             .onConflict((oc) => oc.column('id').doNothing())
@@ -79,9 +77,9 @@ export class BillingDatabase {
         return claimed !== undefined;
     }
 
-    @AllowedDatabaseRoles('service')
-    public async releaseEvent(trx: Trx, eventId: string): Promise<void> {
-        await trx
+    @Transactional('service')
+    public async releaseEvent(principal: Principal.Service, eventId: string): Promise<void> {
+        await this.trx
             .deleteFrom('stripe_events')
             .where('id', '=', eventId)
             .execute();

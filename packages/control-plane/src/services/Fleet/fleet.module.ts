@@ -3,17 +3,17 @@ import { SiloTokenIssuerModule } from '@/services/SiloSession/token-issuer.modul
 import { RealtimeModule } from '@/services/Realtime/realtime.module';
 import { LockModule } from '@/services/Locking/lock.module';
 import { HardwareDriverRegistry } from './drivers/driver.registry';
-import { ClusterDatabase } from './cluster/cluster.database';
+import { ClusterRepository } from './cluster/cluster.repository';
 import { ClusterService } from './cluster/cluster.service';
-import { SiloSecretsDatabase } from './SiloSecrets/silo-secrets.database';
+import { SiloSecretsRepository } from './SiloSecrets/silo-secrets.repository';
 import { SiloSecretsService } from './SiloSecrets/silo-secrets.service';
-import { MachineDatabase } from './Machine/machine.database';
+import { MachineRepository } from './Machine/machine.repository';
 import { MachineService } from './Machine/machine.service';
-import { HardwareDatabase } from './Hardware/hardware.database';
+import { HardwareRepository } from './Hardware/hardware.repository';
 import { HardwareService } from './Hardware/hardware.service';
 import { HardwareStatisticsSampler } from './Hardware/hardware-statistics.sampler';
 import { HardwareStatisticsCache } from './Hardware/hardware-statistics.cache';
-import { HostnameDatabase } from './Hostname/hostname.database';
+import { HostnameRepository } from './Hostname/hostname.repository';
 import { HostnameService } from './Hostname/hostname.service';
 import { SiloDatabase } from './Silo/silo.database';
 import { SiloDatabaseService } from './Silo/silo-database.service';
@@ -23,11 +23,11 @@ import { ProvisioningService } from './provisioning/provisioning.service';
     imports: [SiloTokenIssuerModule, RealtimeModule, LockModule],
     providers: [
         HardwareDriverRegistry,
-        ClusterDatabase, ClusterService,
-        SiloSecretsDatabase, SiloSecretsService,
-        MachineDatabase, MachineService,
-        HardwareDatabase, HardwareService, HardwareStatisticsSampler, HardwareStatisticsCache,
-        HostnameDatabase, HostnameService,
+        ClusterRepository, ClusterService,
+        SiloSecretsRepository, SiloSecretsService,
+        MachineRepository, MachineService,
+        HardwareRepository, HardwareService, HardwareStatisticsSampler, HardwareStatisticsCache,
+        HostnameRepository, HostnameService,
         SiloDatabase, SiloDatabaseService,
         ProvisioningService,
     ],

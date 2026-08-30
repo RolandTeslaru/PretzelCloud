@@ -4,7 +4,7 @@ import { Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { FleetDB } from '@/db/fleet';
 import { Principal } from '@/auth/identity/principal';
-import { WorkspaceDatabase } from '@/services/Workspace/workspace.database';
+import { WorkspaceRepository } from '@/services/Workspace/workspace.repository';
 import { GlobalCaching, GlobalCachingService } from '@/services/Caching/caching.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 
@@ -42,7 +42,7 @@ const matches = (given: string, expected: string): boolean => {
 export class PermissionService {
 
     constructor(
-        private readonly workspaceDatabase: WorkspaceDatabase,
+        private readonly workspaceRepository: WorkspaceRepository,
         private readonly planRegistry:      PlanRegistry,
         private readonly globalCachingService: GlobalCachingService,
     ) {
@@ -87,7 +87,7 @@ export class PermissionService {
 
     /** The workspace, or null when it does not exist or is not theirs to see. */
     public async getWorkspaceForMember(principal: Principal.User, workspaceId: Workspace.Id): Promise<Workspace | null> {
-        return PortalDB.asUser(principal, (trx) => this.workspaceDatabase.getForUser(trx, workspaceId));
+        return this.workspaceRepository.getForUser(principal, workspaceId);
     }
 
     public async isMember(principal: Principal.User, workspaceId: Workspace.Id): Promise<boolean> {

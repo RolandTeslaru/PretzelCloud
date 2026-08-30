@@ -2,8 +2,8 @@ import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { Pool, type PoolClient } from 'pg';
 import { Fleet } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
-import { FleetDB } from '@/db/fleet';
-import { ClusterDatabase } from './cluster.database';
+import { Principal } from '@/auth/identity/principal';
+import { ClusterRepository } from './cluster.repository';
 
 const Cluster = Fleet.Cluster;
 
@@ -20,7 +20,7 @@ export class ClusterService implements OnModuleDestroy {
     /** One small pool per cluster, so repeated admin work reuses a connection instead of dialing. */
     private readonly poolByClusterId = new Map<Fleet.Cluster.Id, Pool>();
 
-    constructor(private readonly clusterDatabase: ClusterDatabase) {}
+    constructor(private readonly clusterRepository: ClusterRepository) {}
 
 
 
@@ -34,8 +34,7 @@ export class ClusterService implements OnModuleDestroy {
 
     /** Where a new workspace's database goes. Oldest accepting cluster, so one fills before the next opens. */
     public async getClusterForNewWorkspace(): Promise<Fleet.Cluster> {
-        const accepting = await FleetDB.asService('read accepting clusters', (trx) =>
-            this.clusterDatabase.getAccepting(trx));
+        const accepting = await this.clusterRepository.getAccepting(Principal.SELF);
 
         const cluster = accepting[0];
 
@@ -49,7 +48,7 @@ export class ClusterService implements OnModuleDestroy {
 
 
     public getClusterById(clusterId: Fleet.Cluster.Id): Promise<Fleet.Cluster> {
-        return FleetDB.asService('read cluster', (trx) => this.clusterDatabase.getById(trx, clusterId));
+        return this.clusterRepository.getById(Principal.SELF, clusterId);
     }
 
 

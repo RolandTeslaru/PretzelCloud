@@ -2,17 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { FleetDB } from '@/db/fleet';
-import { AllowedDatabaseRoles, DatabaseClass } from '@/decorators/database';
+import { Repository, Transactional } from '@/db/repository';
+import { Principal } from '@/auth/identity/principal';
 
-type Trx = FleetDB.Transaction;
-
-@DatabaseClass
-class ExecutionMethods {
+class ExecutionUsageRepository extends Repository(FleetDB) {
 
     // The insert is added on: a data-modifying CTE shares the statement's
     // snapshot, so the count alone would not see the row just written.
-    @AllowedDatabaseRoles('service')
-    public async insertAndGetCount(trx: Trx, values: {
+    @Transactional('service')
+    public async insertAndGetCount(principal: Principal.Service, values: {
         workspaceId: Workspace.Id;
         executionId: string | null;
         igniter:     string | null;
@@ -33,14 +31,14 @@ class ExecutionMethods {
                   and created_at  >= ${values.period.start}
                   and (${values.period.end}::timestamptz is null or created_at < ${values.period.end})
             ) + (select count(*) from recorded) as count
-        `.execute(trx);
+        `.execute(this.trx);
 
         return Number(result.rows[0]?.count ?? 0);
     }
 
-    @AllowedDatabaseRoles('service')
-    public async getCountIn(trx: Trx, workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<number> {
-        let query = trx
+    @Transactional('service')
+    public async getCountIn(principal: Principal.Service, workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<number> {
+        let query = this.trx
             .selectFrom('workspace_usage')
             .select(({ fn }) => fn.countAll<string>().as('count'))
             .where('workspace_id', '=', workspaceId)
@@ -54,12 +52,12 @@ class ExecutionMethods {
         return Number(row.count);
     }
 
-    @AllowedDatabaseRoles('service')
-    public async getCountsIn(trx: Trx, workspaceIds: Workspace.Id[], period: Workspace.Usage.Period) {
+    @Transactional('service')
+    public async getCountsIn(principal: Principal.Service, workspaceIds: Workspace.Id[], period: Workspace.Usage.Period) {
         if (workspaceIds.length === 0)
             return [];
 
-        let query = trx
+        let query = this.trx
             .selectFrom('workspace_usage')
             .select(({ fn }) => ['workspace_id', fn.countAll<string>().as('count')])
             .where('workspace_id', 'in', workspaceIds)
@@ -71,9 +69,9 @@ class ExecutionMethods {
         return query.groupBy('workspace_id').execute();
     }
 
-    @AllowedDatabaseRoles('service')
-    public async getIn(trx: Trx, workspaceId: Workspace.Id, period: Workspace.Usage.Period, limit: number): Promise<Workspace.Usage[]> {
-        let query = trx
+    @Transactional('service')
+    public async getIn(principal: Principal.Service, workspaceId: Workspace.Id, period: Workspace.Usage.Period, limit: number): Promise<Workspace.Usage[]> {
+        let query = this.trx
             .selectFrom('workspace_usage')
             .selectAll()
             .where('workspace_id', '=', workspaceId)
@@ -90,8 +88,8 @@ class ExecutionMethods {
         return rows.map((row) => FleetDB.Usage.toDomain(FleetDB.Usage.Row.parse(row)));
     }
 
-    @AllowedDatabaseRoles('service')
-    public async getDailyCounts(trx: Trx, workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<Workspace.Usage.Point[]> {
+    @Transactional('service')
+    public async getDailyCounts(principal: Principal.Service, workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<Workspace.Usage.Point[]> {
         const result = await sql<{ day: Date; count: string }>`
             select date_trunc('day', created_at) as day, count(*) as count
             from workspace_usage
@@ -100,17 +98,17 @@ class ExecutionMethods {
               and (${period.end}::timestamptz is null or created_at < ${period.end})
             group by 1
             order by 1
-        `.execute(trx);
+        `.execute(this.trx);
 
         return result.rows.map((row) => ({ day: new Date(row.day), count: Number(row.count) }));
     }
 
-    @AllowedDatabaseRoles('service')
-    public async getRecent(trx: Trx, workspaceIds: Workspace.Id[], limit: number) {
+    @Transactional('service')
+    public async getRecent(principal: Principal.Service, workspaceIds: Workspace.Id[], limit: number) {
         if (workspaceIds.length === 0)
             return [];
 
-        const rows = await trx
+        const rows = await this.trx
             .selectFrom('workspace_usage')
             .selectAll()
             .where('workspace_id', 'in', workspaceIds)
@@ -123,6 +121,6 @@ class ExecutionMethods {
 }
 
 @Injectable()
-export class UsageDatabase {
-    public readonly executions = new ExecutionMethods();
+export class UsageRepository {
+    public readonly executions = new ExecutionUsageRepository();
 }

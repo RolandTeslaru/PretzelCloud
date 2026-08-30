@@ -31,6 +31,9 @@ export namespace Principal {
     }
     export type Service = z.infer<typeof Service.Schema>
 
+    /** The control plane acting on its own; the repository method name is the audit reason. */
+    export const SELF: Service = { type: 'service', service: 'control-plane' }
+
     export const Schema = z.discriminatedUnion('type', [User.Schema, Silo.Schema, Service.Schema])
 }
 export type Principal = z.infer<typeof Principal.Schema>

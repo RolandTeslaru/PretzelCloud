@@ -7,7 +7,7 @@ import { RealtimeModule } from '@/services/Realtime/realtime.module';
 import { WorkspaceController } from './workspace.controller';
 import { SiloWorkerLifecycleController } from './silo-worker-lifecycle.controller';
 import { WorkspaceService } from './workspace.service';
-import { WorkspaceDatabase } from './workspace.database';
+import { WorkspaceRepository } from './workspace.repository';
 import { UserModule } from '@/services/User/user.module';
 import { ListingModule } from '@/services/Listing/listing.module';
 import { SiloActivityService } from './silo-activity.service';
@@ -15,7 +15,7 @@ import { SiloActivityService } from './silo-activity.service';
 @Module({
     imports: [FleetModule, EntitlementModule, forwardRef(() => RouterModule), forwardRef(() => BillingModule), forwardRef(() => UserModule), RealtimeModule, ListingModule],
     controllers: [WorkspaceController, SiloWorkerLifecycleController],
-    providers: [WorkspaceService, WorkspaceDatabase, SiloActivityService],
-    exports: [WorkspaceService, WorkspaceDatabase, SiloActivityService],
+    providers: [WorkspaceService, WorkspaceRepository, SiloActivityService],
+    exports: [WorkspaceService, WorkspaceRepository, SiloActivityService],
 })
 export class WorkspaceModule { }

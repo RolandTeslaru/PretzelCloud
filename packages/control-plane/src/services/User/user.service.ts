@@ -1,10 +1,9 @@
 import { ConflictException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { User, Workspace } from '@pretzel-cloud/shared/domain';
-import { PortalDB } from '@/db/portal';
 import { Principal } from '@/auth/identity/principal';
 import { IdentityAdminService } from '@/auth/identity/identity-admin.service';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
-import { UserDatabase } from './user.database';
+import { UserRepository } from './user.repository';
 
 const USERNAME_TAKEN = 'users_username_lower_key';
 const EMAIL_TAKEN    = 'users_email_lower_key';
@@ -19,7 +18,7 @@ export class UserService {
 
     constructor(
         private readonly identityAdminService: IdentityAdminService,
-        private readonly userDatabase: UserDatabase,
+        private readonly userRepository: UserRepository,
         @Inject(forwardRef(() => WorkspaceService))
         private readonly workspaceService: WorkspaceService,
     ) {}
@@ -32,12 +31,12 @@ export class UserService {
             return existing;
 
         try {
-            await PortalDB.asService('register user', (trx) => this.userDatabase.insert(trx, {
+            await this.userRepository.insert(Principal.SELF, {
                 id:          principal.userId,
                 email:       principal.email,
                 username:    body.username,
                 displayName: body.displayName,
-            }));
+            });
         }
         catch (error) {
             if (violates(error, USERNAME_TAKEN))
@@ -65,7 +64,7 @@ export class UserService {
     }
 
     private async find(principal: Principal.User): Promise<User | null> {
-        return PortalDB.asUser(principal, (trx) => this.userDatabase.get(trx, principal.userId));
+        return this.userRepository.get(principal, principal.userId);
     }
 
     /** The names this deployment shows. The issuer holds no copy of them. */
@@ -79,7 +78,7 @@ export class UserService {
             return this.get(principal);
 
         try {
-            const user = await PortalDB.asUser(principal, (trx) => this.userDatabase.update(trx, principal.userId, changes));
+            const user = await this.userRepository.update(principal, changes);
 
             if (!user)
                 throw new NotFoundException('No profile yet');
@@ -96,7 +95,7 @@ export class UserService {
 
     /** Workspaces, then the credential, then the profile. A failure stops the rest. */
     public async delete(principal: Principal.User): Promise<void> {
-        const owned = await PortalDB.asUser(principal, (trx) => this.userDatabase.getOwnedWorkspaceIds(trx, principal.userId));
+        const owned = await this.userRepository.getOwnedWorkspaceIds(principal);
 
         for (const row of owned)
             await this.workspaceService.destroy(principal, row.id as Workspace.Id);
@@ -104,7 +103,7 @@ export class UserService {
         await this.identityAdminService.deleteUser(principal.userId);
 
         try {
-            await PortalDB.asService('delete user', (trx) => this.userDatabase.delete(trx, principal.userId));
+            await this.userRepository.delete(Principal.SELF, principal.userId);
         }
         catch (error) {
             this.logger.error(`issuer account ${principal.userId} is gone but its profile row is not`, error);

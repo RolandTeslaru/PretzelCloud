@@ -1,16 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { FleetDB } from '@/db/fleet';
-
-type Trx = FleetDB.Transaction;
+import { Repository, Transactional } from '@/db/repository';
+import { Principal } from '@/auth/identity/principal';
 
 /** Row operations on `hardware`. */
 @Injectable()
-export class HardwareDatabase {
+export class HardwareRepository extends Repository(FleetDB) {
 
     /** The driver and the cluster are chosen once. A workspace that already has hardware keeps both. */
-    async ensureForWorkspace(trx: Trx, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver, clusterId: Fleet.Cluster.Id) {
-        const inserted = await trx
+    @Transactional('service')
+    public async ensureForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver, clusterId: Fleet.Cluster.Id) {
+        const inserted = await this.trx
             .insertInto('hardware')
             .values({ workspace_id: workspaceId, driver, cluster_id: clusterId })
             .onConflict((oc) => oc.column('workspace_id').doNothing())
@@ -20,7 +21,7 @@ export class HardwareDatabase {
         if (inserted)
             return FleetDB.Hardware.Row.parse(inserted);
 
-        const existing = await trx
+        const existing = await this.trx
             .selectFrom('hardware')
             .selectAll()
             .where('workspace_id', '=', workspaceId)
@@ -29,8 +30,9 @@ export class HardwareDatabase {
         return FleetDB.Hardware.Row.parse(existing);
     }
 
-    async getByWorkspace(trx: Trx, workspaceId: Workspace.Id) {
-        const row = await trx
+    @Transactional('service')
+    public async getByWorkspace(principal: Principal.Service, workspaceId: Workspace.Id) {
+        const row = await this.trx
             .selectFrom('hardware')
             .selectAll()
             .where('workspace_id', '=', workspaceId)
@@ -40,8 +42,9 @@ export class HardwareDatabase {
     }
 
     /** Marks the workspace as used just now. */
-    touch(trx: Trx, workspaceId: Workspace.Id) {
-        return trx
+    @Transactional('service')
+    public async touch(principal: Principal.Service, workspaceId: Workspace.Id) {
+        return this.trx
             .updateTable('hardware')
             .set({ last_seen_at: new Date() })
             .where('workspace_id', '=', workspaceId)
@@ -53,8 +56,9 @@ export class HardwareDatabase {
      * that have not been. Falls back to when the hardware was made, so a
      * workspace nobody has visited yet still has an age.
      */
-    async getLastSeen(trx: Trx): Promise<{ workspaceId: Workspace.Id; lastSeenAt: Date }[]> {
-        const rows = await trx
+    @Transactional('service')
+    public async getLastSeen(principal: Principal.Service): Promise<{ workspaceId: Workspace.Id; lastSeenAt: Date }[]> {
+        const rows = await this.trx
             .selectFrom('hardware')
             .select(['workspace_id', 'last_seen_at', 'last_boot_at', 'created_at'])
             .execute();
@@ -65,7 +69,8 @@ export class HardwareDatabase {
         }));
     }
 
-    deleteFor(trx: Trx, workspaceId: Workspace.Id) {
-        return trx.deleteFrom('hardware').where('workspace_id', '=', workspaceId).execute();
+    @Transactional('service')
+    public async deleteFor(principal: Principal.Service, workspaceId: Workspace.Id) {
+        return this.trx.deleteFrom('hardware').where('workspace_id', '=', workspaceId).execute();
     }
 }

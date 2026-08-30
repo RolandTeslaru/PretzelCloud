@@ -1,20 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { Listing, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
-import { AllowedDatabaseRoles, DatabaseClass } from '@/decorators/database';
+import { Repository, Transactional } from '@/db/repository';
+import { Principal } from '@/auth/identity/principal';
 
-type ServiceTrx   = PortalDB.ServiceTransaction;
-type SiloTrx      = PortalDB.SiloTransaction;
-
-
+/** Row operations on `listings`. */
 @Injectable()
-@DatabaseClass
-export class ListingDatabase {
+export class ListingRepository extends Repository(PortalDB) {
 
 
-    @AllowedDatabaseRoles('service')
-    public async find(trx: ServiceTrx, id: Listing.Id): Promise<Listing | null> {
-        const row = await trx
+    @Transactional('service')
+    public async find(principal: Principal.Service, id: Listing.Id): Promise<Listing | null> {
+        const row = await this.trx
             .selectFrom('listings')
             .selectAll()
             .where('id', '=', id)
@@ -24,9 +21,9 @@ export class ListingDatabase {
     }
 
 
-    @AllowedDatabaseRoles('service')
-    public async getUpdates(trx: ServiceTrx, ids: Listing.Id[]): Promise<Record<Listing.Id, Listing.Data>> {
-        const rows = await trx
+    @Transactional('service')
+    public async getUpdates(principal: Principal.Service, ids: Listing.Id[]): Promise<Record<Listing.Id, Listing.Data>> {
+        const rows = await this.trx
             .selectFrom('listings')
             .select(['id', 'publication_meta'])
             .where('id', 'in', ids)
@@ -35,9 +32,9 @@ export class ListingDatabase {
         return Object.fromEntries(rows.map((row) => [row.id, row.publication_meta]));
     }
 
-    @AllowedDatabaseRoles('service')
-    public async getAllForWorkspace(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<Listing[]> {
-        const rows = await trx
+    @Transactional('service')
+    public async getAllForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id): Promise<Listing[]> {
+        const rows = await this.trx
             .selectFrom('listings')
             .selectAll()
             .where('workspace_id', '=', workspaceId)
@@ -47,9 +44,9 @@ export class ListingDatabase {
     }
 
     // 0 rows updated means no such listing of this workspace.
-    @AllowedDatabaseRoles('silo')
-    public async setBlueprintId(trx: SiloTrx, id: Listing.Id, blueprintId: string | null): Promise<number> {
-        const result = await trx
+    @Transactional('silo')
+    public async setBlueprintId(principal: Principal.Silo, id: Listing.Id, blueprintId: string | null): Promise<number> {
+        const result = await this.trx
             .updateTable('listings')
             .set({ blueprint_id: blueprintId })
             .where('id', '=', id)
@@ -58,24 +55,24 @@ export class ListingDatabase {
         return Number(result.numUpdatedRows);
     }
 
-    @AllowedDatabaseRoles('silo')
-    public async insert(trx: SiloTrx, workspaceId: Workspace.Id, request: Listing.API.Put.Request): Promise<Listing.Id> {
+    @Transactional('silo')
+    public async insert(principal: Principal.Silo, request: Listing.API.Put.Request): Promise<Listing.Id> {
         const id = Listing.createId();
 
-        await trx
+        await this.trx
             .insertInto('listings')
-            .values({ id, ...toValues(workspaceId, request) })
+            .values({ id, ...toValues(principal.workspaceId, request) })
             .execute();
 
         return id;
     }
 
     // 0 rows updated means no such listing of this workspace.
-    @AllowedDatabaseRoles('silo')
-    public async update(trx: SiloTrx, id: Listing.Id, workspaceId: Workspace.Id, request: Listing.API.Put.Request): Promise<number> {
-        const result = await trx
+    @Transactional('silo')
+    public async update(principal: Principal.Silo, id: Listing.Id, request: Listing.API.Put.Request): Promise<number> {
+        const result = await this.trx
             .updateTable('listings')
-            .set(toValues(workspaceId, request))
+            .set(toValues(principal.workspaceId, request))
             .where('id', '=', id)
             .executeTakeFirst();
 
@@ -83,17 +80,17 @@ export class ListingDatabase {
     }
 
     // Teardown path: the fleet acting, not the silo, so the service role.
-    @AllowedDatabaseRoles('service')
-    public async deleteAllForWorkspace(trx: ServiceTrx, workspaceId: Workspace.Id): Promise<void> {
-        await trx
+    @Transactional('service')
+    public async deleteAllForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id): Promise<void> {
+        await this.trx
             .deleteFrom('listings')
             .where('workspace_id', '=', workspaceId)
             .execute();
     }
 
-    @AllowedDatabaseRoles('silo')
-    public async delete(trx: SiloTrx, id: Listing.Id): Promise<number> {
-        const result = await trx
+    @Transactional('silo')
+    public async delete(principal: Principal.Silo, id: Listing.Id): Promise<number> {
+        const result = await this.trx
             .deleteFrom('listings')
             .where('id', '=', id)
             .executeTakeFirst();

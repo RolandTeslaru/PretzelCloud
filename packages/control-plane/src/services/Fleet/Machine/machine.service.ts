@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
-import { FleetDB } from '@/db/fleet';
+import { Principal } from '@/auth/identity/principal';
 import { AbstractHardwareDriver } from '../drivers/driver';
-import { MachineDatabase } from './machine.database';
+import { MachineRepository } from './machine.repository';
 
 // Generous: the first boot of a workspace migrates its empty database.
 const HEALTH_TIMEOUT_MS = 120_000;
@@ -16,7 +16,7 @@ const HEALTH_POLL_MS    = 1_000;
 export class MachineService {
 
     constructor(
-        private readonly machineDatabase: MachineDatabase,
+        private readonly machineRepository: MachineRepository,
     ) {}
 
     /** The spec says which role this is, so nothing else has to be told. */
@@ -35,7 +35,7 @@ export class MachineService {
             env:   spec.env,
         });
 
-        await FleetDB.asService('record machine', (trx) => this.machineDatabase.insert(trx, {
+        await this.machineRepository.insert(Principal.SELF, {
             workspace_id: workspaceId,
             hardware_id:  hardwareId,
             driver:       driver.kind,
@@ -43,13 +43,13 @@ export class MachineService {
             role:         spec.role,
             size:         spec.size,
             state:        handle.state,
-        }));
+        });
 
         return handle;
     }
 
     getAll(workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
-        return FleetDB.asService('list machines', (trx) => this.machineDatabase.getAll(trx, workspaceId));
+        return this.machineRepository.getAll(Principal.SELF, workspaceId);
     }
 
     /**
@@ -58,7 +58,7 @@ export class MachineService {
      * for it. Reads one row rather than the whole set.
      */
     getByRole(workspaceId: Workspace.Id, roles: Fleet.Machine.Role[]): Promise<Fleet.Machine | undefined> {
-        return FleetDB.asService('read machine by role', (trx) => this.machineDatabase.getByRole(trx, workspaceId, roles));
+        return this.machineRepository.getByRole(Principal.SELF, workspaceId, roles);
     }
 
     /** Blocks until this one machine reports serving, not merely started. */
@@ -132,7 +132,7 @@ export class MachineService {
 
         await driver.destroy(machine.resourceId);
 
-        await FleetDB.asService('delete machine', (trx) => this.machineDatabase.deleteById(trx, machine.id));
+        await this.machineRepository.deleteById(Principal.SELF, machine.id);
     }
 
     /** Asks the driver, not the row: the daemon is the truth about what is running. */
@@ -140,7 +140,7 @@ export class MachineService {
     async refreshState(driver: AbstractHardwareDriver, machine: Fleet.Machine): Promise<Fleet.Machine.State> {
         const state = await driver.status(machine.resourceId);
 
-        await FleetDB.asService('refresh machine state', (trx) => this.machineDatabase.setState(trx, machine.id, state));
+        await this.machineRepository.setState(Principal.SELF, machine.id, state);
 
         return state;
     }

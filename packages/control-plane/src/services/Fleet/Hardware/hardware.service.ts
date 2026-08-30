@@ -2,12 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Fleet, Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
 import { FleetDB } from '@/db/fleet';
+import { Principal } from '@/auth/identity/principal';
 import { requireEnv } from '@/db/table';
 import { AbstractHardwareDriver } from '../drivers/driver';
 import { HardwareDriverRegistry } from '../drivers/driver.registry';
 import { MachineService } from '../Machine/machine.service';
-import { MachineDatabase } from '../Machine/machine.database';
-import { HardwareDatabase } from './hardware.database';
+import { MachineRepository } from '../Machine/machine.repository';
+import { HardwareRepository } from './hardware.repository';
 import { ClusterService } from '../cluster/cluster.service';
 
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -36,8 +37,8 @@ export class HardwareService {
     constructor(
         private readonly hardwareDriverRegistry: HardwareDriverRegistry,
         private readonly machineService:         MachineService,
-        private readonly machineDatabase:        MachineDatabase,
-        private readonly hardwareDatabase:       HardwareDatabase,
+        private readonly machineRepository:      MachineRepository,
+        private readonly hardwareRepository:     HardwareRepository,
         private readonly clusterService:         ClusterService,
     ) {}
 
@@ -50,8 +51,7 @@ export class HardwareService {
 
         const driverKind = this.hardwareDriverRegistry.getKindForNewWorkspaces()
 
-        await FleetDB.asService('allocate hardware', (trx) =>
-            this.hardwareDatabase.ensureForWorkspace(trx, workspaceId, driverKind, cluster.id));
+        await this.hardwareRepository.ensureForWorkspace(Principal.SELF, workspaceId, driverKind, cluster.id);
 
         return this.clusterService.createDatabase(
             cluster,
@@ -65,8 +65,7 @@ export class HardwareService {
 
     /** The row, or a throw — everything below needs hardware allocated first. */
     async getHardware(workspaceId: Workspace.Id): Promise<FleetDB.Hardware.Row> {
-        const hardware = await FleetDB.asService('read hardware', (trx) =>
-            this.hardwareDatabase.getByWorkspace(trx, workspaceId));
+        const hardware = await this.hardwareRepository.getByWorkspace(Principal.SELF, workspaceId);
 
         if (!hardware)
             throw new Error(`${workspaceId} has no hardware`);
@@ -197,7 +196,7 @@ export class HardwareService {
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
     ): Promise<void> {
-        const hardware = await FleetDB.asService('read hardware', (trx) => this.hardwareDatabase.getByWorkspace(trx, workspaceId));
+        const hardware = await this.hardwareRepository.getByWorkspace(Principal.SELF, workspaceId);
 
         if (!hardware)
             throw new Error(`No hardware to convert for ${workspaceId}`);
@@ -377,7 +376,7 @@ export class HardwareService {
 
     /** Marks the workspace as used just now. */
     async touch(workspaceId: Workspace.Id): Promise<void> {
-        await FleetDB.asService('record workspace activity', (trx) => this.hardwareDatabase.touch(trx, workspaceId));
+        await this.hardwareRepository.touch(Principal.SELF, workspaceId);
     }
 
 
@@ -386,7 +385,7 @@ export class HardwareService {
 
     /** When each workspace was last used, for the idle sweep. */
     getLastSeen(): Promise<{ workspaceId: Workspace.Id; lastSeenAt: Date }[]> {
-        return FleetDB.asService('read workspace activity', (trx) => this.hardwareDatabase.getLastSeen(trx));
+        return this.hardwareRepository.getLastSeen(Principal.SELF);
     }
 
 
@@ -490,8 +489,7 @@ export class HardwareService {
         if (workspaceIds.length === 0)
             return new Map();
 
-        const rows = await FleetDB.asService('read machine states', (trx) =>
-            this.machineDatabase.getStatesByWorkspaces(trx, workspaceIds));
+        const rows = await this.machineRepository.getStatesByWorkspaces(Principal.SELF, workspaceIds);
 
         const map = new Map<Workspace.Id, Fleet.Machine.State>();
 
@@ -521,7 +519,7 @@ export class HardwareService {
     /** Destroys the machines and their network; the hardware row stays. */
     async destroyCompute(workspaceId: Workspace.Id): Promise<void> {
         // From the row when there is one; nothing else records which driver it was.
-        const hardware = await FleetDB.asService('read hardware', (trx) => this.hardwareDatabase.getByWorkspace(trx, workspaceId));
+        const hardware = await this.hardwareRepository.getByWorkspace(Principal.SELF, workspaceId);
 
         const driver = hardware
             ? this.hardwareDriverRegistry.getDriverForKind(hardware.driver)
@@ -545,7 +543,7 @@ export class HardwareService {
 
         await driver.destroyScope(workspaceId);
 
-        await FleetDB.asService('clear machine rows', (trx) => this.machineDatabase.deleteFor(trx, workspaceId));
+        await this.machineRepository.deleteFor(Principal.SELF, workspaceId);
 
         this.logger.log(`Destroyed the machines of ${workspaceId}`);
     }
@@ -556,12 +554,12 @@ export class HardwareService {
 
     /** One reading per running machine. Null when nothing is running to read. */
     public async getStatisticsForWorkspace(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
-        const hardware = await FleetDB.asService('read hardware', (trx) => this.hardwareDatabase.getByWorkspace(trx, workspaceId));
+        const hardware = await this.hardwareRepository.getByWorkspace(Principal.SELF, workspaceId);
 
         if (!hardware)
             return null;
 
-        const machines = await FleetDB.asService('read machines', (trx) => this.machineDatabase.getAll(trx, workspaceId));
+        const machines = await this.machineRepository.getAll(Principal.SELF, workspaceId);
 
         const driver = this.hardwareDriverRegistry.getDriverForKind(hardware.driver);
 
@@ -601,7 +599,7 @@ export class HardwareService {
     /** Gives back everything `provision` allocated. Absence means it is already given back. */
     async destroy(workspaceId: Workspace.Id): Promise<void> {
         // Read before the row goes: the only record of which cluster holds the database.
-        const hardware = await FleetDB.asService('read hardware', (trx) => this.hardwareDatabase.getByWorkspace(trx, workspaceId));
+        const hardware = await this.hardwareRepository.getByWorkspace(Principal.SELF, workspaceId);
 
         // The row goes last, so no row means the rest already went; only machines
         // no record knows about are left to look for.
@@ -621,7 +619,7 @@ export class HardwareService {
             Provisioning.getRoleName(workspaceId),
         );
 
-        await FleetDB.asService('clear hardware row', (trx) => this.hardwareDatabase.deleteFor(trx, workspaceId));
+        await this.hardwareRepository.deleteFor(Principal.SELF, workspaceId);
 
         this.logger.log(`Destroyed hardware for ${workspaceId}`);
     }

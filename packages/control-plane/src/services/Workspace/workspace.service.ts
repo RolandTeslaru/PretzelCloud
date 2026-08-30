@@ -1,13 +1,12 @@
 import { ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Plan, Fleet, User, Workspace } from '@pretzel-cloud/shared/domain';
-import { PortalDB } from '@/db/portal';
 import { PermissionService } from '@/services/Permission/permission.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 import { LockService } from '@/services/Locking/lock.service';
 import { Operation } from '@/decorators/operation';
 import { ListingService } from '@/services/Listing/listing.service';
-import { WorkspaceDatabase } from './workspace.database';
-import { UserDatabase } from '@/services/User/user.database';
+import { WorkspaceRepository } from './workspace.repository';
+import { UserRepository } from '@/services/User/user.repository';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
 import { HardwareService, TopologyNotRestored } from '@/services/Fleet/Hardware/hardware.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
@@ -39,8 +38,8 @@ export class WorkspaceService {
         private readonly siloRouter:          Router,
         private readonly realtimeService:     RealtimeService,
         private readonly entitlementService:  EntitlementService,
-        private readonly workspaceDatabase:   WorkspaceDatabase,
-        private readonly userDatabase:        UserDatabase,
+        private readonly workspaceRepository: WorkspaceRepository,
+        private readonly userRepository:      UserRepository,
         private readonly permissionService:   PermissionService,
         private readonly listingService:      ListingService,
         @Inject(forwardRef(() => BillingService))
@@ -60,19 +59,14 @@ export class WorkspaceService {
     public async create(principal: Principal.User, displayName: string): Promise<Workspace> {
         const id = Workspace.createId();
 
+        // Read first so a missing profile fails before anything is built.
+        const owner = await this.userRepository.get(Principal.SELF, principal.userId);
+
+        if (!owner)
+            throw new NotFoundException('No profile yet');
+
         // Both rows or neither: no membership row means the owner cannot see it.
-        const [workspace, owner] = await PortalDB.asService('create workspace', async (trx) => {
-            const workspace = await this.workspaceDatabase.insert(trx, { id, displayName, ownerId: principal.userId });
-
-            // Read here so a missing profile fails before anything is built,
-            // rather than partway through provisioning.
-            const owner = await this.userDatabase.get(trx, principal.userId);
-
-            if (!owner)
-                throw new NotFoundException('No profile yet');
-
-            return [workspace, owner];
-        });
+        const workspace = await this.workspaceRepository.insert(Principal.SELF, { id, displayName, ownerId: principal.userId });
 
         void (async () => {
             for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
@@ -103,8 +97,7 @@ export class WorkspaceService {
         lifecycleState: Workspace.Lifecycle.State,
         { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
     ): Promise<Workspace> {
-        const workspace = await PortalDB.asService('set workspace lifecycle state', (trx) =>
-            this.workspaceDatabase.setLifecycleState(trx, id, lifecycleState));
+        const workspace = await this.workspaceRepository.setLifecycleState(Principal.SELF, id, lifecycleState);
 
         if (!emitNoEvents)
             this.emit(id, Workspace.Event.create('lifecycle:changed', { lifecycleState }));
@@ -126,7 +119,7 @@ export class WorkspaceService {
         catch (error) {
             this.logger.error(`Teardown of ${id} failed, leaving it for the sweep: ${error instanceof Error ? error.message : error}`);
 
-            await PortalDB.asService('flag abandoned workspace', (trx) => this.workspaceDatabase.setAbandoned(trx, id));
+            await this.workspaceRepository.setAbandoned(Principal.SELF, id);
         }
 
         await this.setLifecycleState(id, 'provisioning_failed');
@@ -137,12 +130,12 @@ export class WorkspaceService {
     }
 
     public async get(workspaceId: Workspace.Id): Promise<Workspace> {
-        return PortalDB.asService('read workspace', (trx) => this.workspaceDatabase.get(trx, workspaceId));
+        return this.workspaceRepository.get(Principal.SELF, workspaceId);
     }
 
     /** The name on the account. Ownership was settled by the guard. */
     public async rename(principal: Principal.User, workspaceId: Workspace.Id, displayName: string): Promise<void> {
-        await PortalDB.asUser(principal, (trx) => this.workspaceDatabase.setDisplayName(trx, workspaceId, displayName));
+        await this.workspaceRepository.setDisplayName(principal, workspaceId, displayName);
     }
 
     /**
@@ -154,7 +147,7 @@ export class WorkspaceService {
             throw new ForbiddenException('A custom subdomain requires a paid plan');
 
         try {
-            await PortalDB.asUser(principal, (trx) => this.workspaceDatabase.setSubdomain(trx, workspace.id, subdomain));
+            await this.workspaceRepository.setSubdomain(principal, workspace.id, subdomain);
         }
         catch (error) {
             if (error instanceof Error && error.message.includes('workspaces_subdomain_key'))
@@ -231,7 +224,7 @@ export class WorkspaceService {
 
     /** The fleet turning it off. Only `enable` undoes it. */
     public async disable(workspaceId: Workspace.Id, reason: string): Promise<void> {
-        await PortalDB.asService('disable workspace', (trx) => this.workspaceDatabase.setDisabled(trx, workspaceId, reason));
+        await this.workspaceRepository.setDisabled(Principal.SELF, workspaceId, reason);
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'disabled' }));
 
@@ -252,7 +245,7 @@ export class WorkspaceService {
         if (lifecycleState !== 'disabled')
             return;
 
-        await PortalDB.asService('enable workspace', (trx) => this.workspaceDatabase.clearDisabled(trx, workspaceId));
+        await this.workspaceRepository.clearDisabled(Principal.SELF, workspaceId);
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'sleeping' }));
 
@@ -290,8 +283,7 @@ export class WorkspaceService {
         if (await this.hardwareService.hasMachines(workspaceId))
             return;
 
-        const row = await PortalDB.asService('read workspace to rebuild compute', (trx) =>
-            this.workspaceDatabase.getOwnerAndPlanIdForWorkspace(trx, workspaceId));
+        const row = await this.workspaceRepository.getOwnerAndPlanIdForWorkspace(Principal.SELF, workspaceId);
 
         if (!row)
             return;
@@ -426,7 +418,7 @@ export class WorkspaceService {
 
     @Operation()
     public async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        await PortalDB.asService('set workspace plan', (trx) => this.workspaceDatabase.setPlan(trx, workspaceId, planId));
+        await this.workspaceRepository.setPlan(Principal.SELF, workspaceId, planId);
 
         // Before the rebuild: what was bought is already true.
         this.emit(workspaceId, Workspace.Event.create('plan:changed', { plan: this.planRegistry.get(planId) }));
@@ -474,7 +466,7 @@ export class WorkspaceService {
 
         await this.listingService.deleteAllForWorkspace(workspaceId);
 
-        await PortalDB.asUser(principal, (trx) => this.workspaceDatabase.delete(trx, workspaceId));
+        await this.workspaceRepository.delete(principal, workspaceId);
 
         this.emit(workspaceId, Workspace.Event.create('destroyed'));
     }

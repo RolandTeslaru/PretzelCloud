@@ -2,9 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
-import { PortalDB } from '@/db/portal';
+import { Principal } from '@/auth/identity/principal';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
-import { BillingDatabase } from './billing.database';
+import { BillingRepository } from './billing.repository';
 import { StripeClient } from './stripe.client';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 
@@ -21,7 +21,7 @@ export class StripeEventHandlerService {
     constructor(
         private readonly stripeClient: StripeClient,
         private readonly workspaceService: WorkspaceService,
-        private readonly billingDatabase: BillingDatabase,
+        private readonly billingRepository: BillingRepository,
         private readonly planRegistry:    PlanRegistry,
     ) { }
 
@@ -48,7 +48,7 @@ export class StripeEventHandlerService {
 
     /** What a verified event means. Safe to call twice with the same one. */
     public async handleEvent(event: Stripe.Event): Promise<void> {
-        if (!await PortalDB.asService('claim stripe event', (trx) => this.billingDatabase.claimEvent(trx, event.id)))
+        if (!await this.billingRepository.claimEvent(Principal.SELF, event.id))
             return;
 
         try {
@@ -70,7 +70,7 @@ export class StripeEventHandlerService {
         }
         catch (error) {
             // The claim makes a retry a no-op, so a failure must give it back.
-            await PortalDB.asService('release stripe event', (trx) => this.billingDatabase.releaseEvent(trx, event.id));
+            await this.billingRepository.releaseEvent(Principal.SELF, event.id);
 
             throw error;
         }
@@ -92,7 +92,7 @@ export class StripeEventHandlerService {
 
             const subscription = await this.stripe.subscriptions.retrieve(session.subscription);
 
-            await PortalDB.asService('save subscription', (trx) => this.billingDatabase.saveSubscription(trx, workspaceId, subscription));
+            await this.billingRepository.saveSubscription(Principal.SELF, workspaceId, subscription);
 
             // Buying again is how a disabled workspace comes back, so this path says
             // so rather than leaving it to the subscription event that follows.
@@ -107,7 +107,7 @@ export class StripeEventHandlerService {
             if (!workspaceId)
                 return;
 
-            await PortalDB.asService('save subscription', (trx) => this.billingDatabase.saveSubscription(trx, workspaceId, subscription));
+            await this.billingRepository.saveSubscription(Principal.SELF, workspaceId, subscription);
 
             // `past_due` is deliberately absent: the card is still being retried,
             // and taking a workspace down mid-retry is the wrong call.
@@ -134,7 +134,7 @@ export class StripeEventHandlerService {
             if (!workspaceId)
                 return;
 
-            await PortalDB.asService('save subscription', (trx) => this.billingDatabase.saveSubscription(trx, workspaceId, subscription));
+            await this.billingRepository.saveSubscription(Principal.SELF, workspaceId, subscription);
 
             // The plan stays on the row: what they bought is what they come back to,
             // and dropping them to free here would silently rebuild their machines
@@ -160,7 +160,7 @@ export class StripeEventHandlerService {
             return;
         }
 
-        const row = await PortalDB.asService('read workspace plan', (trx) => this.billingDatabase.getOwnerAndPlanIdForWorkspace(trx, workspaceId));
+        const row = await this.billingRepository.getOwnerAndPlanIdForWorkspace(Principal.SELF, workspaceId);
 
         if (!row)
             return;

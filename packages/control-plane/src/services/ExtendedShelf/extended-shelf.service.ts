@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Listing, Workspace } from '@pretzel-cloud/shared/domain';
-import { PortalDB } from '@/db/portal';
 import { Principal } from '@/auth/identity/principal';
-import { ListingDatabase } from '@/services/Listing/listing.database';
+import { ListingRepository } from '@/services/Listing/listing.repository';
 
 // The one workspace whose listings form the extended shelf. Unset means none.
 const shelfWorkspace = (): Principal.Silo => {
@@ -18,14 +17,14 @@ const shelfWorkspace = (): Principal.Silo => {
 @Injectable()
 export class ExtendedShelfService {
 
-    constructor(private readonly listingDatabase: ListingDatabase) {}
+    constructor(private readonly listingRepository: ListingRepository) {}
 
 
     public async getAll(): Promise<Listing[]> {
         if (!process.env.EXTENDED_SHELF_WORKSPACE_ID)
             return [];
 
-        return PortalDB.asService('read extended shelf listings', (trx) => this.listingDatabase.getAllForWorkspace(trx, shelfWorkspace().workspaceId));
+        return this.listingRepository.getAllForWorkspace(Principal.SELF, shelfWorkspace().workspaceId);
     }
 
     // Tagging runs as the pinned workspace, so RLS scopes it to that workspace's listings.
@@ -40,7 +39,7 @@ export class ExtendedShelfService {
     };
 
     private async setBlueprintId(id: Listing.Id, blueprintId: string | null): Promise<void> {
-        const updated = await PortalDB.asSilo(shelfWorkspace(), (trx) => this.listingDatabase.setBlueprintId(trx, id, blueprintId));
+        const updated = await this.listingRepository.setBlueprintId(shelfWorkspace(), id, blueprintId);
 
         if (updated === 0)
             throw new NotFoundException('No such listing');

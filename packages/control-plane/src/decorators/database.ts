@@ -74,7 +74,7 @@ const BY_SQLSTATE: Record<string, (detail: string) => HttpException> = {
 
 const logger = new Logger('Database');
 
-function catchDatabaseErrors(fn: (...args: unknown[]) => unknown, operation: string) {
+export function catchDatabaseErrors(fn: (...args: unknown[]) => unknown, operation: string) {
     return async function (this: unknown, ...args: unknown[]) {
         try {
             return await fn.apply(this, args);

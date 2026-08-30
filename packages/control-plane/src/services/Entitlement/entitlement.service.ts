@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Plan, Workspace } from '@pretzel-cloud/shared/domain';
-import { FleetDB } from '@/db/fleet';
+import { Principal } from '@/auth/identity/principal';
 import { PortalDB } from '@/db/portal';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
-import { UsageDatabase } from './usage.database';
+import { UsageRepository } from './usage.repository';
 
 const LIST_LIMIT = 200;
 
@@ -24,7 +24,7 @@ export class EntitlementService {
     private readonly logger = new Logger(EntitlementService.name);
 
     constructor(
-        private readonly usageDatabase: UsageDatabase,
+        private readonly usageRepository: UsageRepository,
         private readonly planRegistry: PlanRegistry,
     ) {}
 
@@ -35,26 +35,22 @@ export class EntitlementService {
 
         /** How many have run in a period. */
         getCount: (workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<number> =>
-            FleetDB.asService('count executions', (trx) =>
-                this.usageDatabase.executions.getCountIn(trx, workspaceId, period)),
+            this.usageRepository.executions.getCountIn(Principal.SELF, workspaceId, period),
 
         /** The same for many, over one period, so a grid stays one query. */
         getCounts: async (workspaceIds: Workspace.Id[], period: Workspace.Usage.Period): Promise<Map<Workspace.Id, number>> => {
-            const rows = await FleetDB.asService('count executions for many', (trx) =>
-                this.usageDatabase.executions.getCountsIn(trx, workspaceIds, period));
+            const rows = await this.usageRepository.executions.getCountsIn(Principal.SELF, workspaceIds, period);
 
             return new Map(rows.map((row) => [row.workspace_id as Workspace.Id, Number(row.count)]));
         },
 
         /** Executions per day over a period, days with none omitted. */
         getDailyCounts: (workspaceId: Workspace.Id, period: Workspace.Usage.Period): Promise<Workspace.Usage.Point[]> =>
-            FleetDB.asService('count executions by day', (trx) =>
-                this.usageDatabase.executions.getDailyCounts(trx, workspaceId, period)),
+            this.usageRepository.executions.getDailyCounts(Principal.SELF, workspaceId, period),
 
         /** The rows behind the count, newest first. */
         get: (workspaceId: Workspace.Id, period: Workspace.Usage.Period, limit = LIST_LIMIT): Promise<Workspace.Usage[]> =>
-            FleetDB.asService('list executions', (trx) =>
-                this.usageDatabase.executions.getIn(trx, workspaceId, period, limit)),
+            this.usageRepository.executions.getIn(Principal.SELF, workspaceId, period, limit),
 
         /**
          * Records one and locks the workspace when that was its last. A single
@@ -63,13 +59,12 @@ export class EntitlementService {
         recordAndLockIfOver: async (workspaceId: Workspace.Id, executionId: string | null, igniter: string | null): Promise<void> => {
             const allowance = await this.executions.getAllowance(workspaceId);
 
-            const used = await FleetDB.asService('record execution', (trx) =>
-                this.usageDatabase.executions.insertAndGetCount(trx, {
+            const used = await this.usageRepository.executions.insertAndGetCount(Principal.SELF, {
                     workspaceId,
                     executionId,
                     igniter,
                     period: Workspace.Usage.getCurrentPeriod(allowance?.periodStart ?? null, allowance?.periodEnd ?? null),
-                }));
+                });
 
             if (!allowance || allowance.limit === null)
                 return;
@@ -177,6 +172,6 @@ export class EntitlementService {
 
     /** Newest first, across the workspaces the caller may see. */
     public getRecentUsage(workspaceIds: Workspace.Id[], limit = LIST_LIMIT): Promise<Workspace.Usage[]> {
-        return FleetDB.asService('list usage', (trx) => this.usageDatabase.executions.getRecent(trx, workspaceIds, limit));
+        return this.usageRepository.executions.getRecent(Principal.SELF, workspaceIds, limit);
     }
 }

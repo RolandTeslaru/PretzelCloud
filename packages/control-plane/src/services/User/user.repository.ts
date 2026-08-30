@@ -1,24 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { User } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
-import { AllowedDatabaseRoles, DatabaseClass } from '@/decorators/database';
+import { Repository, Transactional } from '@/db/repository';
+import { Principal } from '@/auth/identity/principal';
 
-type UserTrx    = PortalDB.UserTransaction;
-type ServiceTrx = PortalDB.ServiceTransaction;
-type AnyTrx     = UserTrx | ServiceTrx;
-
+/** Row operations on `users`, plus the ownership index a user may see. */
 @Injectable()
-@DatabaseClass
-export class UserDatabase {
+export class UserRepository extends Repository(PortalDB) {
 
-    @AllowedDatabaseRoles('service')
-    public async insert(trx: ServiceTrx, values: {
+    @Transactional('service')
+    public async insert(principal: Principal.Service, values: {
         id:          User.Id;
         email:       string;
         username:    string;
         displayName: string;
     }): Promise<void> {
-        await trx
+        await this.trx
             .insertInto('users')
             .values({
                 id:           values.id,
@@ -30,9 +27,9 @@ export class UserDatabase {
             .execute();
     }
 
-    @AllowedDatabaseRoles('user', 'service')
-    public async get(trx: AnyTrx, userId: User.Id): Promise<User | null> {
-        const row = await trx
+    @Transactional('user', 'service')
+    public async get(principal: Principal.User | Principal.Service, userId: User.Id): Promise<User | null> {
+        const row = await this.trx
             .selectFrom('users')
             .selectAll()
             .where('id', '=', userId)
@@ -41,35 +38,35 @@ export class UserDatabase {
         return row ? PortalDB.User.toDomain(PortalDB.User.Row.parse(row)) : null;
     }
 
-    @AllowedDatabaseRoles('user')
-    public async update(trx: UserTrx, userId: User.Id, changes: {
+    @Transactional('user')
+    public async update(principal: Principal.User, changes: {
         username?:     string;
         display_name?: string;
     }): Promise<User | null> {
-        const row = await trx
+        const row = await this.trx
             .updateTable('users')
             .set(changes)
-            .where('id', '=', userId)
+            .where('id', '=', principal.userId)
             .returningAll()
             .executeTakeFirst();
 
         return row ? PortalDB.User.toDomain(PortalDB.User.Row.parse(row)) : null;
     }
 
-    @AllowedDatabaseRoles('service')
-    public async delete(trx: ServiceTrx, userId: User.Id): Promise<void> {
-        await trx
+    @Transactional('service')
+    public async delete(principal: Principal.Service, userId: User.Id): Promise<void> {
+        await this.trx
             .deleteFrom('users')
             .where('id', '=', userId)
             .execute();
     }
 
-    @AllowedDatabaseRoles('user')
-    public async getOwnedWorkspaceIds(trx: UserTrx, userId: User.Id) {
-        return trx
+    @Transactional('user')
+    public async getOwnedWorkspaceIds(principal: Principal.User) {
+        return this.trx
             .selectFrom('workspaces')
             .select('id')
-            .where('owner_id', '=', userId)
+            .where('owner_id', '=', principal.userId)
             .execute();
     }
 }
