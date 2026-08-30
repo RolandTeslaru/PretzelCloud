@@ -7,22 +7,8 @@ import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createWorkspaceSDKActions, type _WorkspaceSDKActions_ } from './actions'
 import { workspaceSelectors, type WorkspaceSDKSelectors } from './selectors'
-import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
-import { Dialog } from '@pretzel-graph/standard-ui/foundations'
-import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
-import WorkspaceConfiguration, { type ItemId } from './ui/WorkspaceConfiguration'
-import { CreateWorkspaceDialog } from './ui/CreateWorkspaceDialog'
-import { DestroyWorkspaceDialog } from './ui/WorkspaceConfiguration/DestroyWorkspaceDialog'
-import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-
-// Per workspace, so opening one from another card does not reuse its panel state.
-const configurationDialogId = (workspaceId: Workspace.Id) => `workspace-configuration-${workspaceId}`
-
-const destroyDialogId = (workspaceId: Workspace.Id) => `destroy-workspace-${workspaceId}`
-
-// One at a time, unlike the others: it is not opened from a workspace.
-const CREATE_DIALOG_ID = 'create-workspace'
+import { openConfigurationDialog, openCreateWorkspaceDialog, openDestroyDialog } from './open-dialogs'
 
 const WORKSPACES_STALE_TIME = 30_000
 
@@ -85,75 +71,11 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
 
     public fetchPlans = () => QuerySDK.client.fetchQuery(this.plansQuery)
 
-    public openCreateWorkspaceDialog = () => {
-        DialogSDK.actions.push(CREATE_DIALOG_ID, (props) => (
-            <DialogSDK.SplitTemplate
-                {...props}
-                className='h-[400px]'
-                sidebarClassName='w-[400px]'
-                sidebarRenderer={() => (
-                    <>
-                        <div className='flex flex-row gap-2'>
-                            <ServerIllustration className='size-10 shrink-0' />
-                            <Dialog.Title className='text-sm font-semibold my-auto'>Workspace Builder</Dialog.Title>
-                        </div>
-                        <Dialog.Description className='text-xs text-muted-foreground pt-1'>
-                            Every workspace is its own isolated deployment with a private database and private compute.
-                        </Dialog.Description>
-                    </>
-                )}
-            >
-                <CreateWorkspaceDialog dialogId={CREATE_DIALOG_ID} />
-            </DialogSDK.SplitTemplate>
-        ))
-    }
+    public openCreateWorkspaceDialog = openCreateWorkspaceDialog
 
-    /** `currentPanel` opens straight onto one, for callers that already know which. */
-    public openConfigurationDialog = (workspaceId: Workspace.Id, currentPanel?: ItemId) => {
-        const id = configurationDialogId(workspaceId)
+    public openConfigurationDialog = openConfigurationDialog
 
-        DialogSDK.actions.push(id, (props) => (
-            <WorkspaceConfiguration
-                {...props}
-                workspaceId={workspaceId}
-                dialogId={id}
-                currentPanel={currentPanel}
-            />
-        ))
-    }
-
-    /** Asks for the workspace by name first. Takes its settings dialog down with it. */
-    public openDestroyDialog = (workspaceId: Workspace.Id) => {
-        const workspace = this.state.workspaces[workspaceId]
-
-        if (!workspace)
-            return
-
-        const id = destroyDialogId(workspaceId)
-
-        DialogSDK.actions.push(id, (props) => (
-            <DestroyWorkspaceDialog
-                {...props}
-                displayName={workspace.displayName}
-                onCancel={() => DialogSDK.actions.pop(id)}
-                onApprove={async () => {
-                    DialogSDK.actions.pop(id)
-
-                    try {
-                        await this.actions.destroy(workspaceId)
-
-                        NotificationSDK.toast.success(`${workspace.displayName} destroyed`)
-
-                        // The settings it configured no longer exist.
-                        DialogSDK.actions.pop(configurationDialogId(workspaceId))
-                    }
-                    catch {
-                        NotificationSDK.toast.error('Could not destroy the workspace')
-                    }
-                }}
-            />
-        ))
-    }
+    public openDestroyDialog = (workspaceId: Workspace.Id) => openDestroyDialog(this, workspaceId)
 
     public readonly actions: WorkspaceSDK.Actions = createWorkspaceSDKActions(this)
 }
