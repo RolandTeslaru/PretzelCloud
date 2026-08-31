@@ -35,6 +35,7 @@ export class Router {
         { method: null,   pattern: /^\/webhook\/[^/]+\/[^/?#]+/ },
     ] as const;
 
+    
     static isMeteredPath(method: string | undefined, url: string | undefined): boolean {
         if (!url)
             return false;

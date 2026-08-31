@@ -1,0 +1,20 @@
+# Deploys the control plane — only from the Deploy button, never from a push.
+# Builds from the checked-out branch, so what ships is what is committed.
+name: deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency: deploy-control-plane
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy the control plane
+        run: flyctl deploy --config fly.toml --app pretzel-control-plane --remote-only --yes
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
