@@ -166,6 +166,19 @@ export class WorkspaceController {
         return {};
     }
 
+    @Post(':workspaceId/update')
+    @Scoped('workspace')
+    @RequireOwner()
+    @RequireEnabled()
+    @RefuseIfBusy()
+    @HttpCode(202)
+    async update(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
+        void this.workspaceService.updateToLatestRelease(workspace.id, workspace.ownerId, workspace.plan.id)
+            .catch((error: unknown) => this.logger.error(`Updating ${workspace.id} failed: ${error instanceof Error ? error.message : error}`));
+
+        return {};
+    }
+
     @Post(':workspaceId/restart')
     @Scoped('workspace')
     @RequireOwner()

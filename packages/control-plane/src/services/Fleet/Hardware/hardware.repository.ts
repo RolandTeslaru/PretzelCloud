@@ -10,10 +10,10 @@ export class HardwareRepository extends Repository(FleetDB) {
 
     /** The driver and the cluster are chosen once. A workspace that already has hardware keeps both. */
     @Transactional('service')
-    public async ensureForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver, clusterId: Fleet.Cluster.Id) {
+    public async ensureForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver, clusterId: Fleet.Cluster.Id, releaseId: Fleet.Release.Id) {
         const inserted = await this.trx
             .insertInto('hardware')
-            .values({ workspace_id: workspaceId, driver, cluster_id: clusterId })
+            .values({ workspace_id: workspaceId, driver, cluster_id: clusterId, release_id: releaseId })
             .onConflict((oc) => oc.column('workspace_id').doNothing())
             .returningAll()
             .executeTakeFirst();
@@ -39,6 +39,16 @@ export class HardwareRepository extends Repository(FleetDB) {
             .executeTakeFirst();
 
         return row ? FleetDB.Hardware.Row.parse(row) : undefined;
+    }
+
+    /** Moves the pin: what the next machine build is built from. */
+    @Transactional('service')
+    public async setRelease(principal: Principal.Service, workspaceId: Workspace.Id, releaseId: Fleet.Release.Id) {
+        return this.trx
+            .updateTable('hardware')
+            .set({ release_id: releaseId })
+            .where('workspace_id', '=', workspaceId)
+            .execute();
     }
 
     /** Marks the workspace as used just now. */

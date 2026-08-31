@@ -209,3 +209,31 @@ $$;
 
 create trigger silo_secrets_set_updated_at before update on silo_secrets for each row execute function set_updated_at();
 create trigger machines_set_updated_at          before update on machines          for each row execute function set_updated_at();
+
+
+-- ── Releases ─────────────────────────────────────────────────────────────────
+
+-- One row per shipped version of the product; each role's image is a digest-pinned ref.
+create table releases (
+    id             uuid default gen_random_uuid() not null,
+    name           text not null,
+    image_combined text not null,
+    image_backend  text not null,
+    image_worker   text not null,
+    created_at     timestamp with time zone default now() not null
+);
+
+alter table only releases add constraint releases_pkey     primary key (id);
+alter table only releases add constraint releases_name_key unique (name);
+
+-- One to begin with, addressed as the compose images are. A deployment inserts
+-- real rows through the release pipeline; this seeds fresh installs.
+insert into releases (id, name, image_combined, image_backend, image_worker)
+    values ('00000000-0000-0000-0000-000000000001', 'bootstrap', 'pretzel-graph-combined:latest', 'pretzel-graph-backend:latest', 'pretzel-graph-worker:latest');
+
+-- Which version a workspace's machines are built from. Set at provision, moved by update.
+alter table hardware add column release_id uuid not null default '00000000-0000-0000-0000-000000000001';
+alter table hardware alter column release_id drop default;
+
+-- Restrict, not cascade: a release with workspaces on it cannot be removed.
+alter table only hardware add constraint hardware_release_fkey foreign key (release_id) references releases(id) on delete restrict;

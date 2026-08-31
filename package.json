@@ -12,9 +12,8 @@
         "migrate": "npm run migrate --workspace=packages/control-plane",
         "typecheck": "tsc -b packages/shared packages/control-plane && npm run typecheck --workspace=packages/portal",
         "dev:stripe": "command -v stripe >/dev/null && stripe listen --forward-to localhost:4000/api/billing/webhook || echo 'stripe CLI not found - billing webhooks will not be delivered locally'",
-        "build:image": "bash scripts/build-workspace-image.sh",
-        "build:images": "bash scripts/build-workspace-image.sh all",
-        "dev:fly": "ENV_FILE=.env.fly npm run dev"
+        "dev:fly": "ENV_FILE=.env.fly npm run dev",
+        "release": "bash scripts/release.sh"
     },
     "devDependencies": {
         "@types/node": "^25.2.0",

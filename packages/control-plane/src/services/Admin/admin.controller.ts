@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
-import { Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
 import { OperatorGuard } from '@/auth/guards/operator.guard';
+import { ZodBody } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
+import { ReleaseService } from '@/services/Fleet/Release/release.service';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { PortalDB } from '@/db/portal';
 
@@ -10,7 +12,10 @@ import { PortalDB } from '@/db/portal';
 @UseGuards(UserAuthGuard, OperatorGuard)
 export class AdminController {
 
-    constructor(private readonly workspaceService: WorkspaceService) {}
+    constructor(
+        private readonly workspaceService: WorkspaceService,
+        private readonly releaseService:   ReleaseService,
+    ) {}
 
     @Get('workspaces')
     public async list() {
@@ -22,6 +27,14 @@ export class AdminController {
                 .execute());
 
         return { workspaces: rows };
+    }
+
+    /** The release pipeline's announce call: name plus digest-pinned refs, id minted here. */
+    @Post('releases')
+    public async createRelease(
+        @ZodBody(Fleet.Release.API.Create.Request) body: Fleet.Release.API.Create.Request,
+    ): Promise<Fleet.Release.API.Create.Response> {
+        return { release: await this.releaseService.create(body.name, body) };
     }
 
     @Post('workspaces/:workspaceId/disable')

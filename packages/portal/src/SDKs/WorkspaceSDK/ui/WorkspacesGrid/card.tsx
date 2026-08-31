@@ -9,6 +9,7 @@ import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../status'
 import { MachineStatistic } from './MachineStatistic'
 import { DatabaseStatistic } from './DatabaseStatistic'
+import { ReleaseSDK } from '@/SDKs/ReleaseSDK'
 import { ShinyText } from '@pretzel-graph/standard-ui/components/ShinyText'
 
 
@@ -34,6 +35,10 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
     ])
 
     const reachable = isReachable(workspace, transition, rebuilding)
+
+    const latestRelease = ReleaseSDK.useStore((s) => s.latest)
+
+    const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id
 
 
     return (
@@ -111,6 +116,18 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                                 ))}
                                 {hardwareStatistics.databaseSizeBytes !== null && (
                                     <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes}/>
+                                )}
+                                {updateAvailable && (
+                                    <button
+                                        className='flex flex-row gap-1 shrink-0 items-center bg-card/50 border border-border/50 px-1.5 py-1 rounded-sm cursor-pointer hover:bg-muted'
+                                        onClick={(event) => { event.stopPropagation(); void WorkspaceSDK.actions.update(workspace.id) }}
+                                        title={`Update to ${latestRelease.name}`}
+                                    >
+                                        <SystemIcons.ArrowUp className='size-4 text-primary'/>
+                                        <p className='text-xs font-mono'>
+                                            Update
+                                        </p>
+                                    </button>
                                 )}
                             </>
                         ) : (

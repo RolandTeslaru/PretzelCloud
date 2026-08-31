@@ -18,6 +18,9 @@ import { HostnameService } from './Hostname/hostname.service';
 import { SiloDatabase } from './Silo/silo.database';
 import { SiloDatabaseService } from './Silo/silo-database.service';
 import { ProvisioningService } from './provisioning/provisioning.service';
+import { ReleaseRepository } from './Release/release.repository';
+import { ReleaseService } from './Release/release.service';
+import { ReleaseController } from './Release/release.controller';
 
 @Module({
     imports: [SiloTokenIssuerModule, RealtimeModule, LockModule],
@@ -30,8 +33,10 @@ import { ProvisioningService } from './provisioning/provisioning.service';
         HostnameRepository, HostnameService,
         SiloDatabase, SiloDatabaseService,
         ProvisioningService,
+        ReleaseRepository, ReleaseService,
     ],
+    controllers: [ReleaseController],
     // Hardware is the fleet's façade; everything above it goes through one of these.
-    exports: [HardwareService, HardwareStatisticsSampler, HardwareStatisticsCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
+    exports: [HardwareService, ReleaseService, HardwareStatisticsSampler, HardwareStatisticsCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
 })
 export class FleetModule { }

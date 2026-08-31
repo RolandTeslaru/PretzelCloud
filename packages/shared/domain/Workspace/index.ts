@@ -96,6 +96,9 @@ export namespace Workspace {
         currentPeriodStart: z.coerce.date().nullable(),
         currentPeriodEnd:   z.coerce.date().nullable(),
         ownerId:            User.Id,
+        /** Filled from the fleet at the API seam; no portal column behind them. */
+        releaseId:          Fleet.Release.Id.nullable(),
+        releaseName:        z.string().nullable(),
         // Derived where the fleet domain is known; a browser cannot build it.
         appUrl:             z.url(),
         createdAt:          z.coerce.date(),
@@ -468,6 +471,8 @@ export namespace Workspace {
         export const restart = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'restart')
         /** Replaces the machines from the current spec; the data is untouched. */
         export const rebuild = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'rebuild')
+        /** Moves the workspace to the newest release, then rebuilds from it. */
+        export const update  = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'update')
 
         export namespace Destroy {
             export const Response = z.object({})

@@ -9,6 +9,7 @@ import { WorkspaceRepository } from './workspace.repository';
 import { UserRepository } from '@/services/User/user.repository';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
 import { HardwareService, TopologyNotRestored } from '@/services/Fleet/Hardware/hardware.service';
+import { ReleaseService } from '@/services/Fleet/Release/release.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/identity/principal';
 import { Router } from '@/services/SiloRouter/router.service';
@@ -45,6 +46,7 @@ export class WorkspaceService {
         @Inject(forwardRef(() => BillingService))
         private readonly billingService:      BillingService,
         private readonly planRegistry:        PlanRegistry,
+        private readonly releaseService:      ReleaseService,
         private readonly lockService:         LockService,
     ) {}
 
@@ -126,7 +128,16 @@ export class WorkspaceService {
     }
 
     public async list(principal: Principal.User): Promise<Workspace[]> {
-        return this.permissionService.getWorkspacesForMember(principal);
+        const workspaces = await this.permissionService.getWorkspacesForMember(principal);
+
+        // Filled here rather than mapped: the release is the fleet's fact, on its own credential.
+        const releaseInfoByWorkspaceId = await this.releaseService.getInfoForWorkspaces(workspaces.map((workspace) => workspace.id));
+
+        return workspaces.map((workspace) => {
+            const release = releaseInfoByWorkspaceId.get(workspace.id);
+
+            return { ...workspace, releaseId: release?.id ?? null, releaseName: release?.name ?? null };
+        });
     }
 
     public async get(workspaceId: Workspace.Id): Promise<Workspace> {
@@ -411,6 +422,22 @@ export class WorkspaceService {
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'running' }));
 
         this.emit(workspaceId, Workspace.Event.create('rebuild:succeeded', {}));
+    }
+
+
+
+
+    /** Moves the pin to the newest release, then rebuilds the machines from it. */
+    @Operation()
+    public async updateToLatestRelease(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
+        const latest = await this.releaseService.getLatest();
+
+        if (!latest)
+            throw new NotFoundException('No release to update to');
+
+        await this.hardwareService.setRelease(workspaceId, latest.id);
+
+        await this.rebuild(workspaceId, ownerId, planId);
     }
 
 

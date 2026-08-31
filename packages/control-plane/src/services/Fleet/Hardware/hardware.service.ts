@@ -10,6 +10,7 @@ import { MachineService } from '../Machine/machine.service';
 import { MachineRepository } from '../Machine/machine.repository';
 import { HardwareRepository } from './hardware.repository';
 import { ClusterService } from '../cluster/cluster.service';
+import { ReleaseService } from '../Release/release.service';
 
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
 
@@ -40,6 +41,7 @@ export class HardwareService {
         private readonly machineRepository:      MachineRepository,
         private readonly hardwareRepository:     HardwareRepository,
         private readonly clusterService:         ClusterService,
+        private readonly releaseService:          ReleaseService,
     ) {}
 
     /**
@@ -51,7 +53,12 @@ export class HardwareService {
 
         const driverKind = this.hardwareDriverRegistry.getKindForNewWorkspaces()
 
-        await this.hardwareRepository.ensureForWorkspace(Principal.SELF, workspaceId, driverKind, cluster.id);
+        const release = await this.releaseService.getLatest();
+
+        if (!release)
+            throw new Error('No release to build workspaces from');
+
+        await this.hardwareRepository.ensureForWorkspace(Principal.SELF, workspaceId, driverKind, cluster.id, release.id);
 
         return this.clusterService.createDatabase(
             cluster,
@@ -112,10 +119,12 @@ export class HardwareService {
 
         const driver = this.hardwareDriverRegistry.getDriverForKind(hardware.driver);
 
+        const release = await this.releaseService.getById(hardware.release_id);
+
         const ordered = Fleet.Machine.inLifecycleOrder('start', machineRoles.map((role) => ({ role })));
 
         for (const { role } of ordered) {
-            const spec = this.getSpecForMachine(role, workspaceId, plan, baseEnvKeys, backendEnvKeys, backendHost)
+            const spec = this.getSpecForMachine(role, workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost)
             const handle = await this.machineService.create(driver, hardware.id, workspaceId, spec);
 
             if (role === 'backend')
@@ -132,6 +141,7 @@ export class HardwareService {
         role:        Fleet.Machine.Role,
         workspaceId: Workspace.Id,
         plan:        Plan,
+        release:     Fleet.Release,
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
         backendHost: string | null,
@@ -139,7 +149,7 @@ export class HardwareService {
         if (role === 'combined')
             return {
                 role,
-                image: requireEnv('WORKSPACE_IMAGE'),
+                image: Fleet.Release.getImageForRole(release, role),
                 size:  Plan.getSizeForRole(plan, role),
                 env:   backendEnvKeys,
             };
@@ -147,7 +157,7 @@ export class HardwareService {
         if (role === 'backend')
             return {
                 role,
-                image: requireEnv('WORKSPACE_IMAGE_BACKEND'),
+                image: Fleet.Release.getImageForRole(release, role),
                 size:  Plan.getSizeForRole(plan, role),
                 env:   backendEnvKeys,
             };
@@ -158,7 +168,7 @@ export class HardwareService {
         // Built from the base env, so a backend-only key can never leak to a worker.
         return {
             role,
-            image: requireEnv('WORKSPACE_IMAGE_WORKER'),
+            image: Fleet.Release.getImageForRole(release, role),
             size:  Plan.getSizeForRole(plan, role),
             env:   {
                 ...baseEnvKeys,
@@ -548,6 +558,14 @@ export class HardwareService {
         this.logger.log(`Destroyed the machines of ${workspaceId}`);
     }
 
+
+
+
+
+    /** Moves the workspace to a release; the machines change on the next rebuild. */
+    async setRelease(workspaceId: Workspace.Id, releaseId: Fleet.Release.Id): Promise<void> {
+        await this.hardwareRepository.setRelease(Principal.SELF, workspaceId, releaseId);
+    }
 
 
 

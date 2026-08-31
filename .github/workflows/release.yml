@@ -1,0 +1,57 @@
+# The private half of the release pipeline: copies the published images from
+# GHCR into the fleet's registry and announces the release to the control
+# plane, which mints the row. Triggered by the public repo's dispatch.
+name: release
+
+on:
+  repository_dispatch:
+    types: [release]
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copy images into the fleet registry
+        id: copy
+        run: |
+          set -euo pipefail
+          SHA="${{ github.event.client_payload.sha }}"
+          OWNER_LOWER=$(echo "${{ github.event.client_payload.owner }}" | tr '[:upper:]' '[:lower:]')
+          SHORT_SHA="${SHA:0:8}"
+
+          for role in combined backend worker; do
+            skopeo copy \
+              --src-creds "${{ github.actor }}:${{ secrets.GHCR_READ_TOKEN }}" \
+              --dest-creds "x:${{ secrets.FLY_API_TOKEN }}" \
+              "docker://ghcr.io/$OWNER_LOWER/pretzelgraph-$role:$SHA" \
+              "docker://registry.fly.io/pretzel-workspaces:pretzelgraph-$role-$SHORT_SHA"
+
+            digest=$(skopeo inspect --creds "x:${{ secrets.FLY_API_TOKEN }}" \
+              --format '{{.Digest}}' \
+              "docker://registry.fly.io/pretzel-workspaces:pretzelgraph-$role-$SHORT_SHA")
+
+            echo "${role}_ref=registry.fly.io/pretzel-workspaces@$digest" >> "$GITHUB_OUTPUT"
+          done
+
+          echo "name=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Announce the release
+        run: |
+          set -euo pipefail
+          TOKEN=$(node -e "
+          const crypto = require('crypto');
+          const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+          const now = Math.floor(Date.now() / 1000);
+          const header = b64({ alg: 'HS256', typ: 'JWT' });
+          const payload = b64({ sub: process.env.OPERATOR_USER_ID, email: 'release@pretzelgraph.ai', aud: 'authenticated', role: 'authenticated', iat: now, exp: now + 300 });
+          const signature = crypto.createHmac('sha256', process.env.AUTH_JWT_SECRET).update(header + '.' + payload).digest('base64url');
+          console.log(header + '.' + payload + '.' + signature);
+          ")
+
+          curl -sS --fail-with-body -X POST "https://api.pretzelgraph.ai/api/admin/releases" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"${{ steps.copy.outputs.name }}\",\"imageCombined\":\"${{ steps.copy.outputs.combined_ref }}\",\"imageBackend\":\"${{ steps.copy.outputs.backend_ref }}\",\"imageWorker\":\"${{ steps.copy.outputs.worker_ref }}\"}"
+        env:
+          AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET }}
+          OPERATOR_USER_ID: ${{ secrets.OPERATOR_USER_ID }}

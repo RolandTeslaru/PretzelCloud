@@ -120,12 +120,34 @@ export namespace FleetDB {
         });
     }
 
+    export namespace Release {
+        export const Row = z.object({
+            id:             Fleet.Release.Id,
+            name:           Fleet.Release.Name,
+            image_combined: z.string(),
+            image_backend:  z.string(),
+            image_worker:   z.string(),
+            created_at:     z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+
+        export const toDomain = (row: Row) => Fleet.Release.Schema.parse({
+            id:            row.id,
+            name:          row.name,
+            imageCombined: row.image_combined,
+            imageBackend:  row.image_backend,
+            imageWorker:   row.image_worker,
+            createdAt:     row.created_at,
+        });
+    }
+
     export namespace Hardware {
         export const Row = z.object({
             id:           Fleet.Hardware.Id,
             workspace_id: WorkspaceD.Id,
             driver:       Fleet.Hardware.Driver,
             cluster_id:   Fleet.Cluster.Id,
+            release_id:   Fleet.Release.Id,
             last_boot_at: z.coerce.date().nullable(),
             last_seen_at: z.coerce.date().nullable(),
             created_at:   z.coerce.date(),
@@ -168,6 +190,7 @@ export namespace FleetDB {
 
     export interface Tables {
         clusters:          Table<typeof Cluster.Row, Stamps>;
+        releases:          Table<typeof Release.Row, 'id' | 'created_at'>;
         hardware:          Table<typeof Hardware.Row, 'id' | Stamps>;
         machines:          Table<typeof Machine.Row, 'id' | Stamps>;
         silo_secrets:      Table<typeof SiloSecrets.Row, Stamps>;

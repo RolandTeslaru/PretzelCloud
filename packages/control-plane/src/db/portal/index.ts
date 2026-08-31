@@ -67,13 +67,15 @@ export namespace PortalDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        export const toDomain = (row: Row, plan: PlanD) => WorkspaceD.Schema.parse({
+        export const toDomain = (row: Row, plan: PlanD, release?: { id: Fleet.Release.Id; name: string } | null) => WorkspaceD.Schema.parse({
             id:                 row.id,
             subdomain:          row.subdomain,
             displayName:        row.display_name,
             lifecycleState:     row.lifecycle_state,
             disabledReason:     row.disabled_reason,
             plan,
+            releaseId:          release?.id ?? null,
+            releaseName:        release?.name ?? null,
             subscriptionStatus: row.subscription_status,
             currentPeriodStart: row.current_period_start,
             currentPeriodEnd:   row.current_period_end,
