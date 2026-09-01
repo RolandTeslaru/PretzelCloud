@@ -1,8 +1,12 @@
-# Deploys the control plane — only from the Deploy button, never from a push.
-# Builds from the checked-out branch, so what ships is what is committed.
+# Deploys the control plane: on a merge into the release branch — which the
+# ruleset makes a deliberate act — or from the Deploy button for a re-deploy
+# without a commit. Builds from the checked-out branch, so what ships is
+# what is committed.
 name: deploy
 
 on:
+  push:
+    branches: [latest]
   workflow_dispatch:
 
 jobs:
