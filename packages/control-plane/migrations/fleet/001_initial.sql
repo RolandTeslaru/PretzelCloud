@@ -229,10 +229,10 @@ alter table only releases add constraint releases_name_key unique (name);
 -- One to begin with, addressed as the compose images are. A deployment inserts
 -- real rows through the release pipeline; this seeds fresh installs.
 insert into releases (id, name, image_combined, image_backend, image_worker)
-    values ('00000000-0000-0000-0000-000000000001', 'bootstrap', 'pretzel-graph-combined:latest', 'pretzel-graph-backend:latest', 'pretzel-graph-worker:latest');
+    values ('00000000-0000-4000-8000-000000000001', 'bootstrap', 'pretzel-graph-combined:latest', 'pretzel-graph-backend:latest', 'pretzel-graph-worker:latest');
 
 -- Which version a workspace's machines are built from. Set at provision, moved by update.
-alter table hardware add column release_id uuid not null default '00000000-0000-0000-0000-000000000001';
+alter table hardware add column release_id uuid not null default '00000000-0000-4000-8000-000000000001';
 alter table hardware alter column release_id drop default;
 
 -- Restrict, not cascade: a release with workspaces on it cannot be removed.
