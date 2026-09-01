@@ -5,6 +5,7 @@ import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustratio
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import WorkspaceConfiguration, { type ItemId } from './ui/WorkspaceConfiguration'
 import { CreateWorkspaceDialog } from './ui/CreateWorkspaceDialog'
+import { UpdateWorkspaceDialog } from './ui/UpdateWorkspaceDialog'
 import { DestroyWorkspaceDialog } from './ui/WorkspaceConfiguration/DestroyWorkspaceDialog'
 import type { WorkspaceSDKImpl } from './sdk'
 
@@ -12,6 +13,8 @@ import type { WorkspaceSDKImpl } from './sdk'
 const configurationDialogId = (workspaceId: Workspace.Id) => `workspace-configuration-${workspaceId}`
 
 const destroyDialogId = (workspaceId: Workspace.Id) => `destroy-workspace-${workspaceId}`
+
+const updateDialogId = (workspaceId: Workspace.Id) => `update-workspace-${workspaceId}`
 
 // One at a time: it is not opened from a workspace.
 const CREATE_DIALOG_ID = 'create-workspace'
@@ -21,12 +24,13 @@ export const openCreateWorkspaceDialog = () => {
         <DialogSDK.SplitTemplate
             {...props}
             className='h-[400px]'
-            sidebarClassName='w-[400px]'
+            sidebarClassName='w-[300px]'
+            contentClassName='w-[400px]'
             sidebarRenderer={() => (
                 <>
                     <div className='flex flex-row gap-2'>
                         <ServerIllustration className='size-10 shrink-0' />
-                        <Dialog.Title className='text-sm font-semibold my-auto'>Workspace Manager</Dialog.Title>
+                        <Dialog.Title className='text-sm font-semibold my-auto'>Workspace Builder</Dialog.Title>
                     </div>
                     <Dialog.Description className='text-xs text-muted-foreground pt-1'>
                         Every workspace is its own isolated deployment with a private database and private compute.
@@ -35,6 +39,32 @@ export const openCreateWorkspaceDialog = () => {
             )}
         >
             <CreateWorkspaceDialog dialogId={CREATE_DIALOG_ID} />
+        </DialogSDK.SplitTemplate>
+    ))
+}
+
+export const openUpdateDialog = (workspaceId: Workspace.Id) => {
+    const id = updateDialogId(workspaceId)
+
+    DialogSDK.actions.push(id, (props) => (
+        <DialogSDK.SplitTemplate
+            {...props}
+            className='h-[400px]'
+            sidebarClassName='w-[300px]'
+            contentClassName='w-[400px]'
+            sidebarRenderer={() => (
+                <>
+                    <div className='flex flex-row gap-2'>
+                        <ServerIllustration className='size-10 shrink-0' />
+                        <Dialog.Title className='text-sm font-semibold my-auto'>Workspace Update</Dialog.Title>
+                    </div>
+                    <Dialog.Description className='text-xs text-muted-foreground pt-1'>
+                        Rebuilds the workspace from a newer PretzelGraph release.
+                    </Dialog.Description>
+                </>
+            )}
+        >
+            <UpdateWorkspaceDialog dialogId={id} workspaceId={workspaceId} />
         </DialogSDK.SplitTemplate>
     ))
 }

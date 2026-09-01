@@ -7,6 +7,8 @@ import { DomainSettings } from './DomainSettings'
 import { DangerSettings } from './DangerSettings'
 import { LifecycleSettings } from './LifecycleSettings'
 import { PlanSettings } from './PlanSettings'
+import { ReleaseSDK } from '@/SDKs/ReleaseSDK'
+import { Button } from '@pretzel-graph/standard-ui/foundations'
 
 export type ItemId = 'general' | 'domain' | 'plan' | 'lifecycle' | 'danger'
 
@@ -37,8 +39,27 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel, ...templa
                 title: 'Workspace Settings',
                 description: 'Rename this workspace, give it an address of its own, or tear it down.',
             }}
+            sidebarBottomRenderer={() => <UpdateFooter workspace={workspace}/>}
         />
     )
+}
+
+
+const UpdateFooter = ({workspace}: {workspace: Workspace}) => {
+    const latestRelease = ReleaseSDK.useStore((s) => s.latest)
+    
+    const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id
+    
+    if (updateAvailable) {
+        return (
+            <Button className='gap-2 w-full rounded-full' variant="active"
+                onClick={() => WorkspaceSDK.openUpdateDialog(workspace.id)}
+            >
+                <SystemIcons.ArrowBigUpDash className='size-4'/>
+                Update Available
+            </Button>
+        )
+    }
 }
 
 export default WorkspaceConfiguration

@@ -25,6 +25,19 @@ export class ReleaseSDKImpl extends BaseSDK<ReleaseSDK.State> {
     private readonly latestQuery = {
         queryKey:  ['releases', 'latest'] as const,
         queryFn:   async () => {
+            // TEMP: a release no workspace runs, so the update affordance always
+            // renders while its styling is worked on. Remove when done.
+            if (import.meta.env.DEV) {
+                const dummy = {
+                    id:   'dddddddd-dddd-4ddd-8ddd-dddddddddddd' as Fleet.Release.Id,
+                    name: 'v9.9.9-dummy' as Fleet.Release.Name,
+                }
+
+                this.useStore.setState((s) => { s.latest = dummy })
+
+                return dummy
+            }
+
             // A deployment with no announced release answers 404; no release is a state, not an error.
             const latest = await Fleet.Release.API.latest(api).catch(() => null)
 

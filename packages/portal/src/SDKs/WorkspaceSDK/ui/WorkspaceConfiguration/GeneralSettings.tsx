@@ -32,55 +32,59 @@ export const GeneralSettings = ({ workspaceId }: { workspaceId: Workspace.Id }) 
     }
 
     return (
-        <div className="flex flex-col gap-6 pr-2">
-            <Form.Root {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-3">
+        <Form.Root {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-3">
+                <div className="flex flex-col gap-6 px-1">
                     <Form.Field
                         control={form.control}
                         name="displayName"
                         render={({ field }) => (
                             <Form.Item>
-                                <Form.Label>Name</Form.Label>
+                                <Form.Label>Workspace Name</Form.Label>
                                 <Form.Control><Input {...field} /></Form.Control>
-                                <Form.Description className="text-muted-foreground text-xs">
-                                    A label only. The address never changes with it.
-                                </Form.Description>
                                 <Form.Message />
                             </Form.Item>
                         )}
                     />
 
-                    <Button
-                        type="submit"
-                        size="sm"
-                        className="mr-auto"
-                        disabled={form.formState.isSubmitting || !form.formState.isDirty}
-                    >
-                        {form.formState.isSubmitting && <Spinner className="mr-2 h-4 w-4" />}
-                        Save
-                    </Button>
-                </form>
-            </Form.Root>
 
-            <div className="flex flex-col gap-1.5">
-                <p className="text-sm font-medium">Workspace ID</p>
 
-                <div className="flex items-center gap-2">
-                    <code className="bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs">
-                        {workspace.id}
-                    </code>
+                    <div className="flex flex-col gap-1.5">
+                        <p className="text-sm font-medium">Workspace ID</p>
 
-                    <Button
-                        size="icon-xs"
-                        variant="ghost"
-                        onClick={() => navigator.clipboard.writeText(workspace.id)
-                            .then(() => NotificationSDK.toast.success('Workspace ID copied'))
-                            .catch(() => NotificationSDK.toast.error('Could not reach the clipboard'))}
-                    >
-                        <SystemIcons.Copy />
-                    </Button>
+                        <div className="flex items-center gap-2">
+                            <code className="bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs">
+                                {workspace.id}
+                            </code>
+
+                            <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="ghost"
+                                onClick={() => navigator.clipboard.writeText(workspace.id)
+                                    .then(() => NotificationSDK.toast.success('Workspace ID copied'))
+                                    .catch(() => NotificationSDK.toast.error('Could not reach the clipboard'))}
+                            >
+                                <SystemIcons.Copy />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className='flex flex-row absolute gap-2 bottom-0 left-0 w-full p-4 '>
+                        <Button
+                            type="submit"
+                            size="sm"
+                            className="ml-auto"
+                            disabled={form.formState.isSubmitting || !form.formState.isDirty}
+                        >
+                            {form.formState.isSubmitting && <Spinner className="mr-2 h-4 w-4" />}
+                            Save
+                        </Button>
+                    </div>
                 </div>
-            </div>
-        </div>
+            </form>
+
+        </Form.Root>
+
     )
 }

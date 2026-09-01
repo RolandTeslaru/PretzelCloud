@@ -8,7 +8,7 @@ import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createWorkspaceSDKActions, type _WorkspaceSDKActions_ } from './actions'
 import { workspaceSelectors, type WorkspaceSDKSelectors } from './selectors'
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-import { openConfigurationDialog, openCreateWorkspaceDialog, openDestroyDialog } from './open-dialogs'
+import { openConfigurationDialog, openCreateWorkspaceDialog, openDestroyDialog, openUpdateDialog } from './open-dialogs'
 
 const WORKSPACES_STALE_TIME = 30_000
 
@@ -74,6 +74,8 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
     public openCreateWorkspaceDialog = openCreateWorkspaceDialog
 
     public openConfigurationDialog = openConfigurationDialog
+
+    public openUpdateDialog = openUpdateDialog
 
     public openDestroyDialog = (workspaceId: Workspace.Id) => openDestroyDialog(this, workspaceId)
 

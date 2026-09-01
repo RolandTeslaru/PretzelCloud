@@ -25,6 +25,41 @@ const copyWorkspaceId = async (id: Workspace.Id) => {
 }
 
 
+/** The card's overflow menu. */
+const CardDropdown = ({ workspaceId }: { workspaceId: Workspace.Id }) => (
+    <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+            <Button size="icon-xs" variant="ghost">
+                <SystemIcons.Ellipsis />
+            </Button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align='start' side="right">
+            <DropdownMenu.Item
+                className='gap-2 text-xs'
+                onClick={() => copyWorkspaceId(workspaceId)}
+            >
+                <SystemIcons.Copy />
+                Copy Workspace ID
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+                className='gap-2 text-xs'
+                onClick={() => WorkspaceSDK.openConfigurationDialog(workspaceId)}
+            >
+                <SystemIcons.Settings />
+                Open Configuration
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+                className='gap-2 text-xs'
+                onClick={() => WorkspaceSDK.openConfigurationDialog(workspaceId, 'plan')}
+            >
+                <SystemIcons.Sparkles />
+                Upgrade
+            </DropdownMenu.Item>
+        </DropdownMenu.Content>
+    </DropdownMenu.Root>
+)
+
+
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
     const [transition, provision, rebuilding, hardwareStatistics] = WorkspaceSDK.useStore(s => [
@@ -55,54 +90,40 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                         </div>
 
                         <Card.Action onClick={(event) => event.stopPropagation()}>
-                            <DropdownMenu.Root>
-                                <DropdownMenu.Trigger asChild>
-                                    <Button size="icon-xs" variant="ghost">
-                                        <SystemIcons.Ellipsis />
-                                    </Button>
-                                </DropdownMenu.Trigger>
-                                <DropdownMenu.Content align='start' side="right">
-                                    <DropdownMenu.Item
-                                        className='gap-2 text-xs'
-                                        onClick={() => copyWorkspaceId(workspace.id)}
-                                    >
-                                        <SystemIcons.Copy />
-                                        Copy Workspace ID
-                                    </DropdownMenu.Item>
-                                    <DropdownMenu.Item
-                                        className='gap-2 text-xs'
-                                        onClick={() => WorkspaceSDK.openConfigurationDialog(workspace.id)}
-                                    >
-                                        <SystemIcons.Settings />
-                                        Open Configuration
-                                    </DropdownMenu.Item>
-                                    <DropdownMenu.Item
-                                        className='gap-2 text-xs'
-                                        onClick={() => WorkspaceSDK.openConfigurationDialog(workspace.id, 'plan')}
-                                    >
-                                        <SystemIcons.Sparkles />
-                                        Upgrade
-                                    </DropdownMenu.Item>
-                                </DropdownMenu.Content>
-                            </DropdownMenu.Root>
+                            <CardDropdown workspaceId={workspace.id} />
                         </Card.Action>
                     </Card.Header>
                     <Card.Content className='w-full mt-auto flex gap-1.5 relative'>
                         <StatusBadge workspace={workspace} />
                         <PlanBadge plan={workspace.plan} />
 
-                        {workspace.disabledReason && 
-                            <>
-                                <Tooltip.Root>
-                                    <Tooltip.Trigger className='absolute right-4 -bottom-2'>
-                                        <SystemIcons.AlertTriangleFill className=' text-destructive animate-pulse size-5'/>
-                                    </Tooltip.Trigger>
-                                    <Tooltip.Content className='max-w-[300px]'>
-                                        {`This workspace has been disabled. ${workspace.disabledReason}`}
-                                    </Tooltip.Content>
-                                </Tooltip.Root>
-                            </>
-                        }
+                        <div className="absolute right-4 -bottom-0 flex flex-row gap-2">
+                            {updateAvailable && 
+                                <>
+                                    <Button
+                                        size="sm"
+                                        variant="active"
+                                        className='gap-2 animate-pulse'
+                                        onClick={(event) => { event.stopPropagation(); WorkspaceSDK.openUpdateDialog(workspace.id) }}
+                                    >
+                                        <SystemIcons.ArrowBigUpDash className='fill-current size-4'/>
+                                        Update
+                                    </Button>
+                                </>
+                            }
+                            {workspace.disabledReason && 
+                                <>
+                                    <Tooltip.Root>
+                                        <Tooltip.Trigger>
+                                            <SystemIcons.AlertTriangleFill className=' text-destructive animate-pulse size-5'/>
+                                        </Tooltip.Trigger>
+                                        <Tooltip.Content className='max-w-[300px]'>
+                                            {`This workspace has been disabled. ${workspace.disabledReason}`}
+                                        </Tooltip.Content>
+                                    </Tooltip.Root>
+                                </>
+                            }
+                        </div>
                     </Card.Content>
             </Frame.Panel>
             <Frame.Footer className='flex flex-row gap-1 px-1! py-1! overflow-x-auto w-full h-[35px] [scrollbar-width:none]'>
@@ -116,18 +137,6 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                                 ))}
                                 {hardwareStatistics.databaseSizeBytes !== null && (
                                     <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes}/>
-                                )}
-                                {updateAvailable && (
-                                    <button
-                                        className='flex flex-row gap-1 shrink-0 items-center bg-card/50 border border-border/50 px-1.5 py-1 rounded-sm cursor-pointer hover:bg-muted'
-                                        onClick={(event) => { event.stopPropagation(); void WorkspaceSDK.actions.update(workspace.id) }}
-                                        title={`Update to ${latestRelease.name}`}
-                                    >
-                                        <SystemIcons.ArrowUp className='size-4 text-primary'/>
-                                        <p className='text-xs font-mono'>
-                                            Update
-                                        </p>
-                                    </button>
                                 )}
                             </>
                         ) : (
