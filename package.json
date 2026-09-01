@@ -13,7 +13,8 @@
         "typecheck": "tsc -b packages/shared packages/control-plane && npm run typecheck --workspace=packages/portal",
         "dev:stripe": "command -v stripe >/dev/null && stripe listen --forward-to localhost:4000/api/billing/webhook || echo 'stripe CLI not found - billing webhooks will not be delivered locally'",
         "dev:fly": "ENV_FILE=.env.fly npm run dev",
-        "release": "bash scripts/release.sh"
+        "release": "bash scripts/release.sh",
+        "build": "npm run build --workspaces --if-present"
     },
     "devDependencies": {
         "@types/node": "^25.2.0",
