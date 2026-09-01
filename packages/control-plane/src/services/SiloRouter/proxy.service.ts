@@ -484,6 +484,17 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
     /** A socket has no status code, so anything but a clean forward closes it. */
     private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+        // The portal's live channel upgrades on this host, like any of its requests.
+        if (this.isControlPlaneHost(req)) {
+            this.proxy.ws(req, socket, head, { target: `http://127.0.0.1:${process.env.PORT ?? 4000}` }, (error: Error) => {
+                this.logger.warn(`Control plane upgrade failed: ${error.message}`);
+
+                socket.destroy();
+            });
+
+            return;
+        }
+
         const resolution = await this.router.resolve(req);
 
         // Webhooks never upgrade.
