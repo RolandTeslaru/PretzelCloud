@@ -4,6 +4,9 @@ import { Pool } from 'pg';
 import { Fleet, Workspace as WorkspaceD } from '@pretzel-cloud/shared/domain';
 import { Table, Stamps, requireEnv } from '../table';
 
+// pg closes an idle connection after 10 s by default, and a router mostly idles between requests.
+const IDLE_CONNECTION_MS = 10 * 60_000;
+
 /**
  * The fleet database: what has actually been materialized.
  *
@@ -202,7 +205,8 @@ export namespace FleetDB {
 
     const db = () => (database ??= new Kysely<Tables>({
         dialect: new PostgresDialect({
-            pool: new Pool({ connectionString: requireEnv('FLEET_DATABASE_URL'), max: 10 }),
+            // Idle connections stay open: opening one to Neon costs more than most queries.
+            pool: new Pool({ connectionString: requireEnv('FLEET_DATABASE_URL'), max: 10, idleTimeoutMillis: IDLE_CONNECTION_MS, keepAlive: true }),
         }),
     }));
 
