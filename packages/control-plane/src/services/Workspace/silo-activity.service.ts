@@ -82,7 +82,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
 
         this.writtenAt.set(workspaceId, Date.now());
 
-        void this.hardwareService.touch(workspaceId)
+        void this.hardwareService.state.touch(workspaceId)
             .catch((error) => this.logger.warn(`Could not record activity for ${workspaceId}: ${error instanceof Error ? error.message : error}`));
     }
 
@@ -97,7 +97,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
 
     private async sweepHeld(): Promise<void> {
         try {
-            const seen = await this.hardwareService.getLastSeen();
+            const seen = await this.hardwareService.state.getLastSeen();
 
             const idle = seen.filter(({ lastSeenAt }) => Date.now() - lastSeenAt.getTime() >= IDLE_MS);
 
@@ -107,7 +107,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
             const workspaceIds = idle.map(({ workspaceId }) => workspaceId);
 
             const planIdByWorkspaceId         = await this.getPlanIdsForWorkspaces(workspaceIds);
-            const machineStateByWorkspaceId   = await this.hardwareService.getStates(workspaceIds);
+            const machineStateByWorkspaceId   = await this.hardwareService.state.getStates(workspaceIds);
             const lifecycleStateByWorkspaceId = await this.getLifecycleStatesForWorkspaces(workspaceIds);
 
             const quietForByWorkspaceId = new Map(idle.map(({ workspaceId, lastSeenAt }) => [workspaceId, Date.now() - lastSeenAt.getTime()]));
@@ -148,7 +148,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
     private async suspend(workspaceId: Workspace.Id): Promise<void> {
         try {
             // Work is in flight; the backend holds the queue it runs from.
-            if (await this.hardwareService.hasRunningWorker(workspaceId))
+            if (await this.hardwareService.state.hasRunningWorker(workspaceId))
                 return;
 
             await this.workspaceService.suspend(workspaceId);
@@ -164,10 +164,10 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
     private async reclaim(workspaceId: Workspace.Id): Promise<void> {
         try {
             // The hardware row outlives the machines, so a reclaimed workspace stays in the sweep with nothing left to take.
-            if (!await this.hardwareService.hasMachines(workspaceId))
+            if (!await this.hardwareService.state.hasMachines(workspaceId))
                 return;
 
-            if (await this.hardwareService.hasRunningWorker(workspaceId))
+            if (await this.hardwareService.state.hasRunningWorker(workspaceId))
                 return;
 
             await this.workspaceService.reclaimCompute(workspaceId);

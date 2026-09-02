@@ -1,6 +1,6 @@
 import { z } from "zod"
 import type { AxiosInstance } from "axios"
-import { Machine } from "./machine"
+import type { Machine } from "./machine"
 
 export namespace Release {
 

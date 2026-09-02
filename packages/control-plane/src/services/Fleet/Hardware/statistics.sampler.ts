@@ -3,15 +3,16 @@ import { Workspace } from '@pretzel-cloud/shared/domain';
 import { LockService } from '@/services/Locking/lock.service';
 import { RealtimeGateway } from '@/services/Realtime/realtime.gateway';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
-import { HardwareService } from './hardware.service';
-import { HardwareStatisticsCache } from './hardware-statistics.cache';
+import { HardwareStatisticsService } from './statistics.service';
+import { HardwareStatisticsCache } from './statistics.cache';
 
 const SAMPLE_INTERVAL_MS = 15_000;
 
 /**
- * Publishes machine statistics onto the workspace channels somebody is
- * watching. Watching is the trigger: an unwatched workspace is never sampled,
- * and a parked one reads as nothing and publishes nothing.
+ * emites machine statistics onto the workspace channels somebody is
+ * watching. Watching is the trigger for the periodic pass: an unwatched
+ * workspace is never swept, and a parked one reads as nothing and emites
+ * nothing. A single workspace can still be sampled on demand.
  */
 @Injectable()
 export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy {
@@ -23,7 +24,7 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
     constructor(
         private readonly realtimeGateway: RealtimeGateway,
         private readonly realtimeService: RealtimeService,
-        private readonly hardwareService:          HardwareService,
+        private readonly hardwareStatisticsService: HardwareStatisticsService,
         private readonly lockService:              LockService,
         private readonly hardwareStatisticsCache:  HardwareStatisticsCache,
     ) {}
@@ -32,7 +33,7 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
 
 
     public onModuleInit(): void {
-        this.timer = setInterval(() => void this.sample(), SAMPLE_INTERVAL_MS);
+        this.timer = setInterval(() => void this.sampleAll(), SAMPLE_INTERVAL_MS);
     }
 
 
@@ -45,19 +46,29 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
 
 
 
-    /** Cached when fresh; otherwise this one workspace is sampled and cached now. */
+    /** Cached when fresh; otherwise this one workspace is sampled now. */
     public async get(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
         const cached = this.hardwareStatisticsCache.get(workspaceId);
 
         if (cached)
             return cached;
 
-        const statistics = await this.hardwareService.getStatisticsForWorkspace(workspaceId);
+        return this.sample(workspaceId);
+    }
+
+
+
+
+
+    public async sample(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
+        const statistics = await this.hardwareStatisticsService.getStatistics(workspaceId);
 
         if (!statistics)
             return null;
 
-        this.hardwareStatisticsCache.setBatch([[workspaceId, statistics]]);
+        this.emit(workspaceId, statistics);
+
+        this.hardwareStatisticsCache.set(workspaceId, statistics);
 
         return statistics;
     }
@@ -65,7 +76,7 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
 
 
 
-    private async sample(): Promise<void> {
+    private async sampleAll(): Promise<void> {
         const readings: Array<[Workspace.Id, Workspace.HardwareStatistics]> = [];
 
         for (const workspaceId of this.realtimeGateway.getSubscribedWorkspaceIds()) {
@@ -77,26 +88,34 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
                 continue;
 
             try {
-                const statistics = await this.hardwareService.getStatisticsForWorkspace(workspaceId);
+                const statistics = await this.hardwareStatisticsService.getStatistics(workspaceId);
 
                 if (!statistics)
                     continue;
 
                 readings.push([workspaceId, statistics]);
 
-                const channel = Workspace.Event.getChannel(workspaceId);
-
-                this.realtimeService.publish(channel, {
-                    ...Workspace.Event.create('hardware:statistics', { statistics }),
-                    channel,
-                    workspaceId,
-                });
+                this.emit(workspaceId, statistics);
             }
             catch (error) {
                 this.logger.warn(`Sampling ${workspaceId} failed: ${(error as Error).message}`);
             }
         }
 
+        // One replication message for the whole sweep, not one per workspace.
         this.hardwareStatisticsCache.setBatch(readings);
+    }
+
+
+
+
+    private emit(workspaceId: Workspace.Id, statistics: Workspace.HardwareStatistics): void {
+        const channel = Workspace.Event.getChannel(workspaceId);
+
+        this.realtimeService.publish(channel, {
+            ...Workspace.Event.create('hardware:statistics', { statistics }),
+            channel,
+            workspaceId,
+        });
     }
 }

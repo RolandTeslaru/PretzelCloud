@@ -35,28 +35,27 @@ export class WorkspaceService {
     private readonly logger = new Logger(WorkspaceService.name);
 
     constructor(
-        private readonly provisioningService: ProvisioningService,
-        private readonly hardwareService:     HardwareService,
-        private readonly hostnameService:     HostnameService,
+        private readonly provisioning:        ProvisioningService,
+        private readonly hardware:            HardwareService,
+        private readonly hostname:            HostnameService,
         private readonly siloRouter:          Router,
-        private readonly realtimeService:     RealtimeService,
-        private readonly entitlementService:  EntitlementService,
+        private readonly realtime:            RealtimeService,
+        private readonly entitlement:         EntitlementService,
         private readonly workspaceRepository: WorkspaceRepository,
         private readonly userRepository:      UserRepository,
-        private readonly permissionService:   PermissionService,
-        private readonly listingService:      ListingService,
+        private readonly permission:          PermissionService,
+        private readonly listing:             ListingService,
         @Inject(forwardRef(() => BillingService))
-        private readonly billingService:      BillingService,
+        private readonly billing:             BillingService,
         private readonly planRegistry:        PlanRegistry,
-        private readonly releaseService:      ReleaseService,
-        private readonly lockService:         LockService,
-    ) {}
+        private readonly release:             ReleaseService,
+        ) {}
 
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
     private emit(workspaceId: Workspace.Id, event: Workspace.Event.Unstamped): void {
         const channel = Workspace.Event.getChannel(workspaceId);
 
-        this.realtimeService.publish(channel, { ...event, channel, workspaceId });
+        this.realtime.publish(channel, { ...event, channel, workspaceId });
     }
 
 
@@ -75,7 +74,7 @@ export class WorkspaceService {
         void (async () => {
             for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
                 try {
-                    await this.provisioningService.provision(id, owner, Plan.DEFAULT_PLAN_ID);
+                    await this.provisioning.provision(id, owner, Plan.DEFAULT_PLAN_ID);
 
                     // A probe before now cached the absence.
                     this.siloRouter.invalidate(id);
@@ -122,7 +121,7 @@ export class WorkspaceService {
      */
     private async abandonCreation(id: Workspace.Id): Promise<void> {
         try {
-            await this.provisioningService.deprovision(id);
+            await this.provisioning.deprovision(id);
 
             this.siloRouter.invalidate(id);
         }
@@ -136,15 +135,15 @@ export class WorkspaceService {
     }
 
     public async list(principal: Principal.User): Promise<Workspace[]> {
-        const workspaces = await this.permissionService.getWorkspacesForMember(principal);
+        const workspaces = await this.permission.getWorkspacesForMember(principal);
 
         // Filled here rather than mapped: the release is the fleet's fact, on its own credential.
-        const releaseInfoByWorkspaceId = await this.releaseService.getInfoForWorkspaces(workspaces.map((workspace) => workspace.id));
+        const releaseInfoByWorkspaceId = await this.release.getInfoForWorkspaces(workspaces.map((workspace) => workspace.id));
 
         return workspaces.map((workspace) => {
-            const release = releaseInfoByWorkspaceId.get(workspace.id);
+            const info = releaseInfoByWorkspaceId.get(workspace.id);
 
-            return { ...workspace, releaseId: release?.id ?? null, releaseName: release?.name ?? null };
+            return { ...workspace, releaseId: info?.id ?? null, releaseName: info?.name ?? null };
         });
     }
 
@@ -175,7 +174,7 @@ export class WorkspaceService {
             throw error;
         }
 
-        await this.hostnameService.setCustom(workspace.id, subdomain);
+        await this.hostname.setCustom(workspace.id, subdomain);
 
         this.siloRouter.invalidate(workspace.id, [workspace.subdomain, subdomain]);
     }
@@ -189,7 +188,7 @@ export class WorkspaceService {
      * is coming.
      */
     public wakeWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardwareService.startWorker(workspaceId);
+        return this.hardware.lifecycle.startWorker(workspaceId);
     }
 
 
@@ -197,7 +196,7 @@ export class WorkspaceService {
 
     /** Stops the worker once its backend reports the queue has been quiet. */
     public sleepWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardwareService.stopWorker(workspaceId);
+        return this.hardware.lifecycle.stopWorker(workspaceId);
     }
 
 
@@ -229,7 +228,7 @@ export class WorkspaceService {
         const isWakeable = Workspace.Lifecycle.isWakeable(lifecycleState)
 
         // Already up: the cached address may still say otherwise.
-        if (lifecycleState === 'running' || (isWakeable && await this.hardwareService.isServing(workspaceId))) {
+        if (lifecycleState === 'running' || (isWakeable && await this.hardware.state.isServing(workspaceId))) {
             this.siloRouter.invalidateAddress(workspaceId);
 
             return;
@@ -254,7 +253,7 @@ export class WorkspaceService {
 
         // Not a transition: `stop` would land it on `stopped`, and which of the
         // two it is decides who may start it again.
-        await this.hardwareService.stopAll(workspaceId);
+        await this.hardware.lifecycle.stopAll(workspaceId);
     }
 
 
@@ -293,7 +292,7 @@ export class WorkspaceService {
         // Quiet: the state announced is `sleeping` below, not the `stopped` a stop lands on.
         await this.stop(workspaceId, { emitNoEvents: true });
 
-        await this.hardwareService.destroyCompute(workspaceId);
+        await this.hardware.destroyCompute(workspaceId);
 
         await this.setLifecycleState(workspaceId, 'sleeping');
 
@@ -302,7 +301,7 @@ export class WorkspaceService {
 
     /** Rebuilds reclaimed machines. Data was never on them, so this is a slow start. */
     private async ensureCompute(workspaceId: Workspace.Id): Promise<void> {
-        if (await this.hardwareService.hasMachines(workspaceId))
+        if (await this.hardware.state.hasMachines(workspaceId))
             return;
 
         const row = await this.workspaceRepository.getOwnerAndPlanIdForWorkspace(Principal.SELF, workspaceId);
@@ -315,7 +314,7 @@ export class WorkspaceService {
         const ownerId = row.owner_id as User.Id
         const planId  = row.plan_id as Plan.Id
 
-        await this.provisioningService.rebuild(workspaceId, ownerId, planId);
+        await this.provisioning.rebuild(workspaceId, ownerId, planId);
     }
 
 
@@ -359,16 +358,16 @@ export class WorkspaceService {
 
         try {
             switch (action) {
-                case 'start':   await this.hardwareService.startBackend(workspaceId);   break;
-                case 'stop':    await this.hardwareService.stopAll(workspaceId);        break;
-                case 'suspend': await this.hardwareService.suspendBackend(workspaceId); break;
-                case 'restart': await this.hardwareService.restartAll(workspaceId);     break;
+                case 'start':   await this.hardware.lifecycle.startBackend(workspaceId);   break;
+                case 'stop':    await this.hardware.lifecycle.stopAll(workspaceId);        break;
+                case 'suspend': await this.hardware.lifecycle.suspendBackend(workspaceId); break;
+                case 'restart': await this.hardware.lifecycle.restartAll(workspaceId);     break;
             }
             // Recorded only once it answers: an action that brings a workspace up
             // is not done when the machines are told, and a row saying `running`
             // in the meantime is one the siloRouter forwards into.
             if (action === 'start' || action === 'restart')
-                await this.hardwareService.awaitHealthy(workspaceId);
+                await this.hardware.lifecycle.awaitHealthy(workspaceId);
 
             this.siloRouter.invalidate(workspaceId);
 
@@ -411,7 +410,7 @@ export class WorkspaceService {
             // Down for the rebuild: stopped first so executions end and pools close.
             await this.stop(workspaceId, { emitNoEvents: true });
 
-            await this.provisioningService.rebuild(workspaceId, ownerId, planId);
+            await this.provisioning.rebuild(workspaceId, ownerId, planId);
 
             await this.start(workspaceId, { emitNoEvents: true });
         }
@@ -442,12 +441,12 @@ export class WorkspaceService {
     @Operation()
     public async updateToRelease(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id, releaseId: Fleet.Release.Id): Promise<void> {
         // Fetched before pinning: a release that does not exist is refused here.
-        const release = await this.releaseService.getById(releaseId);
+        const target = await this.release.getById(releaseId);
 
-        this.emit(workspaceId, createEvent('update:started', { releaseId: release.id, releaseName: release.name }));
+        this.emit(workspaceId, createEvent('update:started', { releaseId: target.id, releaseName: target.name }));
 
         try {
-            await this.hardwareService.setRelease(workspaceId, release.id);
+            await this.hardware.setRelease(workspaceId, target.id);
 
             // Down for the swap: stopped first so executions end and pools close.
             await this.stop(workspaceId, { emitNoEvents: true });
@@ -457,13 +456,13 @@ export class WorkspaceService {
 
             this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'updating' }));
 
-            await this.provisioningService.rebuild(workspaceId, ownerId, planId);
+            await this.provisioning.rebuild(workspaceId, ownerId, planId);
 
             await this.start(workspaceId, { emitNoEvents: true });
         }
         catch (error) {
             this.emit(workspaceId, createEvent('update:failed', {
-                releaseName: release.name,
+                releaseName: target.name,
                 reason:      error instanceof Error ? error.message : String(error),
             }));
 
@@ -485,7 +484,7 @@ export class WorkspaceService {
 
         this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'running' }));
 
-        this.emit(workspaceId, createEvent('update:succeeded', { releaseId: release.id, releaseName: release.name }));
+        this.emit(workspaceId, createEvent('update:succeeded', { releaseId: target.id, releaseName: target.name }));
     }
 
 
@@ -499,13 +498,13 @@ export class WorkspaceService {
         this.emit(workspaceId, createEvent('plan:changed', { plan: this.planRegistry.get(planId) }));
 
         // A bigger plan takes effect now, not at the next re-check.
-        this.entitlementService.unlock(workspaceId);
+        this.entitlement.unlock(workspaceId);
 
         // Down for the conversion, so executions end and pools close.
         await this.stop(workspaceId);
 
         try {
-            await this.provisioningService.convert(workspaceId, ownerId, planId);
+            await this.provisioning.convert(workspaceId, ownerId, planId);
         }
         catch (error) {
             // Only when its machines could not be put back. A conversion that
@@ -531,13 +530,13 @@ export class WorkspaceService {
     public async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
         const { subdomain } = await this.get(workspaceId);
 
-        await this.billingService.cancelSubscription(workspaceId);
+        await this.billing.cancelSubscription(workspaceId);
 
-        this.permissionService.invalidateCloudToken(workspaceId);
+        this.permission.invalidateCloudToken(workspaceId);
 
-        await this.provisioningService.deprovision(workspaceId);
+        await this.provisioning.deprovision(workspaceId);
 
-        await this.listingService.deleteAllForWorkspace(workspaceId);
+        await this.listing.deleteAllForWorkspace(workspaceId);
 
         await this.workspaceRepository.delete(principal, workspaceId);
 

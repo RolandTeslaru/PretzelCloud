@@ -11,7 +11,7 @@ import { Throttle } from '@nestjs/throttler';
 import { RefuseIfBusy } from '@/decorators/operation';
 import { LockService } from '@/services/Locking/lock.service';
 import { WorkspaceService } from './workspace.service';
-import { HardwareStatisticsSampler } from '@/services/Fleet/Hardware/hardware-statistics.sampler';
+import { HardwareStatisticsSampler } from '@/services/Fleet/Hardware/statistics.sampler';
 
 const API = Workspace.API;
 

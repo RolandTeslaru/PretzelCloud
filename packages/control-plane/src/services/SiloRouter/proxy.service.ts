@@ -511,7 +511,7 @@ export class ProxyService implements OnModuleDestroy {
         this.logger.log(`Waking ${workspaceId}`);
 
         try {
-            let address = await this.hardwareService.wakeBackend(workspaceId);
+            let address = await this.hardwareService.lifecycle.wakeBackend(workspaceId);
 
             // No machine at all: it was reclaimed, and only a rebuild brings it back.
             if (!address) {
