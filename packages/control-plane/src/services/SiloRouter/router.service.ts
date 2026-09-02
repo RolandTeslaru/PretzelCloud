@@ -230,10 +230,13 @@ export class Router {
         if (!entry)
             return null;
 
-        const [lifecycle, backendAddress] = await Promise.all([
-            this.workspaceLifecycleCache.get(entry.workspaceId),
-            this.targetCache.get(entry.workspaceId),
-        ]);
+        const lifecycle = await this.workspaceLifecycleCache.get(entry.workspaceId);
+
+        // Asleep has nothing to look up; the wake sets the address itself.
+        let backendAddress: URL | null = null;
+
+        if (lifecycle.lifecycleState === 'running')
+            backendAddress = await this.targetCache.get(entry.workspaceId);
 
         this.siloActivityService.noteActivity(entry.workspaceId);
 

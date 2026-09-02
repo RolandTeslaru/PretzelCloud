@@ -576,9 +576,8 @@ export class ProxyService implements OnModuleDestroy {
             else {
                 this.router.setAddress(workspaceId, address);
 
-                // Not awaited: the portal card, not the request, is what reads it.
-                void this.workspaceService.markRunning(workspaceId)
-                    .catch((error) => this.logger.warn(`Could not mark ${workspaceId} running: ${error instanceof Error ? error.message : error}`));
+                // Awaited: the next request reads the lifecycle before the address, and must see running.
+                await this.workspaceService.markRunning(workspaceId);
             }
 
             return address;
