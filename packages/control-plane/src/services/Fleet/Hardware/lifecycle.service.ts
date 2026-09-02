@@ -7,6 +7,7 @@ import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineService } from '../Machine/machine.service';
 import { MachineRepository } from '../Machine/machine.repository';
 import { HardwareStateService } from './state.service';
+import { HardwareStatisticsSampler } from './statistics.sampler';
 
 // How long a woken machine is given to open its port, and how often it is asked.
 const WAKE_TIMEOUT_MS = 60_000;
@@ -51,6 +52,7 @@ export class HardwareLifecycleService {
         private readonly machineService:    MachineService,
         private readonly machineRepository: MachineRepository,
         private readonly stateService:      HardwareStateService,
+        private readonly statisticsSampler: HardwareStatisticsSampler,
     ) {}
 
 
@@ -91,6 +93,9 @@ export class HardwareLifecycleService {
 
         // The idle sweep reads this; a machine left reading `suspended` is never put back to sleep.
         await this.machineRepository.setState(Principal.SELF, backend.id, 'running');
+
+        // The only transition that writes a state without going through `refreshAll`.
+        this.statisticsSampler.invalidate(workspaceId);
 
         return address;
     }

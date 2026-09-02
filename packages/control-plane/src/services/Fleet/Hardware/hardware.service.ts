@@ -12,6 +12,7 @@ import { ReleaseService } from '../Release/release.service';
 import { HardwareLifecycleService } from './lifecycle.service';
 import { HardwareStateService } from './state.service';
 import { HardwareStatisticsService } from './statistics.service';
+import { HardwareStatisticsSampler } from './statistics.sampler';
 
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
 
@@ -46,6 +47,7 @@ export class HardwareService {
         private readonly machineRepository: MachineRepository,
         private readonly clusterService:    ClusterService,
         private readonly releaseService:    ReleaseService,
+        private readonly statisticsSampler: HardwareStatisticsSampler,
 
         public readonly lifecycle:  HardwareLifecycleService,
         public readonly state:      HardwareStateService,
@@ -136,6 +138,9 @@ export class HardwareService {
             if (role === 'backend')
                 backendHost = await driver.getInternalHostForMachine(handle.resourceId);
         }
+
+        // New machines carry new ids, so a reading from before this keys machines that are gone.
+        this.statisticsSampler.invalidate(workspaceId);
     }
 
 
@@ -263,6 +268,8 @@ export class HardwareService {
         await driver.destroyScope(workspaceId);
 
         await this.machineRepository.deleteFor(Principal.SELF, workspaceId);
+
+        this.statisticsSampler.invalidate(workspaceId);
 
         this.logger.log(`Destroyed the machines of ${workspaceId}`);
     }

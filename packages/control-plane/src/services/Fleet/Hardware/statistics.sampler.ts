@@ -4,7 +4,7 @@ import { LockService } from '@/services/Locking/lock.service';
 import { RealtimeGateway } from '@/services/Realtime/realtime.gateway';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 import { HardwareStatisticsService } from './statistics.service';
-import { HardwareStatisticsCache } from './statistics.cache';
+import { SampleCache } from './sample.cache';
 
 const SAMPLE_INTERVAL_MS = 15_000;
 
@@ -26,7 +26,7 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
         private readonly realtimeService: RealtimeService,
         private readonly hardwareStatisticsService: HardwareStatisticsService,
         private readonly lockService:              LockService,
-        private readonly hardwareStatisticsCache:  HardwareStatisticsCache,
+        private readonly sampleCache:  SampleCache,
     ) {}
 
 
@@ -48,7 +48,7 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
 
     /** Cached when fresh; otherwise this one workspace is sampled now. */
     public async get(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
-        const cached = this.hardwareStatisticsCache.get(workspaceId);
+        const cached = this.sampleCache.get(workspaceId);
 
         if (cached)
             return cached;
@@ -68,9 +68,20 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
 
         this.emit(workspaceId, statistics);
 
-        this.hardwareStatisticsCache.set(workspaceId, statistics);
+        this.sampleCache.set(workspaceId, statistics);
 
         return statistics;
+    }
+
+
+
+
+    /**
+     * Forgets what was read, without reading again. The next `get` samples
+     * afresh; a watcher is told on the sweep after this one.
+     */
+    public invalidate(workspaceId: Workspace.Id): void {
+        this.sampleCache.invalidate(workspaceId);
     }
 
 
@@ -103,7 +114,7 @@ export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy 
         }
 
         // One replication message for the whole sweep, not one per workspace.
-        this.hardwareStatisticsCache.setBatch(readings);
+        this.sampleCache.setBatch(readings);
     }
 
 

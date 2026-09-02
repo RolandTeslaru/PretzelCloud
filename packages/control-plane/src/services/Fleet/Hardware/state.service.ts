@@ -5,6 +5,7 @@ import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineService } from '../Machine/machine.service';
 import { MachineRepository } from '../Machine/machine.repository';
 import { HardwareRepository } from './hardware.repository';
+import { HardwareStatisticsSampler } from './statistics.sampler';
 
 /** What a workspace's compute is doing right now, and the writes that record a reading. */
 @Injectable()
@@ -15,6 +16,7 @@ export class HardwareStateService {
         private readonly driverRegistry:    DriverRegistry,
         private readonly machineService:    MachineService,
         private readonly machineRepository: MachineRepository,
+        private readonly statisticsSampler: HardwareStatisticsSampler,
     ) {}
 
 
@@ -112,6 +114,10 @@ export class HardwareStateService {
 
             await this.machineService.refreshState(driver, machine);
         }
+
+        // The states just moved; a reading taken before them describes machines
+        // that no longer run that way.
+        this.statisticsSampler.invalidate(workspaceId);
     }
 
 
