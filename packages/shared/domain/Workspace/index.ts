@@ -301,6 +301,30 @@ export namespace Workspace {
             export type  Failed = z.infer<typeof Failed>
         }
 
+        export namespace Update {
+
+            export const Started = Base.extend({
+                type:        z.literal('update:started'),
+                releaseId:   Fleet.Release.Id,
+                releaseName: Fleet.Release.Name,
+            })
+
+            export const Succeeded = Base.extend({
+                type:        z.literal('update:succeeded'),
+                releaseName: Fleet.Release.Name,
+            })
+
+            export const Failed = Base.extend({
+                type:        z.literal('update:failed'),
+                releaseName: Fleet.Release.Name,
+                reason:      z.string(),
+            })
+
+            export type  Started = z.infer<typeof Started>
+            export type  Succeeded = z.infer<typeof Succeeded>
+            export type  Failed = z.infer<typeof Failed>
+        }
+
         export namespace Transition {
 
             export const Started = Base.extend({
@@ -355,6 +379,9 @@ export namespace Workspace {
             Rebuild.Started,
             Rebuild.Succeeded,
             Rebuild.Failed,
+            Update.Started,
+            Update.Succeeded,
+            Update.Failed,
             Transition.Started,
             Transition.Failed,
         ])

@@ -75,8 +75,7 @@ export class WorkspaceService {
                 try {
                     await this.provisioningService.provision(id, owner, Plan.DEFAULT_PLAN_ID);
 
-                    // Its hostnames were unknown until a moment ago, and a probe in
-                    // that window would have cached the absence.
+                    // A probe before now cached the absence.
                     this.siloRouter.invalidate(id);
 
                     return this.setLifecycleState(id, 'running');
@@ -93,6 +92,11 @@ export class WorkspaceService {
         return workspace;
     }
 
+    // What the router says after it woke a machine itself.
+    public async markRunning(workspaceId: Workspace.Id): Promise<void> {
+        await this.setLifecycleState(workspaceId, 'running');
+    }
+
     /** Writes the state and tells anyone watching. */
     private async setLifecycleState(
         id:             Workspace.Id,
@@ -100,6 +104,8 @@ export class WorkspaceService {
         { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
     ): Promise<Workspace> {
         const workspace = await this.workspaceRepository.setLifecycleState(Principal.SELF, id, lifecycleState);
+
+        this.siloRouter.invalidateLifecycle(id);
 
         if (!emitNoEvents)
             this.emit(id, Workspace.Event.create('lifecycle:changed', { lifecycleState }));
@@ -218,14 +224,17 @@ export class WorkspaceService {
     private async wakeAndAwait(workspaceId: Workspace.Id): Promise<void> {
         const { lifecycleState } = await this.get(workspaceId);
 
-        if (lifecycleState === 'running')
+        const isWakeable = Workspace.Lifecycle.isWakeable(lifecycleState)
+
+        // Already up: the cached address may still say otherwise.
+        if (lifecycleState === 'running' || (isWakeable && await this.hardwareService.isServing(workspaceId))) {
+            this.siloRouter.invalidateAddress(workspaceId);
+
             return;
+        }
 
         if (!Workspace.Lifecycle.isWakeable(lifecycleState))
             throw new ConflictException(`This workspace is ${lifecycleState}`);
-
-        if (await this.hardwareService.isServing(workspaceId))
-            return;
 
         await this.start(workspaceId);
     }
@@ -393,8 +402,9 @@ export class WorkspaceService {
      * itself and the transitions inside it stay quiet.
      */
     @Operation()
-    public async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        this.emit(workspaceId, Workspace.Event.create('rebuild:started', {}));
+    public async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
+        if (!options.emitNoEvents)
+            this.emit(workspaceId, Workspace.Event.create('rebuild:started', {}));
 
         try {
             // Down for the rebuild: stopped first so executions end and pools close.
@@ -405,9 +415,10 @@ export class WorkspaceService {
             await this.start(workspaceId, { emitNoEvents: true });
         }
         catch (error) {
-            this.emit(workspaceId, Workspace.Event.create('rebuild:failed', {
-                reason: error instanceof Error ? error.message : String(error),
-            }));
+            if (!options.emitNoEvents)
+                this.emit(workspaceId, Workspace.Event.create('rebuild:failed', {
+                    reason: error instanceof Error ? error.message : String(error),
+                }));
 
             // Wherever the halves left it, which they wrote and did not say.
             const { lifecycleState } = await this.get(workspaceId);
@@ -421,7 +432,8 @@ export class WorkspaceService {
 
         this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'running' }));
 
-        this.emit(workspaceId, Workspace.Event.create('rebuild:succeeded', {}));
+        if (!options.emitNoEvents)
+            this.emit(workspaceId, Workspace.Event.create('rebuild:succeeded', {}));
     }
 
 
@@ -433,9 +445,24 @@ export class WorkspaceService {
         // Fetched before pinning: a release that does not exist is refused here.
         const release = await this.releaseService.getById(releaseId);
 
-        await this.hardwareService.setRelease(workspaceId, release.id);
+        this.emit(workspaceId, Workspace.Event.create('update:started', { releaseId: release.id, releaseName: release.name }));
 
-        await this.rebuild(workspaceId, ownerId, planId);
+        try {
+            await this.hardwareService.setRelease(workspaceId, release.id);
+
+            // Quiet: the update is doing the announcing.
+            await this.rebuild(workspaceId, ownerId, planId, { emitNoEvents: true });
+        }
+        catch (error) {
+            this.emit(workspaceId, Workspace.Event.create('update:failed', {
+                releaseName: release.name,
+                reason:      error instanceof Error ? error.message : String(error),
+            }));
+
+            throw error;
+        }
+
+        this.emit(workspaceId, Workspace.Event.create('update:succeeded', { releaseName: release.name }));
     }
 
 
@@ -479,19 +506,20 @@ export class WorkspaceService {
 
     @Operation(1)
     public async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
+        const { subdomain } = await this.get(workspaceId);
+
         await this.billingService.cancelSubscription(workspaceId);
 
         this.permissionService.invalidateCloudToken(workspaceId);
 
         await this.provisioningService.deprovision(workspaceId);
 
-        // Before the row goes: a cached route would otherwise keep answering for
-        // a machine that no longer exists.
-        this.siloRouter.invalidate(workspaceId);
-
         await this.listingService.deleteAllForWorkspace(workspaceId);
 
         await this.workspaceRepository.delete(principal, workspaceId);
+
+        // After the row goes, so the refill finds nothing.
+        this.siloRouter.invalidate(workspaceId, [subdomain]);
 
         this.emit(workspaceId, Workspace.Event.create('destroyed'));
     }

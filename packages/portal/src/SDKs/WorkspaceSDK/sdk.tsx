@@ -26,6 +26,7 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
             plans: {},
             transitions: {},
             rebuilding: {},
+            updating: {},
             provisioning: {},
             hardwareStatistics: {},
             selectors: workspaceSelectors,
@@ -118,6 +119,8 @@ export namespace WorkspaceSDK {
         plans: Record<Plan.Id, Plan>
         transitions: Partial<Record<Workspace.Id, Workspace.Lifecycle.Action>>
         rebuilding: Partial<Record<Workspace.Id, boolean>>
+        /** The release name a workspace is moving to, while it moves. */
+        updating: Partial<Record<Workspace.Id, string>>
         provisioning: Partial<Record<Workspace.Id, Workspace.Provisioning.Step>>
         /** Streamed over the workspace channel while the machines are running. */
         hardwareStatistics: Partial<Record<Workspace.Id, Workspace.HardwareStatistics>>

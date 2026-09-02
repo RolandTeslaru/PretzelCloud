@@ -225,9 +225,8 @@ export class FlyDriver extends AbstractHardwareDriver {
 
         const state = this.toState(machine.state);
 
-        // A stopped machine has no address; a suspended one answers as soon as
-        // it is resumed, and the caller decides whether to.
-        if (state === 'stopped' || state === 'destroyed')
+        // Only a running machine answers. Forwarding into a suspended one hangs.
+        if (state !== 'running')
             return null;
 
         return new URL(`http://${resourceId}.vm.${this.app}.internal:${SERVICE_PORT}`);

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { connect } from 'node:net';
 import { Fleet, Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
 import { FleetDB } from '@/db/fleet';
@@ -30,6 +31,40 @@ export class TopologyNotRestored extends Error {
 }
 
 /** A workspace's compute as one thing; state, health and lifecycle collapse over its machines. */
+// How long a woken machine is given to open its port, and how often it is asked.
+const WAKE_TIMEOUT_MS = 60_000;
+const WAKE_PROBE_MS   = 250;
+const CONNECT_TIMEOUT_MS = 1_000;
+
+const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+// One TCP connect, then hang up. True if the port accepted.
+const canConnect = (address: URL): Promise<boolean> =>
+    new Promise((resolve) => {
+        const port = Number(address.port);
+
+        const socket = connect({ host: address.hostname, port });
+
+        socket.setTimeout(CONNECT_TIMEOUT_MS);
+
+        socket.once('connect', () => {
+            socket.destroy();
+
+            resolve(true);
+        });
+
+        socket.once('timeout', () => {
+            socket.destroy();
+
+            resolve(false);
+        });
+
+        socket.once('error', () => {
+            resolve(false);
+        });
+    });
+
 @Injectable()
 export class HardwareService {
 
@@ -299,6 +334,50 @@ export class HardwareService {
 
 
     /** Starts the machine that answers HTTP; the worker is demand-driven. */
+    // Starts the backend and waits until its port accepts a connection. Null when there is no backend to start.
+    async wakeBackend(workspaceId: Workspace.Id): Promise<URL | null> {
+        const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
+
+        if (!backend)
+            return null;
+
+        const driver = this.hardwareDriverRegistry.getDriverForKind(backend.driver);
+
+        if (backend.state === 'suspended')
+            await this.machineService.resume(driver, backend.resourceId);
+        else if (backend.state === 'stopped')
+            await this.machineService.start(driver, backend.resourceId);
+
+        const address = await this.awaitReachable(driver, backend.resourceId);
+
+        // The idle sweep reads this; a machine left reading `suspended` is never put back to sleep.
+        await this.machineRepository.setState(Principal.SELF, backend.id, 'running');
+
+        return address;
+    }
+
+
+
+
+    // The port opening is the health check: it is exactly what the forward is about to do.
+    private async awaitReachable(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<URL> {
+        const deadline = Date.now() + WAKE_TIMEOUT_MS;
+
+        let address: URL | null = null;
+
+        while (Date.now() < deadline) {
+            if (!address)
+                address = await this.machineService.address(driver, resourceId);
+
+            if (address && await canConnect(address))
+                return address;
+
+            await sleep(WAKE_PROBE_MS);
+        }
+
+        throw new Error(`Machine ${resourceId} did not open its port within ${WAKE_TIMEOUT_MS}ms`);
+    }
+
     async startBackend(workspaceId: Workspace.Id): Promise<void> {
         const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
 
@@ -519,7 +598,14 @@ export class HardwareService {
     async getBackendAddress(workspaceId: Workspace.Id): Promise<URL | null> {
         const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
 
-        return backend ? this.machineService.address(this.hardwareDriverRegistry.getDriverForKind(backend.driver), backend.resourceId) : null;
+        if(!backend)
+            return null
+
+        const driverKind = this.hardwareDriverRegistry.getDriverForKind(backend.driver)
+        
+        const address = this.machineService.address(driverKind, backend.resourceId)
+
+        return address
     }
 
 

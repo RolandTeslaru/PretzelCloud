@@ -2,41 +2,155 @@ import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import type { IncomingMessage } from 'node:http';
 import { SiloActivityService } from '@/services/Workspace/silo-activity.service';
-import { HostCache } from './host.cache';
+import { HostBelongingCache } from './cache/host-belonging.cache';
+import { WorkspaceLifecycleCache } from './cache/workspace-lifecycle.cache';
+import { TargetCache } from './cache/target.cache';
 
-/** Which machine answers a Host header, and what a path is for. */
+const matchesPrefix = (url: string | undefined, prefixes: readonly string[]): boolean =>
+    prefixes.some((prefix) =>
+        url === prefix || url?.startsWith(`${prefix}/`) || url?.startsWith(`${prefix}?`));
+
+// Host header to a machine; path to a kind.
 @Injectable()
 export class Router {
 
     private readonly logger = new Logger(Router.name);
 
-    constructor(
+    public constructor(
         @Inject(forwardRef(() => SiloActivityService))
         private readonly siloActivityService: SiloActivityService,
 
-        private readonly hostCache: HostCache,
+        private readonly hostBelongingCache:      HostBelongingCache,
+        private readonly workspaceLifecycleCache: WorkspaceLifecycleCache,
+        private readonly targetCache:             TargetCache,
     ) {}
 
-    /** Answered by the control plane even on a workspace hostname. */
-    static readonly CONTROL_PLANE_PREFIXES = ['/api/session'];
 
-    /** All the hooks hostname serves; the app hostname serves them too. */
-    static readonly WEBHOOK_PREFIXES = ['/webhook', '/webhook-test'];
 
-    /** Paths a workspace answers. Everything else is the editor. */
 
-    /**
-     * Starting an execution, as opposed to asking about one. `internal/run` is
-     * a workflow calling another and is already paid for by the outer call;
-     * `webhook-test` signals a run that is already going rather than making one.
-     */
-    static readonly METERED = [
+    // Each drops, then refills now rather than on the next request.
+    public invalidateLifecycle(workspaceId: Workspace.Id): void {
+        this.workspaceLifecycleCache.invalidate(workspaceId);
+
+        this.workspaceLifecycleCache.get(workspaceId)
+            .catch((error) => this.logRefillFailure(workspaceId, error));
+    }
+
+
+
+
+    // For a caller that already knows it, so nothing is looked up again.
+    public setAddress(workspaceId: Workspace.Id, address: URL | null): void {
+        this.targetCache.set(workspaceId, address);
+    }
+
+
+
+
+    // Resolves to the fresh address. Void it to not wait.
+    public invalidateAddress(workspaceId: Workspace.Id): Promise<URL | null> {
+        this.targetCache.invalidate(workspaceId);
+
+        return this.targetCache.get(workspaceId)
+            .catch((error) => {
+                this.logRefillFailure(workspaceId, error);
+
+                return null;
+            });
+    }
+
+
+
+
+    // Pass a custom subdomain's old and new values.
+    public invalidate(workspaceId: Workspace.Id, subdomains: (Workspace.Subdomain | null)[] = []): void {
+        const hosts = Router.getHostnames(workspaceId, subdomains);
+
+        for (const host of hosts)
+            this.hostBelongingCache.invalidate(host);
+
+        this.workspaceLifecycleCache.invalidate(workspaceId);
+        this.targetCache.invalidate(workspaceId);
+
+        this.warm(workspaceId, subdomains);
+    }
+
+
+
+
+    // Fills whatever is not already cached. Does not drop stale entries; see `invalidate`.
+    public warm(workspaceId: Workspace.Id, subdomains: (Workspace.Subdomain | null)[] = []): void {
+        const hosts = Router.getHostnames(workspaceId, subdomains);
+
+        const lookups: Promise<unknown>[] = [];
+
+        for (const host of hosts)
+            lookups.push(this.hostBelongingCache.get(host));
+
+        lookups.push(this.workspaceLifecycleCache.get(workspaceId));
+        lookups.push(this.targetCache.get(workspaceId));
+
+        Promise.all(lookups)
+            .catch((error) => this.logRefillFailure(workspaceId, error));
+    }
+
+
+
+
+    // Every hostname a workspace answers at: canonical plus any custom labels, one per kind.
+    private static getHostnames(workspaceId: Workspace.Id, subdomains: (Workspace.Subdomain | null)[]): Fleet.Hostname.Host[] {
+        const labels = [Workspace.Subdomain.canonical(workspaceId), ...subdomains];
+
+        const hostnames: Fleet.Hostname.Host[] = [];
+
+        for (const label of labels) {
+            if (!label)
+                continue;
+
+            for (const { host } of Fleet.Hostname.Host.createAll(label))
+                hostnames.push(host);
+        }
+
+        return hostnames;
+    }
+
+
+
+
+    private logRefillFailure(workspaceId: Workspace.Id, error: unknown): void {
+        const message = error instanceof Error ? error.message : String(error);
+
+        this.logger.warn(`Could not refill ${workspaceId}: ${message}`);
+    }
+
+
+
+
+    public clear(): void {
+        this.hostBelongingCache.clear();
+        this.workspaceLifecycleCache.clear();
+        this.targetCache.clear();
+    }
+
+    public get stats() {
+        return { ...this.hostBelongingCache.stats, lifecycles: this.workspaceLifecycleCache.size, targets: this.targetCache.size };
+    }
+
+    public static readonly CONTROL_PLANE_PREFIXES = ['/api/session'];
+
+    public static readonly WEBHOOK_PREFIXES = ['/webhook', '/webhook-test'];
+
+    // Paths that start an execution. `internal/run` is paid for by the outer call.
+    public static readonly METERED = [
         { method: 'POST', pattern: /^\/api\/execution\/(?!internal\/)[^/]+\/run(?:[?#]|$)/ },
         { method: null,   pattern: /^\/webhook\/[^/]+\/[^/?#]+/ },
     ] as const;
 
     
-    static isMeteredPath(method: string | undefined, url: string | undefined): boolean {
+
+
+
+    public static isMeteredPath(method: string | undefined, url: string | undefined): boolean {
         if (!url)
             return false;
 
@@ -44,21 +158,46 @@ export class Router {
             (route.method === null || route.method === method) && route.pattern.test(url));
     }
 
-    static isControlPlanePath(url: string | undefined): boolean {
-        return Router.matches(url, Router.CONTROL_PLANE_PREFIXES);
+
+
+
+
+    public static isControlPlanePath(url: string | undefined): boolean {
+        return matchesPrefix(url, Router.CONTROL_PLANE_PREFIXES);
     }
 
-    static isWebhookPath(url: string | undefined): boolean {
-        return Router.matches(url, Router.WEBHOOK_PREFIXES);
+
+
+
+
+    // Unset in compose, where nothing shares a port.
+    public static isControlPlaneHost(req: IncomingMessage): boolean {
+        const configured = process.env.CONTROL_PLANE_HOST;
+
+        if (!configured)
+            return false;
+
+        const host = (req.headers.host ?? '').trim().toLowerCase();
+
+        return host === configured.trim().toLowerCase();
     }
 
-    private static matches(url: string | undefined, prefixes: readonly string[]): boolean {
-        return prefixes.some((prefix) =>
-            url === prefix || url?.startsWith(`${prefix}/`) || url?.startsWith(`${prefix}?`));
+
+
+
+    
+    public static isWebhookPath(url: string | undefined): boolean {
+        return matchesPrefix(url, Router.WEBHOOK_PREFIXES);
     }
 
-    /** Lower-cased, port kept, parsed into the type the registrar writes. */
-    private normalize(host: string | undefined): Fleet.Hostname.Host | null {
+
+
+
+
+    // Lower-cased, port kept.
+    private static parseHostname(req: IncomingMessage): Fleet.Hostname.Host | null {
+        const host = req.headers.host;
+
         if (!host)
             return null;
 
@@ -67,61 +206,54 @@ export class Router {
         return parsed.success ? parsed.data : null;
     }
 
-    /**
-     * Reads the Host header and nothing else — never the path or cookies.
-     * Resolving is also what records the workspace as used, so no caller has to remember to.
-     */
-    async resolve(req: IncomingMessage): Promise<Router.Resolution | null> {
-        const host = this.normalize(req.headers.host);
 
-        if (!host)
+
+
+
+    public async getHostBelonging(req: IncomingMessage): Promise<HostBelongingCache.Entry | null> {
+        const hostname = Router.parseHostname(req);
+
+        if (!hostname)
             return null;
 
-        const resolution = await this.hostCache.get(host);
+        return this.hostBelongingCache.get(hostname);
+    }
 
-        if (!resolution)
+
+
+
+
+    // Host header only. Also records activity.
+    public async getTicket(req: IncomingMessage): Promise<Router.SiloTicket | null> {
+        const entry = await this.getHostBelonging(req);
+
+        if (!entry)
             return null;
 
-        this.siloActivityService.noteActivity(resolution.workspaceId);
+        const [lifecycle, backendAddress] = await Promise.all([
+            this.workspaceLifecycleCache.get(entry.workspaceId),
+            this.targetCache.get(entry.workspaceId),
+        ]);
 
-        return resolution;
-    }
+        this.siloActivityService.noteActivity(entry.workspaceId);
 
-    /** Canonical names are derived; pass a custom subdomain's old and new values. */
-    invalidate(workspaceId: Workspace.Id, subdomains: (Workspace.Subdomain | null)[] = []): void {
-        const labels = [Workspace.Subdomain.canonical(workspaceId), ...subdomains];
-
-        for (const label of labels) {
-            if (!label)
-                continue;
-
-            for (const { host } of Fleet.Hostname.Host.createAll(label))
-                this.hostCache.invalidate(host);
-        }
-
-        this.logger.debug(`Invalidated routes for ${workspaceId}`);
-    }
-
-    invalidateAll(): void {
-        this.hostCache.clear();
-    }
-
-    get stats() {
-        return this.hostCache.stats;
+        return { ...entry, ...lifecycle, backendAddress };
     }
 }
 
+
+
+
+
 export namespace Router {
 
-    export type Resolution = {
+    export type SiloTicket = {
         workspaceId:    Workspace.Id;
         kind:           Fleet.Hostname.Kind;
-        /** Stamped on forwarded traffic, so the silo can require it. */
         routerSecret:   string;
-        /** Decides whether traffic may wake it. */
         lifecycleState: Workspace.Lifecycle.State;
         disabledReason: string | null;
-        /** Null when the backend is not serving. */
-        target:         URL | null;
+        // Null when not serving.
+        backendAddress: URL | null;
     };
 }

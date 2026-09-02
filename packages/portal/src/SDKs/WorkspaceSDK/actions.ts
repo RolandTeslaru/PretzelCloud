@@ -151,6 +151,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                     delete s.workspaces[event.workspaceId]
                     delete s.transitions[event.workspaceId]
                     delete s.rebuilding[event.workspaceId]
+                    delete s.updating[event.workspaceId]
                     delete s.provisioning[event.workspaceId]
                     delete s.hardwareStatistics[event.workspaceId]
 
@@ -200,6 +201,25 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                         delete s.provisioning[event.workspaceId]
 
                         NotificationSDK.toast.error(`Could not provision ${card.displayName}`, { description: `Failed at the ${event.step} stage` })
+
+                        break
+
+                    case 'update:started':
+                        s.updating[event.workspaceId] = event.releaseName
+
+                        break
+
+                    case 'update:succeeded':
+                        delete s.updating[event.workspaceId]
+
+                        NotificationSDK.toast.success(`${card.displayName} updated to ${event.releaseName}`)
+
+                        break
+
+                    case 'update:failed':
+                        delete s.updating[event.workspaceId]
+
+                        NotificationSDK.toast.error(`Could not update ${card.displayName} to ${event.releaseName}`, { description: event.reason })
 
                         break
 

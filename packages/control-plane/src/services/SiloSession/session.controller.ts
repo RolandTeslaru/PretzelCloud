@@ -10,7 +10,7 @@ import { SiloTokenIssuer } from './token-issuer.service';
 /**
  * Exchanges a session for a token scoped to one workspace.
  *
- * Which workspace is read from the Host header — the same resolution the proxy
+ * Which workspace is read from the Host header — the same siloTicket the proxy
  * uses, so the editor never has to know its own id. The Host is not the gate:
  * anyone can name any hostname, and the access index decides.
  */
@@ -26,16 +26,16 @@ export class SiloSessionController {
     @UseGuards(UserAuthGuard)
     @HttpCode(200)
     async mint(@AuthenticatedUser() principal: Principal.User, @Req() req: Request) {
-        const resolution = await this.router.resolve(req);
+        const siloTicket = await this.router.getTicket(req);
 
-        if (!resolution)
+        if (!siloTicket)
             throw new NotFoundException('No such workspace');
 
         const member = await PortalDB.asService('check access for token mint', (db) =>
             db
                 .selectFrom('workspace_members')
                 .select('user_id')
-                .where('workspace_id', '=', resolution.workspaceId)
+                .where('workspace_id', '=', siloTicket.workspaceId)
                 .where('user_id', '=', principal.userId)
                 .executeTakeFirst(),
         );
@@ -43,7 +43,7 @@ export class SiloSessionController {
         if (!member)
             throw new ForbiddenException('Not a member of this workspace');
 
-        return this.siloTokenIssuer.mint(principal, resolution.workspaceId);
+        return this.siloTokenIssuer.mint(principal, siloTicket.workspaceId);
     }
 }
 
