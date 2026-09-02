@@ -1,4 +1,4 @@
-import { Plan, Workspace } from '@pretzel-cloud/shared/domain'
+import { Fleet, Plan, Workspace } from '@pretzel-cloud/shared/domain'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { api } from '../api'
 import type { WorkspaceSDKImpl } from './sdk'
@@ -15,8 +15,8 @@ export type _WorkspaceSDKActions_ = {
     suspend:      (workspaceId: Workspace.Id) => Promise<void>
     restart:      (workspaceId: Workspace.Id) => Promise<void>
     rebuild:      (workspaceId: Workspace.Id) => Promise<void>
-    /** Moves the workspace to the newest release; the rebuild events narrate it. */
-    update:       (workspaceId: Workspace.Id) => Promise<void>
+    /** Moves the workspace to the given release; the rebuild events narrate it. */
+    update:       (workspaceId: Workspace.Id, releaseId: Fleet.Release.Id) => Promise<void>
     setPlan:      (workspaceId: Workspace.Id, planId: Plan.Id) => Promise<Workspace>
     applyEvent:   (event: Workspace.Event.Any) => void
     /** The catalogue. Which plan a workspace is on it carries itself. */
@@ -110,7 +110,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
         restart: async (workspaceId) => { await Workspace.API.restart(api, workspaceId) },
         rebuild: async (workspaceId) => { await Workspace.API.rebuild(api, workspaceId) },
 
-        update: async (workspaceId) => { await Workspace.API.update(api, workspaceId) },
+        update: async (workspaceId, releaseId) => { await Workspace.API.update(api, workspaceId, releaseId) },
 
         // The plan decides the topology, so the machines are rebuilt behind
         // this — re-read rather than patching the plan in place.

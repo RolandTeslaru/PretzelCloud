@@ -471,8 +471,16 @@ export namespace Workspace {
         export const restart = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'restart')
         /** Replaces the machines from the current spec; the data is untouched. */
         export const rebuild = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'rebuild')
-        /** Moves the workspace to the newest release, then rebuilds from it. */
-        export const update  = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'update')
+        export namespace Update {
+            export const Request = z.object({ releaseId: Fleet.Release.Id })
+            export type  Request = z.infer<typeof Request>
+        }
+
+        /** Moves the workspace to the given release, then rebuilds from it. */
+        export async function update(api: AxiosInstance, workspaceId: Id, releaseId: Fleet.Release.Id): Promise<Lifecycle.Response> {
+            const { data } = await api.post<Lifecycle.Response>(`/api/workspaces/${workspaceId}/update`, { releaseId })
+            return Lifecycle.Response.parse(data)
+        }
 
         export namespace Destroy {
             export const Response = z.object({})

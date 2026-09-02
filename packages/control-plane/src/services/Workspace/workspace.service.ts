@@ -427,15 +427,13 @@ export class WorkspaceService {
 
 
 
-    /** Moves the pin to the newest release, then rebuilds the machines from it. */
+    /** Moves the pin to the named release, then rebuilds the machines from it. */
     @Operation()
-    public async updateToLatestRelease(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        const latest = await this.releaseService.getLatest();
+    public async updateToRelease(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id, releaseId: Fleet.Release.Id): Promise<void> {
+        // Fetched before pinning: a release that does not exist is refused here.
+        const release = await this.releaseService.getById(releaseId);
 
-        if (!latest)
-            throw new NotFoundException('No release to update to');
-
-        await this.hardwareService.setRelease(workspaceId, latest.id);
+        await this.hardwareService.setRelease(workspaceId, release.id);
 
         await this.rebuild(workspaceId, ownerId, planId);
     }

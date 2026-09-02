@@ -172,8 +172,11 @@ export class WorkspaceController {
     @RequireEnabled()
     @RefuseIfBusy()
     @HttpCode(202)
-    async update(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
-        void this.workspaceService.updateToLatestRelease(workspace.id, workspace.ownerId, workspace.plan.id)
+    async update(
+        @WorkspaceScope() workspace: Workspace,
+        @ZodBody(Workspace.API.Update.Request) body: Workspace.API.Update.Request,
+    ): Promise<Workspace.API.Lifecycle.Response> {
+        void this.workspaceService.updateToRelease(workspace.id, workspace.ownerId, workspace.plan.id, body.releaseId)
             .catch((error: unknown) => this.logger.error(`Updating ${workspace.id} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};

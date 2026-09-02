@@ -63,9 +63,9 @@ const CardDropdown = ({ workspaceId }: { workspaceId: Workspace.Id }) => (
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
     const [transition, provision, rebuilding, hardwareStatistics] = WorkspaceSDK.useStore(s => [
-        s.transitions[workspace.id], 
-        s.provisioning[workspace.id], 
-        s.rebuilding[workspace.id], 
+        s.transitions[workspace.id],
+        s.provisioning[workspace.id],
+        s.rebuilding[workspace.id],
         s.hardwareStatistics[workspace.id]
     ])
 
@@ -83,71 +83,66 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                 aria-disabled={!reachable}
                 onClick={reachable ? () => { window.location.href = workspace.appUrl } : undefined}
             >
-                    <Card.Header>
-                        <div className={cn('flex flex-row gap-2', !reachable && 'opacity-60')}>
-                            <ServerIllustration className='h-6'/>
-                            <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
-                        </div>
+                <Card.Header>
+                    <div className={cn('flex flex-row gap-2', !reachable && 'opacity-60')}>
+                        <ServerIllustration className='h-6' />
+                        <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
+                    </div>
 
-                        <Card.Action onClick={(event) => event.stopPropagation()}>
-                            <CardDropdown workspaceId={workspace.id} />
-                        </Card.Action>
-                    </Card.Header>
-                    <Card.Content className='w-full mt-auto flex gap-1.5 relative'>
-                        <StatusBadge workspace={workspace} />
-                        <PlanBadge plan={workspace.plan} />
+                    <Card.Action onClick={(event) => event.stopPropagation()}>
+                        <CardDropdown workspaceId={workspace.id} />
+                    </Card.Action>
+                </Card.Header>
+                <Card.Content className='w-full mt-auto flex gap-1.5 relative'>
+                    <StatusBadge workspace={workspace} />
+                    <PlanBadge plan={workspace.plan} />
 
-                        <div className="absolute right-4 -bottom-0 flex flex-row gap-2">
-                            {updateAvailable && 
-                                <>
-                                    <Button
-                                        size="sm"
-                                        variant="active"
-                                        className='gap-2 animate-pulse'
-                                        onClick={(event) => { event.stopPropagation(); WorkspaceSDK.openUpdateDialog(workspace.id) }}
-                                    >
-                                        <SystemIcons.ArrowBigUpDash className='fill-current size-4'/>
-                                        Update
-                                    </Button>
-                                </>
-                            }
-                            {workspace.disabledReason && 
-                                <>
-                                    <Tooltip.Root>
-                                        <Tooltip.Trigger>
-                                            <SystemIcons.AlertTriangleFill className=' text-destructive animate-pulse size-5'/>
-                                        </Tooltip.Trigger>
-                                        <Tooltip.Content className='max-w-[300px]'>
-                                            {`This workspace has been disabled. ${workspace.disabledReason}`}
-                                        </Tooltip.Content>
-                                    </Tooltip.Root>
-                                </>
-                            }
-                        </div>
-                    </Card.Content>
+                    <div className="absolute right-4 -bottom-0 flex flex-row gap-2">
+                        {updateAvailable &&
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="active"
+                                    className='gap-2 animate-pulse'
+                                    onClick={(event) => { event.stopPropagation(); WorkspaceSDK.openUpdateDialog(workspace.id) }}
+                                >
+                                    <SystemIcons.ArrowBigUpDash className='fill-current size-4' />
+                                    Update
+                                </Button>
+                            </>
+                        }
+                        {workspace.disabledReason &&
+                            <>
+                                <Tooltip.Root>
+                                    <Tooltip.Trigger>
+                                        <SystemIcons.AlertTriangleFill className=' text-destructive animate-pulse size-5' />
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Content className='max-w-[300px]'>
+                                        {`This workspace has been disabled. ${workspace.disabledReason}`}
+                                    </Tooltip.Content>
+                                </Tooltip.Root>
+                            </>
+                        }
+                    </div>
+                </Card.Content>
             </Frame.Panel>
             <Frame.Footer className='flex flex-row gap-1 px-1! py-1! overflow-x-auto w-full h-[35px] [scrollbar-width:none]'>
-                    {provision ? (
-                        <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium"/>
-                    ) : (
-                        hardwareStatistics ? (
-                            <>
-                                {Object.entries(hardwareStatistics.machines).map(([machineId, machineStatistics]) => (
-                                    <MachineStatistic key={machineId} machineStatistics={machineStatistics}/>
-                                ))}
-                                {hardwareStatistics.databaseSizeBytes !== null && (
-                                    <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes}/>
-                                )}
-                            </>
-                        ) : (
-                            <></>
-                        )
-                    )}
-                    {provision && (
+                {provision ? (
+                    <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium pl-1.5" />
+                ) : (
+                    hardwareStatistics ? (
                         <>
-                            <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium"/>
+                            {Object.entries(hardwareStatistics.machines).map(([machineId, machineStatistics]) => (
+                                <MachineStatistic key={machineId} machineStatistics={machineStatistics} />
+                            ))}
+                            {hardwareStatistics.databaseSizeBytes !== null && (
+                                <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes} />
+                            )}
                         </>
-                    )}
+                    ) : (
+                        <></>
+                    )
+                )}
             </Frame.Footer>
         </Frame.Root>
     )
