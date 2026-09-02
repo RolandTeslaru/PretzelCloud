@@ -212,6 +212,9 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                     case 'update:succeeded':
                         delete s.updating[event.workspaceId]
 
+                        card.releaseId = event.releaseId
+                        card.releaseName = event.releaseName
+
                         NotificationSDK.toast.success(`${card.displayName} updated to ${event.releaseName}`)
 
                         break

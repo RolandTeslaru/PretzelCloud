@@ -29,6 +29,8 @@ export namespace Workspace {
             // Parked to save money. Which rung — suspended, stopped, or given back
             // entirely — is the ladder's business; traffic brings it back either way.
             "sleeping",
+            // Machines being replaced for another release. Comes back on its own.
+            "updating",
             "stopped",   // The owner turned it off. Traffic does not wake it.
             "disabled",  // The fleet turned it off. The owner cannot undo it.
             "provisioning_failed",
@@ -58,7 +60,7 @@ export namespace Workspace {
 
         /** Whether a request arriving may be served, after a wake if need be. */
         export const acceptsTraffic = (state: State): boolean =>
-            state === "running" || state === "sleeping"
+            state === "running" || state === "sleeping" || state === "updating"
     }
 
     export namespace Provisioning {
@@ -311,6 +313,7 @@ export namespace Workspace {
 
             export const Succeeded = Base.extend({
                 type:        z.literal('update:succeeded'),
+                releaseId:   Fleet.Release.Id,
                 releaseName: Fleet.Release.Name,
             })
 
