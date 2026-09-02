@@ -97,6 +97,13 @@ const METERED = Symbol('pretzel.metered');
 
 type Metered = IncomingMessage & { [METERED]?: Workspace.Id };
 
+// What the router spent on a request, in ms. Sent back as `Server-Timing`, which DevTools shows per request.
+const TIMINGS = Symbol('pretzel.timings');
+
+type Timings = { ticket?: number; wake?: number; forwardedAt?: number };
+
+type Timed = IncomingMessage & { [TIMINGS]?: Timings };
+
 // Larger bodies are counted without an id.
 const USAGE_BODY_CAP = 64 * 1024;
 
@@ -143,7 +150,11 @@ export class ProxyService implements OnModuleDestroy {
                 socket.destroy();
         });
 
-        this.proxy.on('proxyRes', (proxyRes, req) => this.handleMeteredPath(proxyRes, req));
+        this.proxy.on('proxyRes', (proxyRes, req, res) => {
+            this.stampServerTiming(req, res);
+
+            this.handleMeteredPath(proxyRes, req);
+        });
     }
 
 
@@ -184,7 +195,15 @@ export class ProxyService implements OnModuleDestroy {
             return;
         }
 
+        const timings: Timings = {};
+
+        (req as Timed)[TIMINGS] = timings;
+
+        const ticketStartedAt = Date.now();
+
         const siloTicket = await this.router.getTicket(req);
+
+        timings.ticket = Date.now() - ticketStartedAt;
 
         if (!siloTicket) {
             if (req.url === '/health') {
@@ -258,7 +277,11 @@ export class ProxyService implements OnModuleDestroy {
         // Everyone waits a little; a webhook waits as long as its sender would.
         const waitMs = isWebhookPath ? WEBHOOK_WAIT_MS : REQUEST_WAIT_MS;
 
+        const wakeStartedAt = Date.now();
+
         const target = await withinTimer(this.wakeWorkspace(siloTicket), waitMs);
+
+        timings.wake = Date.now() - wakeStartedAt;
 
         if (!target) {
             this.refuseStarting(req, res);
@@ -306,6 +329,11 @@ export class ProxyService implements OnModuleDestroy {
         if (Router.isMeteredPath(req.method, req.url))
             (req as Metered)[METERED] = siloTicket.workspaceId;
 
+        const timings = (req as Timed)[TIMINGS];
+
+        if (timings)
+            timings.forwardedAt = Date.now();
+
         this.proxy.web(
             req,
             res,
@@ -321,6 +349,32 @@ export class ProxyService implements OnModuleDestroy {
 
     // Counts an execution from the response body without touching the forwarded bytes.
     // Also graces one overpassing
+    private stampServerTiming(req: IncomingMessage, res: ServerResponse): void {
+        const timings = (req as Timed)[TIMINGS];
+
+        if (!timings || res.headersSent)
+            return;
+
+        const entries: string[] = [];
+
+        if (timings.ticket !== undefined)
+            entries.push(`ticket;dur=${timings.ticket}`);
+
+        if (timings.wake !== undefined)
+            entries.push(`wake;dur=${timings.wake}`);
+
+        if (timings.forwardedAt !== undefined)
+            entries.push(`upstream;dur=${Date.now() - timings.forwardedAt}`);
+
+        if (entries.length === 0)
+            return;
+
+        res.setHeader('Server-Timing', entries.join(', '));
+    }
+
+
+
+
     private handleMeteredPath(proxyRes: IncomingMessage, req: IncomingMessage): void {
         const workspaceId = (req as Metered)[METERED];
 
@@ -511,7 +565,7 @@ export class ProxyService implements OnModuleDestroy {
         this.logger.log(`Waking ${workspaceId}`);
 
         try {
-            let address = await this.hardwareService.wakeBackend(workspaceId);
+            let address = await this.hardwareService.lifecycle.wakeBackend(workspaceId);
 
             // No machine at all: it was reclaimed, and only a rebuild brings it back.
             if (!address) {

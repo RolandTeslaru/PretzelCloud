@@ -2,6 +2,8 @@ import { z } from "zod"
 import { WorkspaceId } from "../Workspace/ids"
 import { SiloSecrets } from "./silo-secrets"
 import { Driver } from "./driver"
+import { Release } from "./release"
+import { Plan } from "../Plan"
 
 export namespace Machine {
 
@@ -117,6 +119,49 @@ export namespace Machine {
         export type Worker = z.infer<typeof Worker>
 
         export const Schema = z.discriminatedUnion("role", [Combined, Backend, Worker])
+
+        /** One role's spec: the backend gets the credentials, the worker only where its sibling is. */
+        export const create = (
+            role:        Role,
+            workspaceId: WorkspaceId,
+            plan:        Plan,
+            release:     Release,
+            baseEnvKeys:    EnvKeys.Base,
+            backendEnvKeys: EnvKeys.Backend,
+            backendHost: string | null,
+        ): Spec => {
+            if (role === "combined")
+                return {
+                    role,
+                    image: Release.getImageForRole(release, role),
+                    size:  Plan.getSizeForRole(plan, role),
+                    env:   backendEnvKeys,
+                }
+
+            if (role === "backend")
+                return {
+                    role,
+                    image: Release.getImageForRole(release, role),
+                    size:  Plan.getSizeForRole(plan, role),
+                    env:   backendEnvKeys,
+                }
+
+            if (!backendHost)
+                throw new Error(`A worker for ${workspaceId} has no backend to reach`)
+
+            // Built from the base env, so a backend-only key can never leak to a worker.
+            return {
+                role,
+                image: Release.getImageForRole(release, role),
+                size:  Plan.getSizeForRole(plan, role),
+                env:   {
+                    ...baseEnvKeys,
+                    REDIS_HOST: backendHost,
+                    REDIS_PORT: "6379",
+                    API_URL:    `http://${backendHost}:3001`,
+                },
+            }
+        }
     }
     export type Spec = z.infer<typeof Spec.Schema>
 

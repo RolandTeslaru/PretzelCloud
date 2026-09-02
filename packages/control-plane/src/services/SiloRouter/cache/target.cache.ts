@@ -32,7 +32,7 @@ export class TargetCache {
         if (cached !== undefined)
             return cached;
 
-        const found = await this.hardwareService.getBackendAddress(workspaceId);
+        const found = await this.hardwareService.state.getBackendAddress(workspaceId);
 
         this.globalCache.set(CHANNEL, workspaceId, found);
 

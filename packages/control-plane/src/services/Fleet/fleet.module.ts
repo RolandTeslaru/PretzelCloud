@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { SiloTokenIssuerModule } from '@/services/SiloSession/token-issuer.module';
 import { RealtimeModule } from '@/services/Realtime/realtime.module';
 import { LockModule } from '@/services/Locking/lock.module';
-import { HardwareDriverRegistry } from './drivers/driver.registry';
+import { DriverRegistry } from './drivers/driver.registry';
 import { ClusterRepository } from './cluster/cluster.repository';
 import { ClusterService } from './cluster/cluster.service';
 import { SiloSecretsRepository } from './SiloSecrets/silo-secrets.repository';
@@ -11,8 +11,11 @@ import { MachineRepository } from './Machine/machine.repository';
 import { MachineService } from './Machine/machine.service';
 import { HardwareRepository } from './Hardware/hardware.repository';
 import { HardwareService } from './Hardware/hardware.service';
-import { HardwareStatisticsSampler } from './Hardware/hardware-statistics.sampler';
-import { HardwareStatisticsCache } from './Hardware/hardware-statistics.cache';
+import { HardwareLifecycleService } from './Hardware/lifecycle.service';
+import { HardwareStateService } from './Hardware/state.service';
+import { HardwareStatisticsService } from './Hardware/statistics.service';
+import { HardwareStatisticsSampler } from './Hardware/statistics.sampler';
+import { SampleCache } from './Hardware/sample.cache';
 import { HostnameRepository } from './Hostname/hostname.repository';
 import { HostnameService } from './Hostname/hostname.service';
 import { SiloDatabase } from './Silo/silo.database';
@@ -25,11 +28,12 @@ import { ReleaseController } from './Release/release.controller';
 @Module({
     imports: [SiloTokenIssuerModule, RealtimeModule, LockModule],
     providers: [
-        HardwareDriverRegistry,
+        DriverRegistry,
         ClusterRepository, ClusterService,
         SiloSecretsRepository, SiloSecretsService,
         MachineRepository, MachineService,
-        HardwareRepository, HardwareService, HardwareStatisticsSampler, HardwareStatisticsCache,
+        HardwareRepository, HardwareService, HardwareStatisticsSampler, SampleCache,
+        HardwareLifecycleService, HardwareStateService, HardwareStatisticsService,
         HostnameRepository, HostnameService,
         SiloDatabase, SiloDatabaseService,
         ProvisioningService,
@@ -37,6 +41,6 @@ import { ReleaseController } from './Release/release.controller';
     ],
     controllers: [ReleaseController],
     // Hardware is the fleet's façade; everything above it goes through one of these.
-    exports: [HardwareService, ReleaseService, HardwareStatisticsSampler, HardwareStatisticsCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
+    exports: [HardwareService, ReleaseService, HardwareStatisticsSampler, SampleCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
 })
 export class FleetModule { }

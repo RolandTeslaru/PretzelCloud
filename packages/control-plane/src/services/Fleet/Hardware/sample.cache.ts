@@ -12,7 +12,7 @@ const MAX_ENTRIES = 10_000;
 
 /** The freshest reading per workspace, shared across instances. */
 @Injectable()
-export class HardwareStatisticsCache {
+export class SampleCache {
 
     constructor(private readonly globalCachingService: GlobalCachingService) {
         this.globalCachingService.create(CHANNEL, TTL_MS, MAX_ENTRIES);
@@ -38,5 +38,13 @@ export class HardwareStatisticsCache {
 
     public get(workspaceId: Workspace.Id): Workspace.HardwareStatistics | undefined {
         return this.globalCachingService.get(CHANNEL, workspaceId) as Workspace.HardwareStatistics | undefined;
+    }
+
+
+
+
+    /** Drops a workspace's reading here and on every other instance. */
+    public invalidate(workspaceId: Workspace.Id): void {
+        this.globalCachingService.delete(CHANNEL, workspaceId);
     }
 }

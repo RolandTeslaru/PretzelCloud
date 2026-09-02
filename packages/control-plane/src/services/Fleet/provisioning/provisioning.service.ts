@@ -25,28 +25,28 @@ export class ProvisioningService {
     private readonly logger = new Logger(ProvisioningService.name);
 
     constructor(
-        private readonly siloSecretsService:  SiloSecretsService,
-        private readonly hardwareService: HardwareService,
-        private readonly hostnameService: HostnameService,
-        private readonly siloTokenIssuer: SiloTokenIssuer,
-        private readonly planRegistry: PlanRegistry,
+        private readonly siloSecrets:         SiloSecretsService,
+        private readonly hardware:            HardwareService,
+        private readonly hostname:            HostnameService,
+        private readonly siloTokenIssuer:     SiloTokenIssuer,
+        private readonly planRegistry:        PlanRegistry,
         private readonly siloDatabaseService: SiloDatabaseService,
-        private readonly siloDatabase: SiloDatabase,
-        private readonly realtimeService: RealtimeService,
+        private readonly siloDatabase:        SiloDatabase,
+        private readonly realtime:            RealtimeService,
     ) {}
 
 
     async provision(workspaceId: Workspace.Id, owner: User, planId: Plan.Id): Promise<void> {
         const databaseUrl = await this.step(workspaceId, 'hardware', () => 
-            this.hardwareService.provision(workspaceId)
+            this.hardware.provision(workspaceId)
         );
 
         await this.step(workspaceId, 'secrets', () =>     
-            this.siloSecretsService.ensure(workspaceId, databaseUrl)
+            this.siloSecrets.ensure(workspaceId, databaseUrl)
         );
 
         const secrets = await this.step(workspaceId, 'secrets', () => 
-            this.siloSecretsService.get(workspaceId)
+            this.siloSecrets.get(workspaceId)
         );
 
         if (!secrets)
@@ -57,12 +57,12 @@ export class ProvisioningService {
         const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, owner.id, plan, secrets);
 
         await this.step(workspaceId, 'machines', () => 
-            this.hardwareService.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys)
+            this.hardware.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys)
         );
 
         // Before hostnames: a machine that never serves should not be published.
         await this.step(workspaceId, 'health', () => 
-            this.hardwareService.awaitHealthy(workspaceId)
+            this.hardware.lifecycle.awaitHealthy(workspaceId)
         );
 
         // After health, which is what says the workspace has run its migrations.
@@ -72,14 +72,14 @@ export class ProvisioningService {
             )
         );
 
-        await this.step(workspaceId, 'hostnames', () => this.hostnameService.registerCanonical(workspaceId));
+        await this.step(workspaceId, 'hostnames', () => this.hostname.registerCanonical(workspaceId));
 
         this.logger.log(`Provisioned ${workspaceId}`);
     }
 
     /** Rebuilds the machines for another plan's topology; the database is untouched. */
     async convert(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        const secrets = await this.siloSecretsService.get(workspaceId);
+        const secrets = await this.siloSecrets.get(workspaceId);
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
@@ -90,13 +90,13 @@ export class ProvisioningService {
 
         // No health wait: the caller stops the hardware around a conversion and starts it after.
         await this.step(workspaceId, 'convert', () => 
-            this.hardwareService.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys)
+            this.hardware.convertTo(workspaceId, plan, baseEnvKeys, backendEnvKeys)
         );
     }
 
     /** Rebuilds a workspace's machines from the current spec, keeping its data. */
     async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        const secrets = await this.siloSecretsService.get(workspaceId);
+        const secrets = await this.siloSecrets.get(workspaceId);
 
         if (!secrets)
             throw new ProvisioningError('secrets', 'no secrets for this workspace');
@@ -106,7 +106,7 @@ export class ProvisioningService {
         const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, ownerId, plan, secrets);
 
         // No health wait: the caller stops the hardware around a rebuild and starts it after.
-        await this.step(workspaceId, 'rebuild', () => this.hardwareService.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
+        await this.step(workspaceId, 'rebuild', () => this.hardware.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys));
     }
 
     /** The two env shapes a machine is built from; both need what only provisioning knows — owner, issuer, key material. */
@@ -129,7 +129,7 @@ export class ProvisioningService {
                 ...secrets,
                 ...hardening,
                 ...limits,
-                PRETZEL_CLOUD_TOKEN:        await this.siloSecretsService.getCloudToken(workspaceId) ?? '',
+                PRETZEL_CLOUD_TOKEN:        await this.siloSecrets.getCloudToken(workspaceId) ?? '',
                 AUTH_URL:                   requireEnv('WORKSPACE_AUTH_URL'),
                 TOKEN_ISSUER:               this.siloTokenIssuer.issuer(),
                 WORKSPACE_TOKEN_PUBLIC_KEY: JSON.stringify(await this.siloTokenIssuer.publicJwk()),
@@ -146,10 +146,10 @@ export class ProvisioningService {
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
         // Stopped before removed: a killed machine abandons its database connections instead of closing them.
-        await this.hardwareService.stopAll(workspaceId);
-        await this.hardwareService.destroy(workspaceId);
-        await this.hostnameService.delete(workspaceId);
-        await this.siloSecretsService.delete(workspaceId);
+        await this.hardware.lifecycle.stopAll(workspaceId);
+        await this.hardware.destroy(workspaceId);
+        await this.hostname.delete(workspaceId);
+        await this.siloSecrets.delete(workspaceId);
     }
 
     private emit(workspaceId: Workspace.Id, step: Workspace.Provisioning.Step, failed?: boolean): void {
@@ -159,7 +159,7 @@ export class ProvisioningService {
 
         const event = Workspace.Event.create(type, { step });
 
-        this.realtimeService.publish(channel, { ...event, channel, workspaceId });
+        this.realtime.publish(channel, { ...event, channel, workspaceId });
     }
 
     private async step<T>(

@@ -10,7 +10,7 @@ import { FlyDriver } from './fly.driver';
  * workspaces at once, and a fleet can move between them one workspace at a time.
  */
 @Injectable()
-export class HardwareDriverRegistry {
+export class DriverRegistry {
 
     // Stateless, so one of each is all a process ever needs.
     private readonly drivers: Record<Fleet.Driver, AbstractHardwareDriver> = {
