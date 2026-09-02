@@ -15,6 +15,8 @@ import { Principal } from '@/auth/identity/principal';
 import { Router } from '@/services/SiloRouter/router.service';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
+
+const createEvent = Workspace.Event.create;
 import { BillingService } from '@/services/Billing/billing.service';
 
 const PROVISION_ATTEMPTS = 3;
@@ -75,8 +77,7 @@ export class WorkspaceService {
                 try {
                     await this.provisioningService.provision(id, owner, Plan.DEFAULT_PLAN_ID);
 
-                    // Its hostnames were unknown until a moment ago, and a probe in
-                    // that window would have cached the absence.
+                    // A probe before now cached the absence.
                     this.siloRouter.invalidate(id);
 
                     return this.setLifecycleState(id, 'running');
@@ -93,6 +94,11 @@ export class WorkspaceService {
         return workspace;
     }
 
+    // What the router says after it woke a machine itself.
+    public async markRunning(workspaceId: Workspace.Id): Promise<void> {
+        await this.setLifecycleState(workspaceId, 'running');
+    }
+
     /** Writes the state and tells anyone watching. */
     private async setLifecycleState(
         id:             Workspace.Id,
@@ -101,8 +107,10 @@ export class WorkspaceService {
     ): Promise<Workspace> {
         const workspace = await this.workspaceRepository.setLifecycleState(Principal.SELF, id, lifecycleState);
 
+        this.siloRouter.invalidateLifecycle(id);
+
         if (!emitNoEvents)
-            this.emit(id, Workspace.Event.create('lifecycle:changed', { lifecycleState }));
+            this.emit(id, createEvent('lifecycle:changed', { lifecycleState }));
 
         return workspace;
     }
@@ -218,14 +226,17 @@ export class WorkspaceService {
     private async wakeAndAwait(workspaceId: Workspace.Id): Promise<void> {
         const { lifecycleState } = await this.get(workspaceId);
 
-        if (lifecycleState === 'running')
+        const isWakeable = Workspace.Lifecycle.isWakeable(lifecycleState)
+
+        // Already up: the cached address may still say otherwise.
+        if (lifecycleState === 'running' || (isWakeable && await this.hardwareService.isServing(workspaceId))) {
+            this.siloRouter.invalidateAddress(workspaceId);
+
             return;
+        }
 
         if (!Workspace.Lifecycle.isWakeable(lifecycleState))
             throw new ConflictException(`This workspace is ${lifecycleState}`);
-
-        if (await this.hardwareService.isServing(workspaceId))
-            return;
 
         await this.start(workspaceId);
     }
@@ -237,7 +248,7 @@ export class WorkspaceService {
     public async disable(workspaceId: Workspace.Id, reason: string): Promise<void> {
         await this.workspaceRepository.setDisabled(Principal.SELF, workspaceId, reason);
 
-        this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'disabled' }));
+        this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'disabled' }));
 
         this.siloRouter.invalidate(workspaceId);
 
@@ -258,7 +269,7 @@ export class WorkspaceService {
 
         await this.workspaceRepository.clearDisabled(Principal.SELF, workspaceId);
 
-        this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'sleeping' }));
+        this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'sleeping' }));
 
         this.siloRouter.invalidate(workspaceId);
     }
@@ -344,7 +355,7 @@ export class WorkspaceService {
     ): Promise<void> {
         // Written nowhere: a transition is not a state a workspace can be in.
         if (!emitNoEvents)
-            this.emit(workspaceId, Workspace.Event.create('transition:started', { action }));
+            this.emit(workspaceId, createEvent('transition:started', { action }));
 
         try {
             switch (action) {
@@ -370,14 +381,14 @@ export class WorkspaceService {
                 // Said first, because the state below is unchanged and on its own
                 // reads as nothing having happened — which is all a caller that is
                 // not waiting for an answer would otherwise see.
-                this.emit(workspaceId, Workspace.Event.create('transition:failed', {
+                this.emit(workspaceId, createEvent('transition:failed', {
                     action,
                     reason: error instanceof Error ? error.message : String(error),
                 }));
 
                 const { lifecycleState } = await this.get(workspaceId);
 
-                this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState }));
+                this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState }));
             }
 
             throw error;
@@ -394,7 +405,7 @@ export class WorkspaceService {
      */
     @Operation()
     public async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        this.emit(workspaceId, Workspace.Event.create('rebuild:started', {}));
+        this.emit(workspaceId, createEvent('rebuild:started', {}));
 
         try {
             // Down for the rebuild: stopped first so executions end and pools close.
@@ -405,39 +416,76 @@ export class WorkspaceService {
             await this.start(workspaceId, { emitNoEvents: true });
         }
         catch (error) {
-            this.emit(workspaceId, Workspace.Event.create('rebuild:failed', {
+            this.emit(workspaceId, createEvent('rebuild:failed', {
                 reason: error instanceof Error ? error.message : String(error),
             }));
 
             // Wherever the halves left it, which they wrote and did not say.
             const { lifecycleState } = await this.get(workspaceId);
 
-            this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState }));
+            this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState }));
 
             throw error;
         }
 
         this.siloRouter.invalidate(workspaceId);
 
-        this.emit(workspaceId, Workspace.Event.create('lifecycle:changed', { lifecycleState: 'running' }));
+        this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'running' }));
 
-        this.emit(workspaceId, Workspace.Event.create('rebuild:succeeded', {}));
+        this.emit(workspaceId, createEvent('rebuild:succeeded', {}));
     }
 
 
 
 
-    /** Moves the pin to the newest release, then rebuilds the machines from it. */
+    /** Moves the pin to the named release and replaces the machines from it. */
     @Operation()
-    public async updateToLatestRelease(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        const latest = await this.releaseService.getLatest();
+    public async updateToRelease(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id, releaseId: Fleet.Release.Id): Promise<void> {
+        // Fetched before pinning: a release that does not exist is refused here.
+        const release = await this.releaseService.getById(releaseId);
 
-        if (!latest)
-            throw new NotFoundException('No release to update to');
+        this.emit(workspaceId, createEvent('update:started', { releaseId: release.id, releaseName: release.name }));
 
-        await this.hardwareService.setRelease(workspaceId, latest.id);
+        try {
+            await this.hardwareService.setRelease(workspaceId, release.id);
 
-        await this.rebuild(workspaceId, ownerId, planId);
+            // Down for the swap: stopped first so executions end and pools close.
+            await this.stop(workspaceId, { emitNoEvents: true });
+
+            // Its own state for the window: not stopped, coming back on its own.
+            await this.workspaceRepository.setLifecycleState(Principal.SELF, workspaceId, 'updating');
+
+            this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'updating' }));
+
+            await this.provisioningService.rebuild(workspaceId, ownerId, planId);
+
+            await this.start(workspaceId, { emitNoEvents: true });
+        }
+        catch (error) {
+            this.emit(workspaceId, createEvent('update:failed', {
+                releaseName: release.name,
+                reason:      error instanceof Error ? error.message : String(error),
+            }));
+
+            // An update that died in its window must not stay 'updating' forever.
+            const { lifecycleState } = await this.get(workspaceId);
+
+            if (lifecycleState === 'updating') {
+                await this.workspaceRepository.setLifecycleState(Principal.SELF, workspaceId, 'stopped');
+
+                this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'stopped' }));
+            }
+            else
+                this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState }));
+
+            throw error;
+        }
+
+        this.siloRouter.invalidate(workspaceId);
+
+        this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'running' }));
+
+        this.emit(workspaceId, createEvent('update:succeeded', { releaseId: release.id, releaseName: release.name }));
     }
 
 
@@ -448,7 +496,7 @@ export class WorkspaceService {
         await this.workspaceRepository.setPlan(Principal.SELF, workspaceId, planId);
 
         // Before the rebuild: what was bought is already true.
-        this.emit(workspaceId, Workspace.Event.create('plan:changed', { plan: this.planRegistry.get(planId) }));
+        this.emit(workspaceId, createEvent('plan:changed', { plan: this.planRegistry.get(planId) }));
 
         // A bigger plan takes effect now, not at the next re-check.
         this.entitlementService.unlock(workspaceId);
@@ -481,20 +529,21 @@ export class WorkspaceService {
 
     @Operation(1)
     public async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
+        const { subdomain } = await this.get(workspaceId);
+
         await this.billingService.cancelSubscription(workspaceId);
 
         this.permissionService.invalidateCloudToken(workspaceId);
 
         await this.provisioningService.deprovision(workspaceId);
 
-        // Before the row goes: a cached route would otherwise keep answering for
-        // a machine that no longer exists.
-        this.siloRouter.invalidate(workspaceId);
-
         await this.listingService.deleteAllForWorkspace(workspaceId);
 
         await this.workspaceRepository.delete(principal, workspaceId);
 
-        this.emit(workspaceId, Workspace.Event.create('destroyed'));
+        // After the row goes, so the refill finds nothing.
+        this.siloRouter.invalidate(workspaceId, [subdomain]);
+
+        this.emit(workspaceId, createEvent('destroyed'));
     }
 }

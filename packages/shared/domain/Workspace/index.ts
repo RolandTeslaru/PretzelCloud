@@ -29,6 +29,8 @@ export namespace Workspace {
             // Parked to save money. Which rung — suspended, stopped, or given back
             // entirely — is the ladder's business; traffic brings it back either way.
             "sleeping",
+            // Machines being replaced for another release. Comes back on its own.
+            "updating",
             "stopped",   // The owner turned it off. Traffic does not wake it.
             "disabled",  // The fleet turned it off. The owner cannot undo it.
             "provisioning_failed",
@@ -58,7 +60,7 @@ export namespace Workspace {
 
         /** Whether a request arriving may be served, after a wake if need be. */
         export const acceptsTraffic = (state: State): boolean =>
-            state === "running" || state === "sleeping"
+            state === "running" || state === "sleeping" || state === "updating"
     }
 
     export namespace Provisioning {
@@ -301,6 +303,31 @@ export namespace Workspace {
             export type  Failed = z.infer<typeof Failed>
         }
 
+        export namespace Update {
+
+            export const Started = Base.extend({
+                type:        z.literal('update:started'),
+                releaseId:   Fleet.Release.Id,
+                releaseName: Fleet.Release.Name,
+            })
+
+            export const Succeeded = Base.extend({
+                type:        z.literal('update:succeeded'),
+                releaseId:   Fleet.Release.Id,
+                releaseName: Fleet.Release.Name,
+            })
+
+            export const Failed = Base.extend({
+                type:        z.literal('update:failed'),
+                releaseName: Fleet.Release.Name,
+                reason:      z.string(),
+            })
+
+            export type  Started = z.infer<typeof Started>
+            export type  Succeeded = z.infer<typeof Succeeded>
+            export type  Failed = z.infer<typeof Failed>
+        }
+
         export namespace Transition {
 
             export const Started = Base.extend({
@@ -355,6 +382,9 @@ export namespace Workspace {
             Rebuild.Started,
             Rebuild.Succeeded,
             Rebuild.Failed,
+            Update.Started,
+            Update.Succeeded,
+            Update.Failed,
             Transition.Started,
             Transition.Failed,
         ])
@@ -471,8 +501,16 @@ export namespace Workspace {
         export const restart = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'restart')
         /** Replaces the machines from the current spec; the data is untouched. */
         export const rebuild = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'rebuild')
-        /** Moves the workspace to the newest release, then rebuilds from it. */
-        export const update  = (api: AxiosInstance, workspaceId: Id) => act(api, workspaceId, 'update')
+        export namespace Update {
+            export const Request = z.object({ releaseId: Fleet.Release.Id })
+            export type  Request = z.infer<typeof Request>
+        }
+
+        /** Moves the workspace to the given release, then rebuilds from it. */
+        export async function update(api: AxiosInstance, workspaceId: Id, releaseId: Fleet.Release.Id): Promise<Lifecycle.Response> {
+            const { data } = await api.post<Lifecycle.Response>(`/api/workspaces/${workspaceId}/update`, { releaseId })
+            return Lifecycle.Response.parse(data)
+        }
 
         export namespace Destroy {
             export const Response = z.object({})

@@ -27,7 +27,7 @@ export function UpdateWorkspaceDialog({ dialogId, workspaceId }: Props) {
         setBusy(true)
 
         try {
-            await WorkspaceSDK.actions.update(workspaceId)
+            await WorkspaceSDK.actions.update(workspaceId, latestRelease.id)
 
             DialogSDK.actions.pop(dialogId)
         }

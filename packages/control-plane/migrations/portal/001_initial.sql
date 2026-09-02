@@ -147,7 +147,7 @@ create table workspaces (
     updated_at   timestamp with time zone default now() not null,
 
     constraint workspaces_lifecycle_state_check check (lifecycle_state in (
-        'creating', 'running', 'sleeping', 'stopped', 'disabled', 'provisioning_failed')),
+        'creating', 'running', 'sleeping', 'updating', 'stopped', 'disabled', 'provisioning_failed')),
     constraint workspaces_plan_id_fkey foreign key (plan_id) references plans(id) on delete restrict
 );
 

@@ -50,7 +50,7 @@ export const openUpdateDialog = (workspaceId: Workspace.Id) => {
         <DialogSDK.SplitTemplate
             {...props}
             className='h-[400px]'
-            sidebarClassName='w-[300px]'
+            sidebarClassName='w-[250px]'
             contentClassName='w-[400px]'
             sidebarRenderer={() => (
                 <>

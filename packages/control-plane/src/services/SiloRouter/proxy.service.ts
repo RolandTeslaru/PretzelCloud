@@ -1,30 +1,33 @@
-import { forwardRef, Inject, Injectable, Logger, type OnModuleInit, type OnModuleDestroy } from '@nestjs/common';
-import { Agent, createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { forwardRef, Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { Agent, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import httpProxy from 'http-proxy';
 import { Workspace } from '@pretzel-cloud/shared/domain';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
+import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { requireEnv } from '@/db/table';
 import { Router } from './router.service';
 import { GlobalCaching, GlobalCachingService } from '@/services/Caching/caching.service';
 
-const DEFAULT_PORT = 8080;
-
-/** Every silo-bound request carries this, so silos can refuse direct dials. */
+// Silos refuse requests without it.
 const TRUST_HEADER = 'x-trusted-proxy-token';
 
-/** How long a client is asked to wait while a machine boots. */
 const RETRY_AFTER_S = 3;
 
-// What a browser is given meanwhile. Refreshes itself until the machine answers.
+// How often the starting page asks whether the machine is up.
+const STARTING_PAGE_POLL_MS = 500;
+
+// Held before answering "starting": a suspended machine resumes well inside this.
+const REQUEST_WAIT_MS = 2_000;
+
+// Self-refreshing page shown while a machine boots.
 const STARTING_PAGE = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Starting</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="${RETRY_AFTER_S}">
 <style>
   :root { color-scheme: light dark }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center;
@@ -32,52 +35,84 @@ const STARTING_PAGE = `<!doctype html>
   p { opacity: .6 }
 </style>
 </head>
-<body><p>Starting this workspace…</p></body>
+<body>
+<p>Starting this workspace…</p>
+<script>
+  const POLL_MS = ${STARTING_PAGE_POLL_MS};
+
+  async function poll() {
+    try {
+      const response = await fetch('/health', { cache: 'no-store' });
+
+      if (response.ok) {
+        location.reload();
+
+        return;
+      }
+    }
+    catch {}
+
+    setTimeout(poll, POLL_MS);
+  }
+
+  poll();
+</script>
+</body>
 </html>
 `;
 
-// Past this the sender's own timeout fires anyway, so it gets the retry.
 const WEBHOOK_WAIT_MS = 10_000;
 
-// The session's first chunk. Presence is all this file reads.
+// Past this the sender's own timeout fires anyway.
+// Null when the promise outlives the timer.
+async function withinTimer<T>(promise: Promise<T>, timerMs: number): Promise<T | null> {
+    let timer: NodeJS.Timeout | undefined;
+
+    const expired = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timerMs);
+
+        timer.unref();
+    });
+
+    try {
+        return await Promise.race([promise, expired]);
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+
+// Only checked for presence.
 const SESSION_COOKIE = 'pretzel.auth.token.0';
 
-// One wake per workspace at a time; a booting machine draws a burst of retries.
-const WAKE_LOCK_MS  = 15_000;
-const WAKE_LOCK_MAX = 1_000;
+// A workspace that failed to come up is not kicked again for this long.
+const WAKE_COOLDOWN_MS  = 15_000;
+const WAKE_COOLDOWN_MAX = 1_000;
 
-/**
- * Shared, since a second instance waking the same machine buys nothing. Best
- * effort rather than a lock: the bus has no delivery guarantee, so two that
- * decide at once still both wake. A real bound on wakes wants an atomic hold.
- */
-const WAKING_CHANNEL = GlobalCaching.Channel.parse('cache:waking');
+// Best effort across instances; the bus is not a lock.
+const WAKE_COOLDOWN_CHANNEL = GlobalCaching.Channel.parse('cache:wake-cooldown');
 
-// On the request, so it survives the hop into the proxy's response event.
+// Stamped on the request; read back on the response.
 const METERED = Symbol('pretzel.metered');
 
 type Metered = IncomingMessage & { [METERED]?: Workspace.Id };
 
-// A counted response past this is forwarded and counted without an id.
+// Larger bodies are counted without an id.
 const USAGE_BODY_CAP = 64 * 1024;
 
-// Without keep-alive every request leaves a socket in TIME_WAIT and a busy
-// fleet exhausts the local port range.
+// Keep-alive, or a busy fleet runs out of ports.
 const agent = new Agent({ keepAlive: true, maxSockets: 128, timeout: 30_000 });
 
-/**
- * The data path: Host header to a machine, then bytes.
- *
- * Not a Nest controller — it has its own port and never parses a request body.
- * Reading the stream would leave nothing to forward and break webhook signatures.
- */
+// Host header to a machine. Never reads the body.
 @Injectable()
-export class ProxyService implements OnModuleInit, OnModuleDestroy {
+export class ProxyService implements OnModuleDestroy {
 
     private readonly logger = new Logger(ProxyService.name);
 
+    // One wake per workspace per instance; every poll joins the one in flight.
+    private readonly waking = new Map<Workspace.Id, Promise<URL | null>>();
+
     private readonly proxy = httpProxy.createProxyServer({
-        // The workspace sees the name the client asked for.
         changeOrigin: false,
         xfwd:         true,
         ws:           true,
@@ -87,8 +122,6 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
     });
 
 
-    private server?: Server;
-
     constructor(
         private readonly router: Router,
         @Inject(forwardRef(() => WorkspaceService))
@@ -96,13 +129,13 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
         private readonly entitlementService: EntitlementService,
 
+        private readonly hardwareService: HardwareService,
+
         private readonly globalCachingService: GlobalCachingService,
     ) {
-        this.globalCachingService.create(WAKING_CHANNEL, WAKE_LOCK_MS, WAKE_LOCK_MAX);
-    }
+        this.globalCachingService.create(WAKE_COOLDOWN_CHANNEL, WAKE_COOLDOWN_MS, WAKE_COOLDOWN_MAX);
 
-    onModuleInit(): void {
-        // Where upgrade failures land; a socket has no status code to send.
+        // Upgrade failures land here; a socket has no status code.
         this.proxy.on('error', (error, _req, socket) => {
             this.logger.warn(`Upstream failed: ${error.message}`);
 
@@ -110,81 +143,50 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                 socket.destroy();
         });
 
-        // Returns immediately for anything not on a counted route.
-        this.proxy.on('proxyRes', (proxyRes, req) => this.meter(proxyRes, req));
-
-        const server = createServer((req, res) => void this.handle(req, res));
-
-        // Upgrades arrive as their own event; the editor's live connection is one.
-        server.on('upgrade', (req, socket, head) => void this.handleUpgrade(req, socket, head));
-
-        const port = Number(process.env.FLEET_ROUTER_PORT ?? DEFAULT_PORT);
-
-        server.listen(port, () => this.logger.log(`Router listening on http://localhost:${port}`));
-
-        this.server = server;
+        this.proxy.on('proxyRes', (proxyRes, req) => this.handleMeteredPath(proxyRes, req));
     }
 
-    async onModuleDestroy(): Promise<void> {
-        await new Promise<void>((resolve) => this.server?.close(() => resolve()) ?? resolve());
 
+
+    public onModuleDestroy(): void {
         this.proxy.close();
         agent.destroy();
     }
 
-    /**
-     * Whether anything about this request is worth spending a boot on. The
-     * cookie is not verified — forging one only wakes a workspace its holder
-     * still cannot enter, which the wake cooldown already bounds.
-     */
     private static hasCredential(req: IncomingMessage): boolean {
         return Boolean(req.headers.authorization)
             || (req.headers.cookie ?? '').includes(`${SESSION_COOKIE}=`);
     }
 
-    /** A browser opening the page, as opposed to anything the page then calls. */
     private static isPageRequest(req: IncomingMessage): boolean {
         if (req.method !== 'GET' && req.method !== 'HEAD')
             return false;
 
-        // Every current browser sends it, and says `document` only on a navigation.
+        // `document` only on a navigation.
         if (req.headers['sec-fetch-dest'])
             return req.headers['sec-fetch-dest'] === 'document';
 
         return (req.headers.accept ?? '').includes('text/html');
     }
 
-    // is it the control plane's own host? → the control plane, whatever the path
-    // does the host resolve?           → 404
-    // is it a control-plane path?      → the control plane answers it, no machine needed
-    // a page load carrying no session? → the portal
-    // is the workspace switched off?   → the portal, or 402 disabled / 503 stopped
-    // is it out of executions?         → 402 over limit
-    // is the machine asleep or gone?   → wake, or hold a webhook, or ask for a retry
-    //                                  → forward
-    private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        // Before resolving: this host names no workspace, and asking would 404.
-        // Everything arrives on the router's port because the platform routes by
-        // port rather than by host, so the control plane's own traffic reaches
-        // its process from here.
-        if (this.isControlPlaneHost(req)) {
+
+    public async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const isControlPlaneHost = Router.isControlPlaneHost(req);
+        const isControlPlanePath = Router.isControlPlanePath(req.url);
+        const isWebhookPath      = Router.isWebhookPath(req.url);
+        const isMeteredPath      = Router.isMeteredPath(req.method, req.url);
+        const isPageRequest      = ProxyService.isPageRequest(req);
+        const hasCredential      = ProxyService.hasCredential(req);
+
+        if (isControlPlaneHost) {
             this.serveControlPlane(req, res);
 
             return;
         }
 
-        const resolution = await this.router.resolve(req);
+        const siloTicket = await this.router.getTicket(req);
 
-        // The hooks hostname serves webhooks and nothing else.
-        if (resolution?.kind === 'hooks' && !Router.isWebhookPath(req.url)) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found\n');
-            return;
-        }
-
-        if (!resolution) {
-            // The router's own health, asked on a hostname that names no
-            // workspace. A workspace's own `/health` is forwarded to it above,
-            // so the two cannot be confused.
+        if (!siloTicket) {
             if (req.url === '/health') {
                 res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok\n');
 
@@ -192,86 +194,88 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             }
 
             res.writeHead(404, { 'Content-Type': 'text/plain' }).end('No such workspace\n');
+
             return;
         }
 
-        // Only the control plane can mint a workspace token, and doing so needs
-        // no machine — so this is answered before asking whether one is up.
-        if (Router.isControlPlanePath(req.url)) {
+        // Hooks hostname serves webhooks only.
+        if (siloTicket.kind === 'hooks' && !isWebhookPath) {
+            res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found\n');
+
+            return;
+        }
+
+        // Token minting needs no machine.
+        if (isControlPlanePath) {
             this.serveControlPlane(req, res);
+
             return;
         }
 
-        // Accounts live in the portal, so an unidentified visitor is sent there
-        // rather than handed a workspace's own sign-in page.
-        if (ProxyService.isPageRequest(req) && !ProxyService.hasCredential(req)) {
+        // Anonymous page load goes to the portal.
+        if (isPageRequest && !hasCredential) {
             this.redirectToPortal(res);
 
             return;
         }
 
-        // Turned off rather than parked: nothing arriving may bring it back, and
-        // which route it asked for makes no difference.
-        if (!Workspace.Lifecycle.acceptsTraffic(resolution.lifecycleState)) {
-            // A person gets the workspace's card, which says why; a program gets
-            // the reason in the shape it already reads errors in.
-            if (ProxyService.isPageRequest(req))
+        const acceptsTraffic = Workspace.Lifecycle.acceptsTraffic(siloTicket.lifecycleState);
+
+        // Stopped or disabled: nothing may wake it.
+        if (!acceptsTraffic) {
+            if (isPageRequest)
                 this.redirectToPortal(res);
             else
-                this.refuseStoppedOrDisabled(res, resolution);
+                this.refuseStoppedOrDisabled(res, siloTicket);
 
             return;
         }
 
-        // Out of executions: refused from memory, before anything is forwarded.
-        if (Router.isMeteredPath(req.method, req.url) && await this.entitlementService.isLocked(resolution.workspaceId)) {
-            this.refuseOverLimit(res);
+        // Out of executions.
+        if (isMeteredPath) {
+            const isLocked = await this.entitlementService.isLocked(siloTicket.workspaceId);
 
-            return;
-        }
-
-        // A suspended machine still has an address, so asleep is asked about
-        // separately: forwarding into one hangs until the proxy gives up.
-        if (!resolution.target || Workspace.Lifecycle.isWakeable(resolution.lifecycleState)) {
-            // A webhook URL is itself the credential; anything else has to carry
-            // one, or a stranger who knows the hostname could spend a boot.
-            if (!Router.isWebhookPath(req.url) && !ProxyService.hasCredential(req)) {
-                res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Unauthorized\n');
+            if (isLocked) {
+                this.refuseOverLimit(res);
 
                 return;
             }
+        }
 
-            // A webhook has nobody watching and no promised retry, so it waits.
-            const target = Router.isWebhookPath(req.url)
-                ? await this.awaitTarget(req, resolution)
-                : (this.wake(resolution), null);
-
-            if (!target) {
-                this.refuseStarting(req, res);
-
-                return;
-            }
-
-            // The sender may have given up while it booted.
-            if (req.destroyed || res.writableEnded)
-                return;
-
-            this.forward(req, res, resolution, target);
+        if (siloTicket.backendAddress) {
+            this.forward(req, res, siloTicket, siloTicket.backendAddress);
 
             return;
         }
 
-        this.forward(req, res, resolution, resolution.target);
+        // A webhook URL is its own credential; anything else needs one to spend a boot.
+        if (!isWebhookPath && !hasCredential) {
+            res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Unauthorized\n');
+
+            return;
+        }
+
+        // Everyone waits a little; a webhook waits as long as its sender would.
+        const waitMs = isWebhookPath ? WEBHOOK_WAIT_MS : REQUEST_WAIT_MS;
+
+        const target = await withinTimer(this.wakeWorkspace(siloTicket), waitMs);
+
+        if (!target) {
+            this.refuseStarting(req, res);
+
+            return;
+        }
+
+        // Sender may have given up while it booted.
+        if (req.destroyed || res.writableEnded)
+            return;
+
+        this.forward(req, res, siloTicket, target);
     }
 
-    /**
-     * Shaped like the workspace's own errors, so whatever reads one reads this:
-     * the editor takes its message from `error.message` and would otherwise show
-     * the bare status.
-     */
-    // No `Retry-After` on either: nothing is coming without a person.
-    private refuseStoppedOrDisabled(res: ServerResponse, resolution: Router.Resolution): void {
-        const disabled = resolution.lifecycleState === 'disabled';
+    // Same shape as the workspace's own errors, so the editor shows the message.
+    private refuseStoppedOrDisabled(res: ServerResponse, siloTicket: Router.SiloTicket): void {
+        const disabled = siloTicket.lifecycleState === 'disabled';
 
         res.writeHead(disabled ? 402 : 503, { 'Content-Type': 'application/json' }).end(JSON.stringify({
             status: disabled ? 402 : 503,
@@ -281,7 +285,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                     ? 'This workspace has been disabled.'
                     : 'This workspace has been turned off by its owner.',
                 detail: disabled
-                    ? resolution.disabledReason ?? 'Settle the account to bring it back.'
+                    ? siloTicket.disabledReason ?? 'Settle the account to bring it back.'
                     : 'Start it again from the dashboard.',
             },
         }));
@@ -298,52 +302,26 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }));
     }
 
-    private forward(req: IncomingMessage, res: ServerResponse, resolution: Router.Resolution, target: URL): void {
-        // Read back on the response, the first word on whether anything was made.
+    private forward(req: IncomingMessage, res: ServerResponse, siloTicket: Router.SiloTicket, target: URL): void {
         if (Router.isMeteredPath(req.method, req.url))
-            (req as Metered)[METERED] = resolution.workspaceId;
+            (req as Metered)[METERED] = siloTicket.workspaceId;
 
         this.proxy.web(
             req,
             res,
             {
                 target:  target.toString(),
-                headers: { [TRUST_HEADER]: resolution.routerSecret },
+                headers: { [TRUST_HEADER]: siloTicket.routerSecret },
             },
-            (error) => void this.onUpstreamError(error, req, resolution, res),
+            (error) => void this.onUpstreamError(error, req, siloTicket, res),
         );
     }
 
-    /** Where to reach it once it serves, or null if it missed the budget. */
-    private async awaitTarget(req: IncomingMessage, resolution: Router.Resolution): Promise<URL | null> {
-        const { workspaceId } = resolution;
+    // Address once serving, or null past the budget.
 
-        const expired = new Promise<false>((resolve) => {
-            setTimeout(() => resolve(false), WEBHOOK_WAIT_MS).unref();
-        });
-
-        const started = this.workspaceService.ensureStarted(workspaceId)
-            .then(() => true)
-            .catch((error) => {
-                this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);
-
-                return false;
-            });
-
-        if (!await Promise.race([started, expired]))
-            return null;
-
-        // The cached resolution predates the machine having an address.
-        this.router.invalidate(workspaceId);
-
-        return (await this.router.resolve(req))?.target ?? null;
-    }
-
-    /**
-     * Counts an execution the workspace reported creating. Observed rather than
-     * taken over: forwarded bytes stay untouched, so signatures still verify.
-     */
-    private meter(proxyRes: IncomingMessage, req: IncomingMessage): void {
+    // Counts an execution from the response body without touching the forwarded bytes.
+    // Also graces one overpassing
+    private handleMeteredPath(proxyRes: IncomingMessage, req: IncomingMessage): void {
         const workspaceId = (req as Metered)[METERED];
 
         if (!workspaceId)
@@ -351,7 +329,6 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
 
         const status = proxyRes.statusCode ?? 0;
 
-        // Only a success is an execution.
         if (status < 200 || status >= 300)
             return;
 
@@ -379,13 +356,19 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             if (!found)
                 this.logger.error(`Counted a run for ${workspaceId} without an execution id (${overflowed ? 'body too large' : encoded ? `encoded ${encoded}` : 'unrecognised shape'})`);
 
-            // Not awaited: a slow fleet database must not slow an execution.
-            void this.entitlementService.executions.recordAndLockIfOver(workspaceId, found?.executionId ?? null, found?.igniter ?? null)
-                .catch((error: unknown) => this.logger.error(`Could not record usage for ${workspaceId}: ${error instanceof Error ? error.message : error}`));
+            // Not awaited.
+            void this.entitlementService
+                     .executions
+                     .recordAndLockIfOver(
+                        workspaceId, found?.executionId ?? null, found?.igniter ?? null
+                      )
+                     .catch(
+                        (error: unknown) => this.logger.error(`Could not record usage for ${workspaceId}: ${error instanceof Error ? error.message : error}`)
+                    );
         });
     }
 
-    /** Both shapes a workspace answers a started execution with. */
+    // Both response shapes a started execution has.
     private readExecution(body: Buffer): { executionId: string; igniter: string | null } | null {
         try {
             const parsed = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
@@ -410,22 +393,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** This same process, on its HTTP port. */
-    /** Its own hostname, set where the portal is told to call it. Unset in a compose deployment, where nothing shares a port. */
-    private isControlPlaneHost(req: IncomingMessage): boolean {
-        const configured = process.env.CONTROL_PLANE_HOST;
-
-        if (!configured)
-            return false;
-
-        const host = (req.headers.host ?? '').trim().toLowerCase();
-
-        return host === configured.trim().toLowerCase();
-    }
-
-
-
-
+    // This process, on its Nest port.
     private serveControlPlane(req: IncomingMessage, res: ServerResponse): void {
         const origin = `http://127.0.0.1:${process.env.PORT ?? 4000}`;
 
@@ -441,7 +409,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         res.writeHead(302, { Location: requireEnv('PORTAL_URL'), 'Cache-Control': 'no-store' }).end();
     }
 
-    /** Asked to come back once the machine is up; a browser is given a page that does. */
+    // 503 + Retry-After; a browser gets the self-refreshing page.
     private refuseStarting(req: IncomingMessage, res: ServerResponse): void {
         const headers = { 'Retry-After': String(RETRY_AFTER_S), 'Cache-Control': 'no-store' };
 
@@ -454,18 +422,15 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         res.writeHead(503, { ...headers, 'Content-Type': 'text/html; charset=utf-8' }).end(STARTING_PAGE);
     }
 
-    /**
-     * A refused connection usually means the machine stopped since it was
-     * resolved, so the route is dropped and the client told to retry.
-     */
-    private async onUpstreamError(error: Error, req: IncomingMessage, resolution: Router.Resolution, res: ServerResponse): Promise<void> {
+    // Refused connection means the machine went away: drop the route, tell the client to retry.
+    private async onUpstreamError(error: Error, req: IncomingMessage, siloTicket: Router.SiloTicket, res: ServerResponse): Promise<void> {
         const unreachable = ['ECONNREFUSED', 'EHOSTUNREACH', 'ENOTFOUND', 'ECONNRESET']
             .includes((error as NodeJS.ErrnoException).code ?? '');
 
-        this.router.invalidate(resolution.workspaceId);
+        this.router.invalidateAddress(siloTicket.workspaceId);
 
         if (!unreachable) {
-            this.logger.warn(`Upstream failed for ${resolution.workspaceId}: ${error.message}`);
+            this.logger.warn(`Upstream failed for ${siloTicket.workspaceId}: ${error.message}`);
 
             if (!res.headersSent)
                 res.writeHead(502, { 'Content-Type': 'text/plain' }).end('Bad Gateway\n');
@@ -474,7 +439,7 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (Router.isWebhookPath(req.url) || ProxyService.hasCredential(req))
-            this.wake(resolution);
+            void this.wakeWorkspace(siloTicket);
 
         if (!res.headersSent)
             res
@@ -482,10 +447,9 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
                 .end('Workspace is starting\n');
     }
 
-    /** A socket has no status code, so anything but a clean forward closes it. */
-    private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
-        // The portal's live channel upgrades on this host, like any of its requests.
-        if (this.isControlPlaneHost(req)) {
+    // Anything but a clean forward closes the socket.
+    public async handleWebSocketUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+        if (Router.isControlPlaneHost(req)) {
             this.proxy.ws(req, socket, head, { target: `http://127.0.0.1:${process.env.PORT ?? 4000}` }, (error: Error) => {
                 this.logger.warn(`Control plane upgrade failed: ${error.message}`);
 
@@ -495,46 +459,84 @@ export class ProxyService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        const resolution = await this.router.resolve(req);
+        const siloTicket = await this.router.getTicket(req);
 
-        // Webhooks never upgrade.
-        if (resolution?.kind === 'hooks') {
+        if (siloTicket?.kind === 'hooks') {
             socket.destroy();
             return;
         }
 
-        if (!resolution?.target) {
-            if (resolution)
-                this.wake(resolution);
+        if (!siloTicket?.backendAddress) {
+            if (siloTicket)
+                void this.wakeWorkspace(siloTicket);
 
             socket.destroy();
             return;
         }
 
         this.proxy.ws(req, socket, head, {
-            target:  resolution.target.toString(),
-            headers: { [TRUST_HEADER]: resolution.routerSecret },
+            target:  siloTicket.backendAddress.toString(),
+            headers: { [TRUST_HEADER]: siloTicket.routerSecret },
         });
     }
 
-    /** Starts the workspace once, through the workspace so the state is recorded. */
-    private wake(resolution: Router.Resolution): void {
-        const { workspaceId } = resolution;
+    // Starts the workspace once.
+    // Starts it if it is not up, and resolves to its address once serving. Void the promise to not wait.
+    // Starts the backend and resolves to its address once it answers. Void the promise to not wait.
+    private wakeWorkspace(siloTicket: Router.SiloTicket): Promise<URL | null> {
+        const { workspaceId } = siloTicket;
 
-        // A cooldown too: one that cannot come up must not be kicked repeatedly.
-        if (this.globalCachingService.get(WAKING_CHANNEL, workspaceId))
-            return;
+        const inFlight = this.waking.get(workspaceId);
 
-        this.globalCachingService.set(WAKING_CHANNEL, workspaceId, true);
+        if (inFlight)
+            return inFlight;
+
+        const wake = this.wake(workspaceId)
+            .finally(() => this.waking.delete(workspaceId));
+
+        this.waking.set(workspaceId, wake);
+
+        return wake;
+    }
+
+
+
+
+    private async wake(workspaceId: Workspace.Id): Promise<URL | null> {
+        const isCoolingDown = this.globalCachingService.get(WAKE_COOLDOWN_CHANNEL, workspaceId);
+
+        if (isCoolingDown)
+            return null;
 
         this.logger.log(`Waking ${workspaceId}`);
 
-        // Not awaited: a reclaimed workspace is rebuilt here, far longer than a
-        // request should be held open.
-        void this.workspaceService.ensureStarted(workspaceId).catch((error) => {
-            this.logger.error(`Could not wake ${workspaceId}: ${error instanceof Error ? error.message : error}`);
+        try {
+            let address = await this.hardwareService.wakeBackend(workspaceId);
 
-            this.globalCachingService.delete(WAKING_CHANNEL, workspaceId);
-        });
+            // No machine at all: it was reclaimed, and only a rebuild brings it back.
+            if (!address) {
+                await this.workspaceService.ensureStarted(workspaceId);
+
+                address = await this.router.invalidateAddress(workspaceId);
+            }
+            else {
+                this.router.setAddress(workspaceId, address);
+
+                // Not awaited: the portal card, not the request, is what reads it.
+                void this.workspaceService.markRunning(workspaceId)
+                    .catch((error) => this.logger.warn(`Could not mark ${workspaceId} running: ${error instanceof Error ? error.message : error}`));
+            }
+
+            return address;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+
+            this.logger.error(`Could not wake ${workspaceId}: ${message}`);
+
+            this.globalCachingService.set(WAKE_COOLDOWN_CHANNEL, workspaceId, true);
+
+            return null;
+        }
     }
 }

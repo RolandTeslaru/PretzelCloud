@@ -45,21 +45,26 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel, ...templa
 }
 
 
-const UpdateFooter = ({workspace}: {workspace: Workspace}) => {
+// The store row can be gone while the dialog still is — a destroyed workspace renders nothing here.
+const UpdateFooter = ({workspace}: {workspace: Workspace | undefined}) => {
     const latestRelease = ReleaseSDK.useStore((s) => s.latest)
-    
-    const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id
-    
-    if (updateAvailable) {
-        return (
-            <Button className='gap-2 w-full rounded-full' variant="active"
-                onClick={() => WorkspaceSDK.openUpdateDialog(workspace.id)}
-            >
-                <SystemIcons.ArrowBigUpDash className='size-4'/>
-                Update Available
-            </Button>
-        )
-    }
+
+    if (!workspace || !latestRelease)
+        return null
+
+    const updateAvailable = workspace.releaseId !== null && workspace.releaseId !== latestRelease.id
+
+    if (!updateAvailable)
+        return null
+
+    return (
+        <Button className='gap-2 w-full rounded-full' variant="active"
+            onClick={() => WorkspaceSDK.openUpdateDialog(workspace.id)}
+        >
+            <SystemIcons.ArrowBigUpDash className='size-4'/>
+            Update Available
+        </Button>
+    )
 }
 
 export default WorkspaceConfiguration

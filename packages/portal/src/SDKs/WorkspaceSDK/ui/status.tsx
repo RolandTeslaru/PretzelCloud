@@ -58,6 +58,7 @@ export const displayStatus = (
         case 'provisioning_failed': return { label: 'Failed',       variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
         case 'running':             return { label: 'Running',      variant: 'success',     icon: <SystemIcons.Check /> }
         case 'sleeping':            return { label: 'Sleeping',     variant: 'nightly',     icon: <SystemIcons.Moon /> }
+        case 'updating':            return { label: 'Updating',     variant: 'secondary',   icon: spinner }
         case 'stopped':             return { label: 'Stopped',      variant: 'destructive', icon: <SystemIcons.Power /> }
         case 'disabled':            return { label: 'Disabled',    variant: 'destructive', icon: <SystemIcons.AlertTriangle /> }
     }
