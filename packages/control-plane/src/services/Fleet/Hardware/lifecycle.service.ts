@@ -2,8 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { connect } from 'node:net';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
-import { AbstractHardwareDriver } from '../drivers/driver';
-import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineService } from '../Machine/machine.service';
 import { MachineRepository } from '../Machine/machine.repository';
 import { HardwareStateService } from './state.service';
@@ -48,7 +46,6 @@ const canConnect = (address: URL): Promise<boolean> =>
 export class HardwareLifecycleService {
 
     constructor(
-        private readonly driverRegistry:    DriverRegistry,
         private readonly machineService:    MachineService,
         private readonly machineRepository: MachineRepository,
         private readonly stateService:      HardwareStateService,
@@ -65,8 +62,7 @@ export class HardwareLifecycleService {
         if (machines.length === 0)
             throw new Error(`No machines to await for ${workspaceId}`);
 
-        await Promise.all(machines.map((machine) =>
-            this.machineService.awaitHealthy(this.driverRegistry.getDriverForKind(machine.driver), machine.resourceId)));
+        await Promise.all(machines.map((machine) => this.machineService.awaitHealthy(machine)));
 
         // Nothing else runs after a first provision, and the idle sweep skips a machine reading `creating`.
         await this.stateService.refreshAll(workspaceId);
@@ -82,14 +78,12 @@ export class HardwareLifecycleService {
         if (!backend)
             return null;
 
-        const driver = this.driverRegistry.getDriverForKind(backend.driver);
-
         if (backend.state === 'suspended')
-            await this.machineService.resume(driver, backend.resourceId);
+            await this.machineService.resume(backend);
         else if (backend.state === 'stopped')
-            await this.machineService.start(driver, backend.resourceId);
+            await this.machineService.start(backend);
 
-        const address = await this.awaitReachable(driver, backend.resourceId);
+        const address = await this.awaitReachable(backend);
 
         // The idle sweep reads this; a machine left reading `suspended` is never put back to sleep.
         await this.machineRepository.setState(Principal.SELF, backend.id, 'running');
@@ -104,14 +98,14 @@ export class HardwareLifecycleService {
 
 
     // The port opening is the health check: it is exactly what the forward is about to do.
-    private async awaitReachable(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<URL> {
+    private async awaitReachable(machine: Fleet.Machine): Promise<URL> {
         const deadline = Date.now() + WAKE_TIMEOUT_MS;
 
         let address: URL | null = null;
 
         while (Date.now() < deadline) {
             if (!address)
-                address = await this.machineService.address(driver, resourceId);
+                address = await this.machineService.address(machine);
 
             if (address && await canConnect(address))
                 return address;
@@ -119,7 +113,7 @@ export class HardwareLifecycleService {
             await sleep(WAKE_PROBE_MS);
         }
 
-        throw new Error(`Machine ${resourceId} did not open its port within ${WAKE_TIMEOUT_MS}ms`);
+        throw new Error(`Machine ${machine.resourceId} did not open its port within ${WAKE_TIMEOUT_MS}ms`);
     }
 
 
@@ -129,13 +123,11 @@ export class HardwareLifecycleService {
     async startBackend(workspaceId: Workspace.Id): Promise<void> {
         const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
 
-        const driver = this.driverRegistry.getDriverForKind(backend!.driver);
-
         // A suspended machine resumes, a stopped one starts.
         if (backend?.state === 'suspended')
-            await this.machineService.resume(driver, backend.resourceId);
+            await this.machineService.resume(backend);
         else if (backend?.state === 'stopped')
-            await this.machineService.start(driver, backend.resourceId);
+            await this.machineService.start(backend);
 
         await this.stateService.refreshAll(workspaceId);
     }
@@ -157,15 +149,13 @@ export class HardwareLifecycleService {
             throw new Error(`${workspaceId} has no worker machine to start`);
         }
 
-        const driver = this.driverRegistry.getDriverForKind(worker.driver);
-
         // The record can lag the machine, so the driver is asked before deciding.
-        const state = await this.machineService.refreshState(driver, worker);
+        const state = await this.machineService.refreshState(worker);
 
         if (state === 'suspended')
-            await this.machineService.resume(driver, worker.resourceId);
+            await this.machineService.resume(worker);
         else if (state === 'stopped')
-            await this.machineService.start(driver, worker.resourceId);
+            await this.machineService.start(worker);
 
         await this.stateService.refreshAll(workspaceId);
     }
@@ -180,13 +170,11 @@ export class HardwareLifecycleService {
         if (!worker)
             return;
 
-        const driver = this.driverRegistry.getDriverForKind(worker.driver);
-
         // The record can lag the machine, so the driver is asked before deciding.
-        const state = await this.machineService.refreshState(driver, worker);
+        const state = await this.machineService.refreshState(worker);
 
         if (Fleet.Machine.canApply('stop', { role: worker.role, state }))
-            await this.machineService.stop(driver, worker.resourceId);
+            await this.machineService.stop(worker);
 
         await this.stateService.refreshAll(workspaceId);
     }
@@ -228,9 +216,7 @@ export class HardwareLifecycleService {
             if (!Fleet.Machine.canApply(action, machine))
                 continue;
 
-            const driver = this.driverRegistry.getDriverForKind(machine.driver);
-
-            await this.dispatch(driver, machine.resourceId, action);
+            await this.dispatch(machine, action);
         }
 
         await this.stateService.refreshAll(workspaceId);
@@ -239,13 +225,13 @@ export class HardwareLifecycleService {
 
 
 
-    private dispatch(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId, action: Fleet.Machine.LifecycleAction): Promise<void> {
+    private dispatch(machine: Fleet.Machine, action: Fleet.Machine.LifecycleAction): Promise<void> {
         switch (action) {
-            case 'start':   return this.machineService.start(driver, resourceId);
-            case 'stop':    return this.machineService.stop(driver, resourceId);
-            case 'suspend': return this.machineService.suspend(driver, resourceId);
-            case 'resume':  return this.machineService.resume(driver, resourceId);
-            case 'restart': return this.machineService.restart(driver, resourceId);
+            case 'start':   return this.machineService.start(machine);
+            case 'stop':    return this.machineService.stop(machine);
+            case 'suspend': return this.machineService.suspend(machine);
+            case 'resume':  return this.machineService.resume(machine);
+            case 'restart': return this.machineService.restart(machine);
         }
     }
 }

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
-import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineService } from '../Machine/machine.service';
 import { MachineRepository } from '../Machine/machine.repository';
 import { HardwareRepository } from './hardware.repository';
@@ -13,7 +12,6 @@ export class HardwareStateService {
 
     constructor(
         private readonly repository:        HardwareRepository,
-        private readonly driverRegistry:    DriverRegistry,
         private readonly machineService:    MachineService,
         private readonly machineRepository: MachineRepository,
         private readonly statisticsSampler: HardwareStatisticsSampler,
@@ -29,13 +27,11 @@ export class HardwareStateService {
         if (!backend)
             return false;
 
-        const driver = this.driverRegistry.getDriverForKind(backend.driver);
-
-        if (await this.machineService.getState(driver, backend.resourceId) !== 'running')
+        if (await this.machineService.getState(backend) !== 'running')
             return false;
 
         // `unknown` covers an image that declares no health check at all.
-        return await this.machineService.health(driver, backend.resourceId) !== 'unhealthy';
+        return await this.machineService.health(backend) !== 'unhealthy';
     }
 
 
@@ -58,9 +54,7 @@ export class HardwareStateService {
         if (!worker)
             return false;
 
-        const driver = this.driverRegistry.getDriverForKind(worker.driver);
-
-        const state = await this.machineService.refreshState(driver, worker);
+        const state = await this.machineService.refreshState(worker);
 
         return state === 'running';
     }
@@ -95,11 +89,7 @@ export class HardwareStateService {
         if (!backend)
             return null;
 
-        const driver = this.driverRegistry.getDriverForKind(backend.driver);
-
-        const address = await this.machineService.address(driver, backend.resourceId);
-
-        return address;
+        return this.machineService.address(backend);
     }
 
 
@@ -109,11 +99,8 @@ export class HardwareStateService {
     async refreshAll(workspaceId: Workspace.Id): Promise<void> {
         const machines = await this.machineService.getAll(workspaceId);
 
-        for (const machine of machines) {
-            const driver = this.driverRegistry.getDriverForKind(machine.driver);
-
-            await this.machineService.refreshState(driver, machine);
-        }
+        for (const machine of machines)
+            await this.machineService.refreshState(machine);
 
         // The states just moved; a reading taken before them describes machines
         // that no longer run that way.

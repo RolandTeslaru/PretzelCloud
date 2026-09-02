@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { AbstractHardwareDriver } from '../drivers/driver';
+import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineRepository } from './machine.repository';
 
 // Generous: the first boot of a workspace migrates its empty database.
@@ -17,15 +18,23 @@ export class MachineService {
 
     constructor(
         private readonly machineRepository: MachineRepository,
+        private readonly driverRegistry:    DriverRegistry,
     ) {}
+
+    /** Every machine row names its own substrate; nobody has to be told. */
+    private driverFor(machine: Fleet.Machine): AbstractHardwareDriver {
+        return this.driverRegistry.getDriverForKind(machine.driver);
+    }
 
     /** The spec says which role this is, so nothing else has to be told. */
     async create(
-        driver:      AbstractHardwareDriver,
+        driverKind:  Fleet.Hardware.Driver,
         hardwareId:  Fleet.Hardware.Id,
         workspaceId: Workspace.Id,
         spec:        Fleet.Machine.Spec,
     ): Promise<AbstractHardwareDriver.Handle> {
+        const driver = this.driverRegistry.getDriverForKind(driverKind);
+
         const handle = await driver.create({
             workspaceId,
             name:  Fleet.Machine.Name.create(workspaceId, spec.role),
@@ -38,7 +47,7 @@ export class MachineService {
         await this.machineRepository.insert(Principal.SELF, {
             workspace_id: workspaceId,
             hardware_id:  hardwareId,
-            driver:       driver.kind,
+            driver:       driverKind,
             external_id:  handle.resourceId,
             role:         spec.role,
             size:         spec.size,
@@ -63,20 +72,22 @@ export class MachineService {
 
     /** Blocks until this one machine reports serving, not merely started. */
     /** The driver's view, without recording it — for reads that must stay cheap. */
-    getState(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<Fleet.Machine.State> {
-        return driver.status(resourceId);
+    getState(machine: Fleet.Machine): Promise<Fleet.Machine.State> {
+        return this.driverFor(machine).status(machine.resourceId);
     }
 
     /** Whether the software inside is serving, as opposed to merely running. */
-    health(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<AbstractHardwareDriver.Health> {
-        return driver.health(resourceId);
+    health(machine: Fleet.Machine): Promise<AbstractHardwareDriver.Health> {
+        return this.driverFor(machine).health(machine.resourceId);
     }
 
-    async awaitHealthy(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId, timeoutMs = HEALTH_TIMEOUT_MS): Promise<void> {
+    async awaitHealthy(machine: Fleet.Machine, timeoutMs = HEALTH_TIMEOUT_MS): Promise<void> {
+        const driver = this.driverFor(machine);
+
         const deadline = Date.now() + timeoutMs;
 
         for (;;) {
-            const health = await driver.health(resourceId);
+            const health = await driver.health(machine.resourceId);
 
             // An image declaring no check cannot be waited for; take it as ready.
             if (health === 'healthy' || health === 'unknown')
@@ -86,36 +97,38 @@ export class MachineService {
             // that has not opened its port yet fails a check exactly as one that
             // never will does, and only the deadline tells them apart.
             if (Date.now() > deadline)
-                throw new Error(`Machine ${resourceId} was ${health} for the whole ${timeoutMs}ms it was given`);
+                throw new Error(`Machine ${machine.resourceId} was ${health} for the whole ${timeoutMs}ms it was given`);
 
             await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_MS));
         }
     }
 
     /** Where to reach the machine, or null when it is not serving. */
-    address(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<URL | null> {
-        return driver.address(resourceId);
+    address(machine: Fleet.Machine): Promise<URL | null> {
+        return this.driverFor(machine).address(machine.resourceId);
     }
 
-    start(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<void> {
-        return driver.start(resourceId);
+    start(machine: Fleet.Machine): Promise<void> {
+        return this.driverFor(machine).start(machine.resourceId);
     }
 
-    stop(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<void> {
-        return driver.stop(resourceId);
+    stop(machine: Fleet.Machine): Promise<void> {
+        return this.driverFor(machine).stop(machine.resourceId);
     }
 
-    suspend(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<void> {
-        return driver.suspend(resourceId);
+    suspend(machine: Fleet.Machine): Promise<void> {
+        return this.driverFor(machine).suspend(machine.resourceId);
     }
 
-    resume(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<void> {
-        return driver.resume(resourceId);
+    resume(machine: Fleet.Machine): Promise<void> {
+        return this.driverFor(machine).resume(machine.resourceId);
     }
 
-    async restart(driver: AbstractHardwareDriver, resourceId: Fleet.Machine.ResourceId): Promise<void> {
-        await driver.stop(resourceId);
-        await driver.start(resourceId);
+    async restart(machine: Fleet.Machine): Promise<void> {
+        const driver = this.driverFor(machine);
+
+        await driver.stop(machine.resourceId);
+        await driver.start(machine.resourceId);
     }
 
     /**
@@ -126,19 +139,19 @@ export class MachineService {
      * stopping first is the caller's to do, and forgetting is a bug rather than
      * something to paper over here.
      */
-    async destroy(driver: AbstractHardwareDriver, machine: Fleet.Machine): Promise<void> {
+    async destroy(machine: Fleet.Machine): Promise<void> {
         if (machine.state === 'running' || machine.state === 'suspended')
             throw new Error(`Machine ${machine.resourceId} is ${machine.state}; stop it before destroying it`);
 
-        await driver.destroy(machine.resourceId);
+        await this.driverFor(machine).destroy(machine.resourceId);
 
         await this.machineRepository.deleteById(Principal.SELF, machine.id);
     }
 
     /** Asks the driver, not the row: the daemon is the truth about what is running. */
     /** Records what the driver says, and hands it back to the caller. */
-    async refreshState(driver: AbstractHardwareDriver, machine: Fleet.Machine): Promise<Fleet.Machine.State> {
-        const state = await driver.status(machine.resourceId);
+    async refreshState(machine: Fleet.Machine): Promise<Fleet.Machine.State> {
+        const state = await this.driverFor(machine).status(machine.resourceId);
 
         await this.machineRepository.setState(Principal.SELF, machine.id, state);
 

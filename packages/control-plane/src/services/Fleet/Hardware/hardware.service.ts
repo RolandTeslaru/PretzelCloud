@@ -133,7 +133,7 @@ export class HardwareService {
 
         for (const { role } of ordered) {
             const spec = Fleet.Machine.Spec.create(role, workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost)
-            const handle = await this.machineService.create(driver, hardware.id, workspaceId, spec);
+            const handle = await this.machineService.create(hardware.driver, hardware.id, workspaceId, spec);
 
             if (role === 'backend')
                 backendHost = await driver.getInternalHostForMachine(handle.resourceId);
@@ -181,7 +181,7 @@ export class HardwareService {
         // Outgoing first, so the two topologies never exist at once.
         for (const machine of current)
             if (!desired.has(machine.role))
-                await this.machineService.destroy(driver, machine);
+                await this.machineService.destroy(machine);
 
         const backend = current.find((machine) => machine.role === 'backend');
 
@@ -230,7 +230,7 @@ export class HardwareService {
         // Whatever the failed attempt made goes first, so only the wanted roles are left.
         for (const machine of await this.machineService.getAll(workspaceId))
             if (!wanted.has(machine.role))
-                await this.machineService.destroy(driver, machine);
+                await this.machineService.destroy(machine);
 
         await this.buildCompute(workspaceId, plan, machineRoles, baseEnvKeys, backendEnvKeys, null);
 
