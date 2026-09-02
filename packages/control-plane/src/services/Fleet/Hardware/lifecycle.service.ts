@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { connect } from 'node:net';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
@@ -45,6 +45,8 @@ const canConnect = (address: URL): Promise<boolean> =>
 @Injectable()
 export class HardwareLifecycleService {
 
+    private readonly logger = new Logger(HardwareLifecycleService.name);
+
     constructor(
         private readonly machineService:    MachineService,
         private readonly machineRepository: MachineRepository,
@@ -78,12 +80,20 @@ export class HardwareLifecycleService {
         if (!backend)
             return null;
 
+        const startedAt = Date.now();
+
         if (backend.state === 'suspended')
             await this.machineService.resume(backend);
         else if (backend.state === 'stopped')
             await this.machineService.start(backend);
 
+        const startReturnedAt = Date.now();
+
         const address = await this.awaitReachable(backend);
+
+        const portOpenAt = Date.now();
+
+        this.logger.log(`Woke ${workspaceId} from ${backend.state} in ${portOpenAt - startedAt}ms (start call ${startReturnedAt - startedAt}ms, port open ${portOpenAt - startReturnedAt}ms)`);
 
         // The idle sweep reads this; a machine left reading `suspended` is never put back to sleep.
         await this.machineRepository.setState(Principal.SELF, backend.id, 'running');
