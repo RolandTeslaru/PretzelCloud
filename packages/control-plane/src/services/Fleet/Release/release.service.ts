@@ -34,10 +34,14 @@ export class ReleaseService {
 
     /** One name, one release, forever — announcing a taken name is refused. */
     public async create(
-        name:   Fleet.Release.Name,
-        images: { imageCombined: string; imageBackend: string; imageWorker: string },
+        name:        Fleet.Release.Name,
+        description: string | null,
+        images:      { imageCombined: string; imageBackend: string; imageWorker: string },
     ): Promise<Fleet.Release> {
-        const row = await this.releaseRepository.create(Principal.SELF, name, images);
+        // Blank and absent are the same thing: one release with no changelog.
+        const changelog = description?.trim() || null;
+
+        const row = await this.releaseRepository.create(Principal.SELF, name, changelog, images);
 
         if (!row)
             throw new ConflictException(`A release named ${name} already exists`);

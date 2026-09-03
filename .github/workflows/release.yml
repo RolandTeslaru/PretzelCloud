@@ -52,10 +52,23 @@ jobs:
           console.log(header + '.' + payload + '.' + signature);
           ")
 
+          PAYLOAD=$(jq -n \
+            --arg name "$NAME" \
+            --arg description "$DESCRIPTION" \
+            --arg imageCombined "$COMBINED_REF" \
+            --arg imageBackend "$BACKEND_REF" \
+            --arg imageWorker "$WORKER_REF" \
+            '{name: $name, description: $description, imageCombined: $imageCombined, imageBackend: $imageBackend, imageWorker: $imageWorker}')
+
           curl -sS --fail-with-body -X POST "https://api.pretzelgraph.ai/api/admin/releases" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"name\":\"${{ steps.copy.outputs.name }}\",\"imageCombined\":\"${{ steps.copy.outputs.combined_ref }}\",\"imageBackend\":\"${{ steps.copy.outputs.backend_ref }}\",\"imageWorker\":\"${{ steps.copy.outputs.worker_ref }}\"}"
+            -d "$PAYLOAD"
         env:
           AUTH_JWT_SECRET: ${{ secrets.AUTH_JWT_SECRET }}
           OPERATOR_USER_ID: ${{ secrets.OPERATOR_USER_ID }}
+          NAME:         ${{ steps.copy.outputs.name }}
+          DESCRIPTION:  ${{ github.event.client_payload.description }}
+          COMBINED_REF: ${{ steps.copy.outputs.combined_ref }}
+          BACKEND_REF:  ${{ steps.copy.outputs.backend_ref }}
+          WORKER_REF:   ${{ steps.copy.outputs.worker_ref }}

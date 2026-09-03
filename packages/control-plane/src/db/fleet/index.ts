@@ -127,6 +127,7 @@ export namespace FleetDB {
         export const Row = z.object({
             id:             Fleet.Release.Id,
             name:           Fleet.Release.Name,
+            description:    z.string().nullable(),
             image_combined: z.string(),
             image_backend:  z.string(),
             image_worker:   z.string(),
@@ -137,6 +138,7 @@ export namespace FleetDB {
         export const toDomain = (row: Row) => Fleet.Release.Schema.parse({
             id:            row.id,
             name:          row.name,
+            description:   row.description,
             imageCombined: row.image_combined,
             imageBackend:  row.image_backend,
             imageWorker:   row.image_worker,

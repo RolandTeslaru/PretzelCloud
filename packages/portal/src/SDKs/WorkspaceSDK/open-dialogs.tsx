@@ -1,6 +1,6 @@
 import { Workspace } from '@pretzel-cloud/shared/domain'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
-import { Dialog } from '@pretzel-graph/standard-ui/foundations'
+import { Dialog, ScrollArea } from '@pretzel-graph/standard-ui/foundations'
 import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import WorkspaceConfiguration, { type ItemId } from './ui/WorkspaceConfiguration'
@@ -8,6 +8,7 @@ import { CreateWorkspaceDialog } from './ui/CreateWorkspaceDialog'
 import { UpdateWorkspaceDialog } from './ui/UpdateWorkspaceDialog'
 import { DestroyWorkspaceDialog } from './ui/WorkspaceConfiguration/DestroyWorkspaceDialog'
 import type { WorkspaceSDKImpl } from './sdk'
+import { ReleaseSDK } from '../ReleaseSDK'
 
 // Per workspace, so opening one from another card does not reuse its panel state.
 const configurationDialogId = (workspaceId: Workspace.Id) => `workspace-configuration-${workspaceId}`
@@ -49,9 +50,8 @@ export const openUpdateDialog = (workspaceId: Workspace.Id) => {
     DialogSDK.actions.push(id, (props) => (
         <DialogSDK.SplitTemplate
             {...props}
-            className='h-[400px]'
             sidebarClassName='w-[250px]'
-            contentClassName='w-[400px]'
+            contentClassName='w-[400px] p-0! overflow-hidden'
             sidebarRenderer={() => (
                 <>
                     <div className='flex flex-row gap-2'>
@@ -59,7 +59,7 @@ export const openUpdateDialog = (workspaceId: Workspace.Id) => {
                         <Dialog.Title className='text-sm font-semibold my-auto'>Workspace Update</Dialog.Title>
                     </div>
                     <Dialog.Description className='text-xs text-muted-foreground pt-1'>
-                        Rebuilds the workspace from a newer PretzelGraph release.
+                        Rebuilds the workspace from a newer release.
                     </Dialog.Description>
                 </>
             )}
@@ -68,6 +68,8 @@ export const openUpdateDialog = (workspaceId: Workspace.Id) => {
         </DialogSDK.SplitTemplate>
     ))
 }
+
+
 
 // `currentPanel` opens straight onto one panel.
 export const openConfigurationDialog = (workspaceId: Workspace.Id, currentPanel?: ItemId) => {
