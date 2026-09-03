@@ -16,6 +16,7 @@ jobs:
         run: |
           set -euo pipefail
           SHA="${{ github.event.client_payload.sha }}"
+          VERSION="${{ github.event.client_payload.version }}"
           OWNER_LOWER=$(echo "${{ github.event.client_payload.owner }}" | tr '[:upper:]' '[:lower:]')
           SHORT_SHA="${SHA:0:8}"
 
@@ -33,7 +34,10 @@ jobs:
             echo "${role}_ref=registry.fly.io/pretzel-workspaces@$digest" >> "$GITHUB_OUTPUT"
           done
 
-          echo "name=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          # The release is named after the version, not the commit that carried it.
+          [ -n "$VERSION" ] || { echo "The dispatch carried no version" >&2; exit 1; }
+
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Announce the release
         run: |

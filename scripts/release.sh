@@ -42,8 +42,10 @@ git -C "$GRAPH" diff --quiet || { echo "Pretzel-Graph has uncommitted changes â€
 
 SHA=$(git -C "$GRAPH" rev-parse --short HEAD)
 
-# A tag when the commit has one; the short SHA otherwise.
-NAME=$(git -C "$GRAPH" describe --tags --exact-match 2>/dev/null || echo "$SHA")
+# The version the manifest declares; bumped in the pull request that ships it.
+NAME=$(node -p "require('$GRAPH/package.json').version")
+
+[ -n "$NAME" ] && [ "$NAME" != "undefined" ] || { echo "$GRAPH/package.json declares no version" >&2; exit 1; }
 
 CONFIG=$(mktemp -t release-fly-config).toml
 
