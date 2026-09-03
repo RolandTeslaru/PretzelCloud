@@ -41,7 +41,7 @@ export class WorkspaceService {
         private readonly siloRouter:          Router,
         private readonly realtime:            RealtimeService,
         private readonly entitlement:         EntitlementService,
-        private readonly workspaceRepository: WorkspaceRepository,
+        private readonly repository:          WorkspaceRepository,
         private readonly userRepository:      UserRepository,
         private readonly permission:          PermissionService,
         private readonly listing:             ListingService,
@@ -49,6 +49,8 @@ export class WorkspaceService {
         private readonly billing:             BillingService,
         private readonly planRegistry:        PlanRegistry,
         private readonly release:             ReleaseService,
+        // Read by `@Operation`, which serialises a workspace's operations across instances.
+        private readonly lockService:         LockService,
         ) {}
 
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
@@ -69,7 +71,7 @@ export class WorkspaceService {
             throw new NotFoundException('No profile yet');
 
         // Both rows or neither: no membership row means the owner cannot see it.
-        const workspace = await this.workspaceRepository.insert(Principal.SELF, { id, displayName, ownerId: principal.userId });
+        const workspace = await this.repository.insert(Principal.SELF, { id, displayName, ownerId: principal.userId });
 
         void (async () => {
             for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
@@ -104,7 +106,7 @@ export class WorkspaceService {
         lifecycleState: Workspace.Lifecycle.State,
         { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
     ): Promise<Workspace> {
-        const workspace = await this.workspaceRepository.setLifecycleState(Principal.SELF, id, lifecycleState);
+        const workspace = await this.repository.setLifecycleState(Principal.SELF, id, lifecycleState);
 
         this.siloRouter.invalidateLifecycle(id);
 
@@ -128,7 +130,7 @@ export class WorkspaceService {
         catch (error) {
             this.logger.error(`Teardown of ${id} failed, leaving it for the sweep: ${error instanceof Error ? error.message : error}`);
 
-            await this.workspaceRepository.setAbandoned(Principal.SELF, id);
+            await this.repository.setAbandoned(Principal.SELF, id);
         }
 
         await this.setLifecycleState(id, 'provisioning_failed');
@@ -148,12 +150,12 @@ export class WorkspaceService {
     }
 
     public async get(workspaceId: Workspace.Id): Promise<Workspace> {
-        return this.workspaceRepository.get(Principal.SELF, workspaceId);
+        return this.repository.get(Principal.SELF, workspaceId);
     }
 
     /** The name on the account. Ownership was settled by the guard. */
     public async rename(principal: Principal.User, workspaceId: Workspace.Id, displayName: string): Promise<void> {
-        await this.workspaceRepository.setDisplayName(principal, workspaceId, displayName);
+        await this.repository.setDisplayName(principal, workspaceId, displayName);
     }
 
     /**
@@ -165,7 +167,7 @@ export class WorkspaceService {
             throw new ForbiddenException('A custom subdomain requires a paid plan');
 
         try {
-            await this.workspaceRepository.setSubdomain(principal, workspace.id, subdomain);
+            await this.repository.setSubdomain(principal, workspace.id, subdomain);
         }
         catch (error) {
             if (error instanceof Error && error.message.includes('workspaces_subdomain_key'))
@@ -245,7 +247,7 @@ export class WorkspaceService {
 
     /** The fleet turning it off. Only `enable` undoes it. */
     public async disable(workspaceId: Workspace.Id, reason: string): Promise<void> {
-        await this.workspaceRepository.setDisabled(Principal.SELF, workspaceId, reason);
+        await this.repository.setDisabled(Principal.SELF, workspaceId, reason);
 
         this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'disabled' }));
 
@@ -266,7 +268,7 @@ export class WorkspaceService {
         if (lifecycleState !== 'disabled')
             return;
 
-        await this.workspaceRepository.clearDisabled(Principal.SELF, workspaceId);
+        await this.repository.clearDisabled(Principal.SELF, workspaceId);
 
         this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'sleeping' }));
 
@@ -304,7 +306,7 @@ export class WorkspaceService {
         if (await this.hardware.state.hasMachines(workspaceId))
             return;
 
-        const row = await this.workspaceRepository.getOwnerAndPlanIdForWorkspace(Principal.SELF, workspaceId);
+        const row = await this.repository.getOwnerAndPlanIdForWorkspace(Principal.SELF, workspaceId);
 
         if (!row)
             return;
@@ -452,7 +454,7 @@ export class WorkspaceService {
             await this.stop(workspaceId, { emitNoEvents: true });
 
             // Its own state for the window: not stopped, coming back on its own.
-            await this.workspaceRepository.setLifecycleState(Principal.SELF, workspaceId, 'updating');
+            await this.repository.setLifecycleState(Principal.SELF, workspaceId, 'updating');
 
             this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'updating' }));
 
@@ -470,7 +472,7 @@ export class WorkspaceService {
             const { lifecycleState } = await this.get(workspaceId);
 
             if (lifecycleState === 'updating') {
-                await this.workspaceRepository.setLifecycleState(Principal.SELF, workspaceId, 'stopped');
+                await this.repository.setLifecycleState(Principal.SELF, workspaceId, 'stopped');
 
                 this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'stopped' }));
             }
@@ -492,7 +494,7 @@ export class WorkspaceService {
 
     @Operation()
     public async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
-        await this.workspaceRepository.setPlan(Principal.SELF, workspaceId, planId);
+        await this.repository.setPlan(Principal.SELF, workspaceId, planId);
 
         // Before the rebuild: what was bought is already true.
         this.emit(workspaceId, createEvent('plan:changed', { plan: this.planRegistry.get(planId) }));
@@ -538,7 +540,7 @@ export class WorkspaceService {
 
         await this.listing.deleteAllForWorkspace(workspaceId);
 
-        await this.workspaceRepository.delete(principal, workspaceId);
+        await this.repository.delete(principal, workspaceId);
 
         // After the row goes, so the refill finds nothing.
         this.siloRouter.invalidate(workspaceId, [subdomain]);
