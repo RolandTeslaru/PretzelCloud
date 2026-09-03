@@ -18,6 +18,12 @@ SHA=$(git -C "$GRAPH" rev-parse --short HEAD)
 # Uncommitted work is the point of a local release; the name says so.
 git -C "$GRAPH" diff --quiet || SHA="$SHA-dirty-$(date +%H%M%S)"
 
+VERSION=$(node -p "require('$GRAPH/package.json').version")
+
+# The commit rides along: the same version is built over and over here, and a
+# repeated name would be dropped rather than becoming the latest.
+NAME="$VERSION+$SHA"
+
 (cd "$GRAPH" && npm run build:images)
 
 # The sha tag, not :latest — a release names bytes, not a moving pointer.
@@ -27,8 +33,8 @@ done
 
 psql "$FLEET_URL" -v ON_ERROR_STOP=1 -c "
     insert into releases (name, image_combined, image_backend, image_worker)
-    values ('$SHA', 'pretzel-graph-combined:$SHA', 'pretzel-graph-backend:$SHA', 'pretzel-graph-worker:$SHA')
+    values ('$NAME', 'pretzel-graph-combined:$SHA', 'pretzel-graph-backend:$SHA', 'pretzel-graph-worker:$SHA')
     on conflict (name) do nothing" >/dev/null
 
 echo
-echo "Release $SHA is the local fleet's latest. Update from the workspace cards."
+echo "Release $NAME is the local fleet's latest. Update from the workspace cards."
