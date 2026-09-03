@@ -12,15 +12,14 @@ type Action = Workspace.Lifecycle.Action
 
 const REBUILD_CONFIRM_ID = 'rebuild-workspace'
 
-// Raw state-machine controls are for developing the fleet, not for users. Gated
-// on the origin: `localhost` is a reserved TLD that no deployment can serve, so
-// production can never accidentally ship these enabled.
+// Topology switching bypasses billing, so it stays local. `localhost` is a
+// reserved TLD that no deployment can serve.
 const DEV_CONTROLS =
     typeof location !== 'undefined' &&
     (location.hostname === 'localhost' || location.hostname.endsWith('.localhost'))
 
 
-const DEV_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
+const MACHINE_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
     { action: 'start',   label: 'Start',   icon: <SystemIcons.Play /> },
     { action: 'stop',    label: 'Stop',    icon: <SystemIcons.Square /> },
     { action: 'suspend', label: 'Suspend', icon: <SystemIcons.Pause /> },
@@ -156,31 +155,29 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                 </Button>
             </div>
 
-            {DEV_CONTROLS && (
-                <div className="flex flex-col gap-3 rounded-lg ">
-                    <div className="flex flex-col gap-1">
-                        <p className="text-sm font-medium">Machine controls</p>
-                        <p className="text-muted-foreground text-xs">
-                            Raw state-machine transitions. Development only — the platform drives these
-                            automatically in production.
-                        </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                        {DEV_ACTIONS.map(({ action, label, icon }) => (
-                            <Button
-                                key={action}
-                                variant="input"
-                                size="sm"
-                                onClick={run(action)}
-                            >
-                                {transition === action ? <Spinner className="size-3.5" /> : icon}
-                                {label}
-                            </Button>
-                        ))}
-                    </div>
+            <div className="flex flex-col gap-3 rounded-lg ">
+                <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium">Machine controls</p>
+                    <p className="text-muted-foreground text-xs">
+                        The platform drives these on its own; a workspace sleeps when idle and wakes
+                        on the next request.
+                    </p>
                 </div>
-            )}
+
+                <div className="flex flex-wrap gap-2">
+                    {MACHINE_ACTIONS.map(({ action, label, icon }) => (
+                        <Button
+                            key={action}
+                            variant="input"
+                            size="sm"
+                            onClick={run(action)}
+                        >
+                            {transition === action ? <Spinner className="size-3.5" /> : icon}
+                            {label}
+                        </Button>
+                    ))}
+                </div>
+            </div>
 
             {DEV_CONTROLS && (
                 <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border p-4">
