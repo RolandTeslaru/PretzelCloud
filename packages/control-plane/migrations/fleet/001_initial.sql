@@ -217,6 +217,8 @@ create trigger machines_set_updated_at          before update on machines       
 create table releases (
     id             uuid default gen_random_uuid() not null,
     name           text not null,
+    -- What changed, as the merge that shipped it described it.
+    description    text,
     image_combined text not null,
     image_backend  text not null,
     image_worker   text not null,

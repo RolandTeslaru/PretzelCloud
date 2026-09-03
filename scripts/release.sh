@@ -93,10 +93,23 @@ const signature = crypto.createHmac('sha256', process.env.AUTH_JWT_SECRET).updat
 console.log(header + '.' + payload + '.' + signature);
 " 2>/dev/null)
 
+# The body of the commit being shipped, whatever its shape.
+DESCRIPTION=$(git -C "$GRAPH" log -1 --format=%b)
+
+PAYLOAD=$(NAME="$NAME" DESCRIPTION="$DESCRIPTION" \
+    COMBINED="${DIGEST_BY_ROLE[combined]}" BACKEND="${DIGEST_BY_ROLE[backend]}" WORKER="${DIGEST_BY_ROLE[worker]}" \
+    node -e "console.log(JSON.stringify({
+        name:          process.env.NAME,
+        description:   process.env.DESCRIPTION || null,
+        imageCombined: process.env.COMBINED,
+        imageBackend:  process.env.BACKEND,
+        imageWorker:   process.env.WORKER,
+    }))")
+
 RESPONSE=$(curl -sS -w '\n%{http_code}' -X POST "$CONTROL_PLANE_URL/api/admin/releases" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"name\":\"$NAME\",\"imageCombined\":\"${DIGEST_BY_ROLE[combined]}\",\"imageBackend\":\"${DIGEST_BY_ROLE[backend]}\",\"imageWorker\":\"${DIGEST_BY_ROLE[worker]}\"}")
+    -d "$PAYLOAD")
 
 STATUS=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')

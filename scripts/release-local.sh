@@ -31,9 +31,11 @@ for role in combined backend worker; do
     docker tag "pretzel-graph-$role:latest" "pretzel-graph-$role:$SHA"
 done
 
-psql "$FLEET_URL" -v ON_ERROR_STOP=1 -c "
-    insert into releases (name, image_combined, image_backend, image_worker)
-    values ('$NAME', 'pretzel-graph-combined:$SHA', 'pretzel-graph-backend:$SHA', 'pretzel-graph-worker:$SHA')
+DESCRIPTION=$(git -C "$GRAPH" log -1 --format=%b)
+
+psql "$FLEET_URL" -v ON_ERROR_STOP=1 -v name="$NAME" -v description="$DESCRIPTION" -c "
+    insert into releases (name, description, image_combined, image_backend, image_worker)
+    values (:'name', :'description', 'pretzel-graph-combined:$SHA', 'pretzel-graph-backend:$SHA', 'pretzel-graph-worker:$SHA')
     on conflict (name) do nothing" >/dev/null
 
 echo

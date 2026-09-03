@@ -17,6 +17,6 @@ export class ReleaseController {
         if (!release)
             throw new NotFoundException('No release has been announced yet');
 
-        return { id: release.id, name: release.name };
+        return { id: release.id, name: release.name, description: release.description };
     }
 }

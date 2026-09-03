@@ -34,7 +34,7 @@ export class AdminController {
     public async createRelease(
         @ZodBody(Fleet.Release.API.Create.Request) body: Fleet.Release.API.Create.Request,
     ): Promise<Fleet.Release.API.Create.Response> {
-        return { release: await this.releaseService.create(body.name, body) };
+        return { release: await this.releaseService.create(body.name, body.description ?? null, body) };
     }
 
     @Post('workspaces/:workspaceId/disable')

@@ -19,6 +19,8 @@ export namespace Release {
     export const Schema = z.object({
         id:            Id,
         name:          Name,
+        /** The changelog for this release. Null when whoever announced it wrote none. */
+        description:   z.string().nullable(),
         imageCombined: z.string(),
         imageBackend:  z.string(),
         imageWorker:   z.string(),
@@ -28,7 +30,7 @@ export namespace Release {
     export namespace API {
 
         export namespace Latest {
-            export const Response = z.object({ id: Id, name: Name })
+            export const Response = z.object({ id: Id, name: Name, description: z.string().nullable() })
             export type  Response = z.infer<typeof Response>
         }
 
@@ -40,6 +42,7 @@ export namespace Release {
         export namespace Create {
             export const Request = z.object({
                 name:          Name,
+                description:   z.string().nullable().optional(),
                 imageCombined: z.string().min(1),
                 imageBackend:  z.string().min(1),
                 imageWorker:   z.string().min(1),

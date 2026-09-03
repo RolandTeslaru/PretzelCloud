@@ -40,14 +40,16 @@ export class ReleaseRepository extends Repository(FleetDB) {
     /** Null when the name is taken: a re-announced build, not a new release. */
     @Transactional('service')
     public async create(
-        principal: Principal.Service,
-        name:      Fleet.Release.Name,
-        images:    { imageCombined: string; imageBackend: string; imageWorker: string },
+        principal:   Principal.Service,
+        name:        Fleet.Release.Name,
+        description: string | null,
+        images:      { imageCombined: string; imageBackend: string; imageWorker: string },
     ) {
         const row = await this.trx
             .insertInto('releases')
             .values({
                 name,
+                description,
                 image_combined: images.imageCombined,
                 image_backend:  images.imageBackend,
                 image_worker:   images.imageWorker,
