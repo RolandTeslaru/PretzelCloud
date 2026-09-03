@@ -73,7 +73,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
     const latestRelease = ReleaseSDK.useStore((s) => s.latest)
 
-    const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id
+    const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id && workspace.lifecycleState !== "updating"
 
 
     return (

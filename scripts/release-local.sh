@@ -33,10 +33,20 @@ done
 
 DESCRIPTION=$(git -C "$GRAPH" log -1 --format=%b)
 
-psql "$FLEET_URL" -v ON_ERROR_STOP=1 -v name="$NAME" -v description="$DESCRIPTION" -c "
-    insert into releases (name, description, image_combined, image_backend, image_worker)
-    values (:'name', :'description', 'pretzel-graph-combined:$SHA', 'pretzel-graph-backend:$SHA', 'pretzel-graph-worker:$SHA')
-    on conflict (name) do nothing" >/dev/null
+# Read from stdin rather than -c: psql only interpolates :'var' in file input,
+# and the description is a commit body that must not be pasted into SQL.
+psql "$FLEET_URL" -v ON_ERROR_STOP=1 \
+    -v name="$NAME" -v description="$DESCRIPTION" -v sha="$SHA" >/dev/null <<'SQL'
+insert into releases (name, description, image_combined, image_backend, image_worker)
+values (
+    :'name',
+    :'description',
+    'pretzel-graph-combined:' || :'sha',
+    'pretzel-graph-backend:'  || :'sha',
+    'pretzel-graph-worker:'   || :'sha'
+)
+on conflict (name) do nothing;
+SQL
 
 echo
 echo "Release $NAME is the local fleet's latest. Update from the workspace cards."
