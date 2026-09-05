@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Put, Query, UseGuards } from '@nestjs/common';
 import { Listing } from '@pretzel-cloud/shared/domain';
 import { SiloAuthGuard } from '@/auth/guards/silo-auth.guard';
 import { AuthenticatedSilo } from '@/auth/identity/principal.decorator';
@@ -27,26 +27,45 @@ export class ListingController {
         return { workflow: await this.listingService.get(Listing.Id.parse(id)) };
     }
 
-    // Writing side: a silo sharing or withdrawing its own workflows.
+    // Writing side: a silo sharing, refreshing or withdrawing its own workflows.
 
-    @Put('workspaces/:workspaceId/listings')
+    @Get('workspaces/:workspaceId/listings')
+    @UseGuards(SiloAuthGuard)
+    public async owned(@AuthenticatedSilo() workspace: Principal.Silo): Promise<Listing.API.Owned.Response> {
+        return { listings: await this.listingService.getOwnedIds(workspace) };
+    }
+
+    @Put('workspaces/:workspaceId/listings/:workflowId')
     @UseGuards(SiloAuthGuard)
     public async put(
         @AuthenticatedSilo() workspace: Principal.Silo,
+        @Param('workflowId') workflowId: string,
         @Body() body: unknown,
     ): Promise<Listing.API.Put.Response> {
-        const id = await this.listingService.put(workspace, Listing.API.Put.Request.parse(body));
+        const id = await this.listingService.upsert(workspace, Listing.WorkflowId.parse(workflowId), Listing.API.Put.Request.parse(body));
 
         return { id };
     }
 
-    @Delete('workspaces/:workspaceId/listings/:id')
+    @Patch('workspaces/:workspaceId/listings/:workflowId')
+    @UseGuards(SiloAuthGuard)
+    public async patch(
+        @AuthenticatedSilo() workspace: Principal.Silo,
+        @Param('workflowId') workflowId: string,
+        @Body() body: unknown,
+    ): Promise<Listing.API.Put.Response> {
+        const id = await this.listingService.update(workspace, Listing.WorkflowId.parse(workflowId), Listing.API.Put.Request.parse(body));
+
+        return { id };
+    }
+
+    @Delete('workspaces/:workspaceId/listings/:workflowId')
     @UseGuards(SiloAuthGuard)
     public async delete(
         @AuthenticatedSilo() workspace: Principal.Silo,
-        @Param('id') id: string,
+        @Param('workflowId') workflowId: string,
     ): Promise<Record<string, never>> {
-        await this.listingService.delete(workspace, Listing.Id.parse(id));
+        await this.listingService.deleteByWorkflow(workspace, Listing.WorkflowId.parse(workflowId));
 
         return {};
     }

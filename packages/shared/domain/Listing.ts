@@ -17,6 +17,10 @@ export namespace Listing {
     export const createId = (): Id =>
         `${ID_PREFIX}${crypto.randomUUID().slice(ID_PREFIX.length)}` as Id
 
+    // The owner's local workflow id; unique together with the owner.
+    export const WorkflowId = z.uuid()
+    export type  WorkflowId = z.infer<typeof WorkflowId>
+
     // Opaque here: the workspace that reads it is the one that validates it.
     export const Data = z.record(z.string(), z.unknown())
     export type  Data = z.infer<typeof Data>
@@ -27,6 +31,7 @@ export namespace Listing {
     export const Schema = z.object({
         id:              Id,
         workspaceId:     Workspace.Id,
+        workflowId:      WorkflowId,
         publicationMeta: Data,
         workflowData:    Data,
         blueprintId:     z.string().nullable(),
@@ -52,10 +57,15 @@ export namespace Listing {
             export type  Response = z.infer<typeof Response>
         }
 
-        // Without `id` the registry mints one.
+        // A workspace's own listings, keyed by its workflow ids.
+        export namespace Owned {
+            export const Response = z.object({ listings: z.record(WorkflowId, Id) })
+            export type  Response = z.infer<typeof Response>
+        }
+
+        // The publication to serve; the workflow is named in the path.
         export namespace Put {
             export const Request = z.object({
-                id:              Id.optional(),
                 publicationMeta: Data,
                 workflowData:    Data,
             })
