@@ -26,6 +26,13 @@ primary_region = "iad"
   GOTRUE_MAILER_AUTOCONFIRM     = "true"
   GOTRUE_EXTERNAL_EMAIL_ENABLED = "true"
 
+  # Sign in with GitHub. The OAuth app's id and secret are
+  # GOTRUE_EXTERNAL_GITHUB_CLIENT_ID and GOTRUE_EXTERNAL_GITHUB_SECRET, set with
+  # `fly secrets set`; the issuer refuses to start with the provider on and
+  # either missing, so set them before deploying this.
+  GOTRUE_EXTERNAL_GITHUB_ENABLED      = "true"
+  GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI = "https://auth.pretzelgraph.ai/callback"
+
 [http_service]
   internal_port        = 9999
   force_https          = true

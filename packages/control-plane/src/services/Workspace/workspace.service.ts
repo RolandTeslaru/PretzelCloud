@@ -21,6 +21,8 @@ import { BillingService } from '@/services/Billing/billing.service';
 
 const PROVISION_ATTEMPTS = 3;
 
+const MAX_WORKSPACES_PER_OWNER = 1;
+
 /** Unwraps the provisioner's wrapper to ask what actually went wrong underneath. */
 function isTopologyNotRestored(error: unknown): boolean {
     if (error instanceof TopologyNotRestored)
@@ -53,6 +55,14 @@ export class WorkspaceService {
         private readonly lockService:         LockService,
         ) {}
 
+    /** One workspace per account for now, whatever its plan — a number, not a plan property, until the downgrade story is settled. */
+    private async refuseOverOwnerCap(ownerId: User.Id): Promise<void> {
+        const owned = await this.repository.countByOwner(Principal.SELF, ownerId);
+
+        if (owned >= MAX_WORKSPACES_PER_OWNER)
+            throw new ForbiddenException('Accounts include one workspace for now. Destroy yours to create another.');
+    }
+
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
     private emit(workspaceId: Workspace.Id, event: Workspace.Event.Unstamped): void {
         const channel = Workspace.Event.getChannel(workspaceId);
@@ -70,8 +80,16 @@ export class WorkspaceService {
         if (!owner)
             throw new NotFoundException('No profile yet');
 
-        // Both rows or neither: no membership row means the owner cannot see it.
-        const workspace = await this.repository.insert(Principal.SELF, { id, displayName, ownerId: principal.userId });
+        // Held across check and insert, so two creates cannot both pass the count.
+        const workspace = await this.lockService.withEphemeralLock('workspace-create', principal.userId, 10_000, async () => {
+            await this.refuseOverOwnerCap(principal.userId);
+
+            // Both rows or neither: no membership row means the owner cannot see it.
+            return this.repository.insert(Principal.SELF, { id, displayName, ownerId: principal.userId });
+        });
+
+        if (!workspace)
+            throw new ConflictException('Another workspace is already being created');
 
         void (async () => {
             for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {

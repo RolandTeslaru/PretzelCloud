@@ -5,12 +5,16 @@ import { BaseSDK } from "@pretzel-graph/standard-ui/SDKs/Base";
 import { SDK } from "@pretzel-graph/standard-ui/SDKs/SDKManager";
 import { DialogSDK } from "@pretzel-graph/standard-ui/SDKs/DialogSDK";
 import { AlertDialog } from "@pretzel-graph/standard-ui/foundations";
-import { authClient, getToken } from "./client";
+import { authClient, AUTH_URL, getToken } from "./client";
 import { _createAuthActions_ } from "./actions";
 import { DeleteAccountDialog } from "./ui/DeleteAccountDialog";
 
 const LOGOUT_DIALOG_ID = 'logout'
 const DELETE_ACCOUNT_DIALOG_ID = 'delete-account'
+
+// The providers the portal knows how to draw a button for. The issuer decides
+// which of them are actually on.
+const KNOWN_PROVIDERS: AuthSDK.Provider[] = ['github']
 
 @SDK("Auth")
 export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
@@ -24,11 +28,17 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
             isAuthenticated: false,
             user: null,
             isLoading: true,
+            needsProfile: false,
+            providers: [],
         }))
     )
 
     /** Recover an existing session, then keep the store in step with the issuer. */
     public async init() {
+        // Not awaited: the buttons can appear a moment late, but the session
+        // decides which page renders and should not wait on a second request.
+        this.loadProviders()
+
         const { data: { session }, error } = await this.client.getSession()
 
         if (error) {
@@ -50,9 +60,37 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
                     s.user = null
                     s.isAuthenticated = false
                     s.isLoading = false
+                    s.needsProfile = false
                 })
             }
         })
+    }
+
+    /**
+     * Asks the issuer which sign-in providers it has on. Its settings are
+     * public and unauthenticated; a failure here just leaves password sign-in.
+     */
+    private async loadProviders() {
+        try {
+            const response = await fetch(`${AUTH_URL}/settings`)
+
+            if (!response.ok)
+                return
+
+            const settings = await response.json() as { external?: Record<string, boolean> }
+
+            const enabled: AuthSDK.Provider[] = []
+
+            for (const provider of KNOWN_PROVIDERS) {
+                if (settings.external?.[provider])
+                    enabled.push(provider)
+            }
+
+            this.setState(s => { s.providers = enabled })
+        }
+        catch (error) {
+            console.warn("Could not read the issuer's settings", error)
+        }
     }
 
     /** Confirms first: signing out is one click from anywhere the menu opens. */
@@ -94,15 +132,30 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
 }
 
 export namespace AuthSDK {
+    /** A third party the issuer can sign someone in through. */
+    export type Provider = 'github'
+
     export type State = {
         isAuthenticated: boolean;
         user: User | null;
         isLoading: boolean;
+        // Signed in at the issuer, but this deployment has no profile row yet:
+        // sign-up stopped before the names were chosen, or the account arrived
+        // through a provider and never saw the form.
+        needsProfile: boolean;
+        // Which of the known providers the issuer has on.
+        providers: Provider[];
     }
 
     export type Actions = {
         login:  (props: { email: string, password: string }) => Promise<boolean>
         signup: (props: { email: string, password: string, username: string, displayName: string }) => Promise<boolean>
+        // Leaves the page for the provider. Coming back lands on the origin with
+        // a session, and the guards carry it from there.
+        loginWithProvider: (provider: Provider) => Promise<boolean>
+        // What the provider told the issuer about the person, shaped as a
+        // profile the form can start from.
+        suggestProfile: () => Promise<{ username: string, displayName: string }>
         logout: () => Promise<boolean>
         // Tears down every workspace it owns, then the account itself. Ends the session.
         deleteAccount: () => Promise<boolean>
