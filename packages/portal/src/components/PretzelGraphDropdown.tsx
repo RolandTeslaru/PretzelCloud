@@ -17,7 +17,7 @@ export function PretzelGraphDropdown({ compact = false, title = 'PretzelGraph' }
         <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
                 {compact ? (
-                    <img src={pretzelLogo} alt="PretzelGraph" width={30} height={30} className="cursor-pointer" />
+                    <SystemIcons.Pretzel size={30} className="text-primary cursor-pointer" />
                 ) : (
                     <button
                         type="button"
