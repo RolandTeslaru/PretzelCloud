@@ -27,30 +27,40 @@ export class ListingService {
         return this.listingRepository.getUpdates(Principal.SELF, ids);
     }
 
-    public async put(principal: Principal.Silo, request: Listing.API.Put.Request): Promise<Listing.Id> {
-        if (Buffer.byteLength(JSON.stringify(request.workflowData)) > Listing.MAX_DATA_BYTES)
-            throw new PayloadTooLargeException(`Workflow data exceeds ${Listing.MAX_DATA_BYTES} bytes`);
+    public async getOwnedIds(principal: Principal.Silo): Promise<Record<Listing.WorkflowId, Listing.Id>> {
+        return this.listingRepository.getOwnedIds(principal);
+    }
 
-        if (!request.id)
-            return this.listingRepository.insert(principal, request);
+    public async upsert(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id> {
+        this.assertSize(request);
 
-        const updated = await this.listingRepository.update(principal, request.id, request);
+        return this.listingRepository.upsert(principal, workflowId, request);
+    }
 
-        if (updated === 0)
-            throw new NotFoundException('No such listing');
+    // Replaces the copy of a workflow that is already listed; otherwise not found.
+    public async update(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id> {
+        this.assertSize(request);
 
-        return request.id;
+        const id = await this.listingRepository.update(principal, workflowId, request);
+
+        if (!id)
+            throw new NotFoundException('Workflow is not listed');
+
+        return id;
     }
 
     public async deleteAllForWorkspace(workspaceId: Workspace.Id): Promise<void> {
         await this.listingRepository.deleteAllForWorkspace(Principal.SELF, workspaceId);
     }
 
-    public async delete(principal: Principal.Silo, id: Listing.Id): Promise<void> {
-        const deleted = await this.listingRepository.delete(principal, id);
+    // Idempotent: withdrawing an unlisted workflow is a no-op.
+    public async deleteByWorkflow(principal: Principal.Silo, workflowId: Listing.WorkflowId): Promise<void> {
+        await this.listingRepository.deleteByWorkflow(principal, workflowId);
+    }
 
-        if (deleted === 0)
-            throw new NotFoundException('No such listing');
+    private assertSize(request: Listing.API.Put.Request): void {
+        if (Buffer.byteLength(JSON.stringify(request.workflowData)) > Listing.MAX_DATA_BYTES)
+            throw new PayloadTooLargeException(`Workflow data exceeds ${Listing.MAX_DATA_BYTES} bytes`);
     }
 
 }

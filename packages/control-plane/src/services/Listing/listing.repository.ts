@@ -43,6 +43,18 @@ export class ListingRepository extends Repository(PortalDB) {
         return rows.map((row) => PortalDB.Listing.toDomain(PortalDB.Listing.Row.parse(row)));
     }
 
+    // The calling workspace's listing ids, keyed by its workflow ids.
+    @Transactional('silo')
+    public async getOwnedIds(principal: Principal.Silo): Promise<Record<Listing.WorkflowId, Listing.Id>> {
+        const rows = await this.trx
+            .selectFrom('listings')
+            .select(['id', 'workflow_id'])
+            .where('workspace_id', '=', principal.workspaceId)
+            .execute();
+
+        return Object.fromEntries(rows.map((row) => [row.workflow_id, row.id]));
+    }
+
     // 0 rows updated means no such listing of this workspace.
     @Transactional('silo')
     public async setBlueprintId(principal: Principal.Silo, id: Listing.Id, blueprintId: string | null): Promise<number> {
@@ -55,28 +67,40 @@ export class ListingRepository extends Repository(PortalDB) {
         return Number(result.numUpdatedRows);
     }
 
+    // Mints on first push; later pushes for the same workflow replace the copy.
     @Transactional('silo')
-    public async insert(principal: Principal.Silo, request: Listing.API.Put.Request): Promise<Listing.Id> {
-        const id = Listing.createId();
+    public async upsert(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id> {
+        const values = toValues(request);
 
-        await this.trx
+        const row = await this.trx
             .insertInto('listings')
-            .values({ id, ...toValues(principal.workspaceId, request) })
-            .execute();
+            .values({
+                id:           Listing.createId(),
+                workspace_id: principal.workspaceId,
+                workflow_id:  workflowId,
+                ...values,
+            })
+            .onConflict((conflict) => conflict
+                .columns(['workspace_id', 'workflow_id'])
+                .doUpdateSet(values))
+            .returning('id')
+            .executeTakeFirstOrThrow();
 
-        return id;
+        return row.id;
     }
 
-    // 0 rows updated means no such listing of this workspace.
+    // 0 rows updated means this workflow is not listed.
     @Transactional('silo')
-    public async update(principal: Principal.Silo, id: Listing.Id, request: Listing.API.Put.Request): Promise<number> {
-        const result = await this.trx
+    public async update(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id | null> {
+        const row = await this.trx
             .updateTable('listings')
-            .set(toValues(principal.workspaceId, request))
-            .where('id', '=', id)
+            .set(toValues(request))
+            .where('workspace_id', '=', principal.workspaceId)
+            .where('workflow_id', '=', workflowId)
+            .returning('id')
             .executeTakeFirst();
 
-        return Number(result.numUpdatedRows);
+        return row?.id ?? null;
     }
 
     // Teardown path: the fleet acting, not the silo, so the service role.
@@ -89,18 +113,18 @@ export class ListingRepository extends Repository(PortalDB) {
     }
 
     @Transactional('silo')
-    public async delete(principal: Principal.Silo, id: Listing.Id): Promise<number> {
+    public async deleteByWorkflow(principal: Principal.Silo, workflowId: Listing.WorkflowId): Promise<number> {
         const result = await this.trx
             .deleteFrom('listings')
-            .where('id', '=', id)
+            .where('workspace_id', '=', principal.workspaceId)
+            .where('workflow_id', '=', workflowId)
             .executeTakeFirst();
 
         return Number(result.numDeletedRows);
     }
 }
 
-const toValues = (workspaceId: Workspace.Id, request: Listing.API.Put.Request) => ({
-    workspace_id:     workspaceId,
+const toValues = (request: Listing.API.Put.Request) => ({
     publication_meta: request.publicationMeta,
     workflow_data:    request.workflowData,
 });

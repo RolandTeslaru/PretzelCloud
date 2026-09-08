@@ -15,7 +15,7 @@ interface RouterContext {
 
 export const Route = createRootRouteWithContext<RouterContext>()({
     component: () => {
-        const theme = SystemSDK.useStore((s) => s.theme);
+        const theme = SystemSDK.useStore((s) => s.resolvedTheme);
 
         return (
             <QuerySDK.Provider>

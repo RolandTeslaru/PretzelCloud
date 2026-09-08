@@ -7,6 +7,21 @@ import { api, getMessageFromError } from "../api";
 const isMissingProfile = (error: unknown) =>
     (error as { response?: { status?: number } })?.response?.status === 404
 
+const metadataString = (metadata: Record<string, unknown>, key: string): string => {
+    const value = metadata[key]
+
+    return typeof value === 'string' ? value.trim() : ''
+}
+
+/** A provider's handle, bent into something the username rule accepts. */
+const toUsername = (handle: string): string => {
+    const cleaned = handle.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
+
+    const result = User.Username.safeParse(cleaned)
+
+    return result.success ? result.data : ''
+}
+
 export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
     return {
         login: async (props) => {
@@ -68,6 +83,37 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
             return sdk.state.isAuthenticated;
         },
 
+        loginWithProvider: async (provider) => {
+            // The issuer only redirects to addresses it was told are ours, and
+            // that is the origin. The landing page's guard does the rest.
+            const { error } = await sdk.client.signInWithOAuth({
+                provider,
+                options: { redirectTo: `${location.origin}/` },
+            })
+
+            if (error) {
+                NotificationSDK.toast.error(`Could not sign in with ${provider}: ${error.message}`)
+                return false;
+            }
+
+            return true;
+        },
+
+        suggestProfile: async () => {
+            const { data } = await sdk.client.getSession()
+
+            const metadata = data.session?.user.user_metadata ?? {}
+
+            const handle = metadataString(metadata, 'user_name') || metadataString(metadata, 'preferred_username')
+
+            const displayName = metadataString(metadata, 'full_name') || metadataString(metadata, 'name') || handle
+
+            return {
+                username:    toUsername(handle),
+                displayName: displayName.slice(0, 64),
+            }
+        },
+
         logout: async () => {
             const { error } = await sdk.client.signOut();
 
@@ -79,6 +125,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
             sdk.setState(s => {
                 s.user = null
                 s.isAuthenticated = false
+                s.needsProfile = false
             })
 
             return true
@@ -106,6 +153,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
             sdk.setState(s => {
                 s.user = null
                 s.isAuthenticated = false
+                s.needsProfile = false
             })
 
             return true
@@ -129,10 +177,13 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
                     s.user = user
                     s.isAuthenticated = true
                     s.isLoading = false
+                    s.needsProfile = false
                 })
             }
             catch (error) {
-                if (!isMissingProfile(error)) {
+                const missingProfile = isMissingProfile(error)
+
+                if (!missingProfile) {
                     NotificationSDK.toast.error(`Could not load your profile: ${getMessageFromError(error)}`)
                 }
 
@@ -140,6 +191,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
                     s.user = null
                     s.isAuthenticated = false
                     s.isLoading = false
+                    s.needsProfile = missingProfile
                 })
             }
         },
@@ -151,6 +203,7 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
                 s.user = user
                 s.isAuthenticated = true
                 s.isLoading = false
+                s.needsProfile = false
             })
         },
 

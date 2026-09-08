@@ -1,4 +1,5 @@
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
+import pretzelLogo from '@/assets/pretzel-logo.png'
 import { DropdownMenu } from '@pretzel-graph/standard-ui/foundations'
 import { SystemSDK } from '@pretzel-graph/standard-ui/SDKs/SystemSDK/sdk'
 import { AuthSDK } from '@/SDKs/AuthSDK/sdk'
@@ -22,7 +23,7 @@ export function PretzelGraphDropdown({ compact = false, title = 'PretzelGraph' }
                         type="button"
                         className="flex items-center gap-2 rounded-md px-1 py-1 -ml-1 hover:bg-muted/60 transition-colors"
                     >
-                        <SystemIcons.Pretzel size={30} className="fill-primary" />
+                        <img src={pretzelLogo} alt="" width={30} height={30} />
                         <span className="font-semibold tracking-tight">{title}</span>
                         <SystemIcons.ChevronDown size={14} className="text-muted-foreground" />
                     </button>

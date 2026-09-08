@@ -14,6 +14,18 @@ export class WorkspaceRepository extends Repository(PortalDB) {
     }
 
     /** Both rows or neither: no membership row means the owner cannot see it. */
+    /** How many workspaces this user owns, on any plan. Disabled ones count: they still hold their slot. */
+    @Transactional('service')
+    public async countByOwner(principal: Principal.Service, ownerId: User.Id): Promise<number> {
+        const row = await this.trx
+            .selectFrom('workspaces')
+            .where('owner_id', '=', ownerId)
+            .select((eb) => eb.fn.countAll().as('count'))
+            .executeTakeFirstOrThrow();
+
+        return Number(row.count);
+    }
+
     @Transactional('service')
     public async insert(principal: Principal.Service, values: {
         id:          Workspace.Id;

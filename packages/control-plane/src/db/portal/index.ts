@@ -165,6 +165,7 @@ export namespace PortalDB {
         export const Row = z.object({
             id:               ListingD.Id,
             workspace_id:     WorkspaceD.Id,
+            workflow_id:      ListingD.WorkflowId,
             publication_meta: ListingD.Data,
             workflow_data:    ListingD.Data,
             blueprint_id:     z.string().nullable(),
@@ -176,6 +177,7 @@ export namespace PortalDB {
         export const toDomain = (row: Row) => ListingD.Schema.parse({
             id:              row.id,
             workspaceId:     row.workspace_id,
+            workflowId:      row.workflow_id,
             publicationMeta: row.publication_meta,
             workflowData:    row.workflow_data,
             blueprintId:     row.blueprint_id,
