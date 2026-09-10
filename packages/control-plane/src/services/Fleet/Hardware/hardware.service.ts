@@ -96,7 +96,7 @@ export class HardwareService {
 
 
 
-    /** The machines the plan calls for; the caller never names roles. */
+    /** The machines the plan calls for, created and serving; the caller never names roles. */
     async assemble(
         workspaceId:    Workspace.Id,
         plan:           Plan,
@@ -106,6 +106,9 @@ export class HardwareService {
         const machineRoles = Plan.getMachineRoles(plan);
 
         await this.buildCompute(workspaceId, plan, machineRoles, baseEnvKeys, backendEnvKeys, null);
+
+        // Created is not serving: a first boot migrates its database before it answers.
+        await this.lifecycle.awaitHealthy(workspaceId);
     }
 
 

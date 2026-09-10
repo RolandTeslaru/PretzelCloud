@@ -56,16 +56,12 @@ export class ProvisioningService {
 
         const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, owner.id, plan, secrets);
 
+        // Serving on return, so a machine that never answers is never published below.
         await this.step(workspaceId, 'machines', () => 
             this.hardware.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys)
         );
 
-        // Before hostnames: a machine that never serves should not be published.
-        await this.step(workspaceId, 'health', () => 
-            this.hardware.lifecycle.awaitHealthy(workspaceId)
-        );
-
-        // After health, which is what says the workspace has run its migrations.
+        // After the machines serve, which is what says the workspace has run its migrations.
         await this.step(workspaceId, 'owner', () => 
             this.siloDatabaseService.transact('seed workspace owner', workspaceId, (trx) => 
                 this.siloDatabase.seedOwner(trx, owner)
@@ -146,8 +142,21 @@ export class ProvisioningService {
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
         // Stopped before removed: a killed machine abandons its database connections instead of closing them.
-        await this.hardware.lifecycle.stopAll(workspaceId);
-        await this.hardware.destroy(workspaceId);
+        try {
+            await this.hardware.lifecycle.stopAll(workspaceId);
+        }
+        catch (error) {
+            this.logger.warn(`Could not stop the machines of ${workspaceId}; destroying anyway: ${error instanceof Error ? error.message : error}`);
+        }
+
+        // Machines gone from under the records must not keep the workspace alive.
+        try {
+            await this.hardware.destroy(workspaceId);
+        }
+        catch (error) {
+            this.logger.warn(`Could not destroy the hardware of ${workspaceId}; continuing: ${error instanceof Error ? error.message : error}`);
+        }
+
         await this.hostname.delete(workspaceId);
         await this.siloSecrets.delete(workspaceId);
     }

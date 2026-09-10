@@ -35,7 +35,7 @@ function UsagePage() {
         )
 
     return (
-        <div className='flex flex-col gap-4 overflow-hidden!'>
+        <div className='flex flex-col gap-12 overflow-hidden!'>
                 {workspaces.map((workspace) => (
                     <WorkspaceUsage key={workspace.id} workspace={workspace} />
                 ))}

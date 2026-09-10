@@ -8,9 +8,10 @@ import path from 'node:path'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-// standard-ui is linked from a sibling checkout, so its sources resolve outside
-// this project root.
-const standardUi = path.resolve(here, '../../../PretzelGraph/packages/standard-ui')
+// standard-ui is linked from a sibling checkout, so its sources and its
+// dependencies (fonts included) resolve outside this project root.
+const standardUi        = path.resolve(here, '../../../PretzelGraph/packages/standard-ui')
+const standardUiModules = path.resolve(here, '../../../PretzelGraph/node_modules')
 
 // Overridable so a second control plane can be developed against without
 // moving the one this normally talks to.
@@ -26,7 +27,7 @@ export default defineConfig({
             '/socket': { target: `ws://localhost:${CONTROL_PLANE_PORT}`, ws: true },
         },
         fs: {
-            allow: [here, standardUi],
+            allow: [here, standardUi, standardUiModules],
         },
     },
     resolve: {
