@@ -8,7 +8,7 @@ import { AuthSDK } from './SDKs/AuthSDK/sdk'
 import { RealtimeSDK, socketUrl } from './SDKs/RealtimeSDK'
 import { routeTree } from './routeTree.gen'
 
-SystemSDK.init()
+SystemSDK.init({ cookieDomain: import.meta.env?.VITE_SESSION_COOKIE_DOMAIN })
 
 export const router = createRouter({
     routeTree,
