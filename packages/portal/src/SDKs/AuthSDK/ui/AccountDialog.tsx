@@ -28,9 +28,9 @@ export function openAccountDialog() {
     DialogSDK.actions.push(DIALOG_ID, (props) => (
         <DialogSDK.SplitTemplate
             {...props}
-            className='w-[600px] h-[420px]'
-            sidebarClassName='w-[350px]'
-            contentClassName='p-0!'
+            className='h-[420px]'
+            sidebarClassName='w-[250px]'
+            contentClassName='p-0! w-[400px]'
             sidebarRenderer={() => (
                 <div className='flex flex-col gap-2'>
                     <div className='flex flex-row gap-2'>

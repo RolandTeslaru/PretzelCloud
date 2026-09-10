@@ -102,7 +102,7 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
                 approveLabel='Log out'
                 onApprove={async () => {
                     await this.actions.logout()
-                    DialogSDK.actions.pop(LOGOUT_DIALOG_ID)
+                    DialogSDK.actions.popAll()
                 }}
                 onCancel={() => DialogSDK.actions.pop(LOGOUT_DIALOG_ID)}
             >
@@ -121,7 +121,7 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
                 {...props}
                 onApprove={async () => {
                     await this.actions.deleteAccount()
-                    DialogSDK.actions.pop(DELETE_ACCOUNT_DIALOG_ID)
+                    DialogSDK.actions.popAll()
                 }}
                 onCancel={() => DialogSDK.actions.pop(DELETE_ACCOUNT_DIALOG_ID)}
             />

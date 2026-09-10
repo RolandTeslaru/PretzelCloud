@@ -129,31 +129,7 @@ function CredentialsPanel() {
                 </Tabs.List>
             </Tabs.Root>
 
-            {providers.length > 0 && (
-                <>
-                    <div className="mt-2 space-y-2">
-                        {providers.map(provider => (
-                            <Button
-                                key={provider}
-                                type="button"
-                                variant="outline"
-                                disabled={disabled}
-                                className="w-full gap-2"
-                                onClick={() => onProvider(provider)}
-                            >
-                                <ProviderIcon provider={provider} />
-                                Continue with {PROVIDER_LABELS[provider]}
-                            </Button>
-                        ))}
-                    </div>
 
-                    <div className="text-muted-foreground my-2 flex items-center gap-3 text-xs">
-                        <div className="bg-border h-px flex-1" />
-                        or
-                        <div className="bg-border h-px flex-1" />
-                    </div>
-                </>
-            )}
 
             <Form.Root {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -230,6 +206,34 @@ function CredentialsPanel() {
                     </Form.Item>
                 </form>
             </Form.Root>
+            {providers.length > 0 && (
+                <>
+
+                    <div className="text-muted-foreground my-2 flex items-center gap-3 text-xs">
+                        <div className="bg-border h-px flex-1" />
+                        or
+                        <div className="bg-border h-px flex-1" />
+                    </div>
+
+                    <div className="space-y-2">
+                        {providers.map(provider => (
+                            <Button
+                                key={provider}
+                                type="button"
+                                variant="input"
+                                disabled={disabled}
+                                className="w-full gap-2"
+                                onClick={() => onProvider(provider)}
+                            >
+                                <ProviderIcon provider={provider} />
+                                Continue with {PROVIDER_LABELS[provider]}
+                            </Button>
+                        ))}
+                    </div>
+
+                    
+                </>
+            )}
         </div>
     )
 }
