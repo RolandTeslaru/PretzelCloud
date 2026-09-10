@@ -69,7 +69,6 @@ export namespace Workspace {
             "hardware",
             "secrets",
             "machines",
-            "health",
             "owner",
             "hostnames",
             "convert",

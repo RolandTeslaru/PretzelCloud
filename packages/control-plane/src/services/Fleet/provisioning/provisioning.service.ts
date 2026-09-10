@@ -56,16 +56,12 @@ export class ProvisioningService {
 
         const { baseEnvKeys, backendEnvKeys } = await this.assembleMachineEnvKeys(workspaceId, owner.id, plan, secrets);
 
+        // Serving on return, so a machine that never answers is never published below.
         await this.step(workspaceId, 'machines', () => 
             this.hardware.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys)
         );
 
-        // Before hostnames: a machine that never serves should not be published.
-        await this.step(workspaceId, 'health', () => 
-            this.hardware.lifecycle.awaitHealthy(workspaceId)
-        );
-
-        // After health, which is what says the workspace has run its migrations.
+        // After the machines serve, which is what says the workspace has run its migrations.
         await this.step(workspaceId, 'owner', () => 
             this.siloDatabaseService.transact('seed workspace owner', workspaceId, (trx) => 
                 this.siloDatabase.seedOwner(trx, owner)
