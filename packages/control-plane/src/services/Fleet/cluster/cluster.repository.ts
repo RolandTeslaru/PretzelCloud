@@ -21,11 +21,12 @@ export class ClusterRepository extends Repository(FleetDB) {
 
     /** The clusters new workspaces may be placed on, oldest first. */
     @Transactional('service')
-    public async getAccepting(principal: Principal.Service): Promise<Fleet.Cluster[]> {
+    public async getAccepting(principal: Principal.Service, region: Fleet.Region.Schema): Promise<Fleet.Cluster[]> {
         const rows = await this.trx
             .selectFrom('clusters')
             .selectAll()
             .where('accepting', '=', true)
+            .where('region', '=', region)
             .orderBy('created_at', 'asc')
             .execute();
 

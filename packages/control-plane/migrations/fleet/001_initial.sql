@@ -86,19 +86,22 @@ create table clusters (
 -- One to begin with, addressed as the compose service is. A deployment updates
 -- the row rather than editing this: the host differs per environment, and its
 -- admin credential is read from CLUSTER_ADMIN_URL_ALPHA either way.
-insert into clusters (name, host, port, region) values ('alpha', 'postgres-alpha', 5432, 'local');
+insert into clusters (name, host, port, region) values ('alpha', 'postgres-alpha', 5432, 'us-east-1');
 
 create table hardware (
     id           uuid default gen_random_uuid() not null,
     workspace_id uuid not null,
     driver       text not null,
     cluster_id   uuid not null,
+    -- The cluster's region, repeated here so the FK below can insist they match.
+    region       text not null,
     last_boot_at timestamp with time zone,
     last_seen_at timestamp with time zone,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone default now() not null,
 
     constraint hardware_driver_check check (driver in ('docker', 'fly')),
+    constraint hardware_region_check check (region in ('us-east-1', 'eu-central-1')),
     -- What the machines below point at, so the two cannot disagree.
     constraint hardware_id_driver_key unique (id, driver)
 );
@@ -139,6 +142,9 @@ create table hostnames (
 alter table only silo_secrets add constraint silo_secrets_pkey primary key (workspace_id);
 alter table only clusters          add constraint clusters_pkey          primary key (id);
 alter table only clusters          add constraint clusters_name_key      unique (name);
+alter table only clusters          add constraint clusters_region_check  check (region in ('us-east-1', 'eu-central-1'));
+-- What hardware points at, so a workspace's machines cannot land away from its database.
+alter table only clusters          add constraint clusters_id_region_key unique (id, region);
 alter table only hardware          add constraint hardware_pkey          primary key (id);
 alter table only machines          add constraint machines_pkey          primary key (id);
 alter table only hostnames         add constraint hostnames_pkey         primary key (host);
@@ -152,6 +158,7 @@ alter table only machines add constraint machines_hardware_driver_fkey foreign k
 -- Restrict, not cascade: a cluster with workspaces on it cannot be removed
 -- while their databases are still there.
 alter table only hardware add constraint hardware_cluster_fkey foreign key (cluster_id) references clusters(id) on delete restrict;
+alter table only hardware add constraint hardware_cluster_region_fkey foreign key (cluster_id, region) references clusters(id, region);
 
 -- No uniqueness on (workspace_id, kind): a workspace answers at its canonical
 -- host and, on paid plans, an additional custom one. A host still resolves to

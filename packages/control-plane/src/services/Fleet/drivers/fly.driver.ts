@@ -3,40 +3,11 @@ import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
 import { AbstractHardwareDriver } from './driver';
 
-const API = 'https://api.machines.dev/v1';
-
-// Metadata rather than labels, and keys may not contain dots.
-export const WORKSPACE_METADATA = 'pretzel_workspace';
-export const ROLE_METADATA      = 'pretzel_role';
-
-// The port the workspace image serves on.
-const SERVICE_PORT = 3001;
-
-// Seconds between the stop signal and the kill, matching the image's own bound.
-const STOP_TIMEOUT_SECONDS = 15;
-
-// Seconds a settle blocks for; the platform's own ceiling on one wait call.
-const WAIT_TIMEOUT_SECONDS = 60;
-
-// The states the platform can be waited on for.
-type FlySettledState = 'started' | 'stopped' | 'suspended' | 'destroyed';
-
-// No `services` block: machines are reached over the private network, so the platform proxy is never in front of one.
-const SERVING_CHECK = {
-    serving: {
-        type:         'http',
-        port:         SERVICE_PORT,
-        method:       'GET',
-        path:         '/health',
-        interval:     '5s',
-        timeout:      '3s',
-        grace_period: '45s',
-    },
-};
+const Fly = Fleet.Driver.Fly;
 
 // A worker listens on nothing, and a machine with no check reports `unknown`, which is read as ready.
 function getChecksForRole(role: Fleet.Machine.Role): Record<string, unknown> {
-    return role === 'worker' ? {} : SERVING_CHECK;
+    return role === 'worker' ? {} : Fly.SERVING_CHECK;
 }
 
 type FlyMachine = {
@@ -62,9 +33,6 @@ export class FlyDriver extends AbstractHardwareDriver {
         return requireEnv('FLY_API_TOKEN');
     }
 
-    private get region(): string {
-        return process.env.FLY_REGION ?? 'ams';
-    }
 
     private get org(): string {
         return requireEnv('FLY_ORG');
@@ -76,7 +44,7 @@ export class FlyDriver extends AbstractHardwareDriver {
     }
 
     private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
-        const response = await fetch(`${API}/apps/${this.app}${path}`, {
+        const response = await fetch(`${Fly.API}/apps/${this.app}${path}`, {
             method,
             headers: {
                 Authorization:  this.authorization(),
@@ -105,8 +73,8 @@ export class FlyDriver extends AbstractHardwareDriver {
     }
 
     // A lifecycle POST returns once the platform accepts it, not once it applies; the next one is rejected until it has.
-    private async awaitSettled(resourceId: Fleet.Machine.ResourceId, state: FlySettledState): Promise<void> {
-        await this.callTolerating404('GET', `/machines/${resourceId}/wait?state=${state}&timeout=${WAIT_TIMEOUT_SECONDS}`);
+    private async awaitSettled(resourceId: Fleet.Machine.ResourceId, state: Fleet.Driver.Fly.SettledState): Promise<void> {
+        await this.callTolerating404('GET', `/machines/${resourceId}/wait?state=${state}&timeout=${Fly.WAIT_TIMEOUT_SECONDS}`);
     }
 
     /** The first value an instant query returns, or null when the series is absent. */
@@ -193,7 +161,7 @@ export class FlyDriver extends AbstractHardwareDriver {
 
         const created = await this.call<FlyMachine>('POST', '/machines', {
             name:   options.name,
-            region: this.region,
+            region: Fleet.Region.getFlyRegion(options.region),
             config: {
                 image:    options.image,
                 env:      options.env,
@@ -201,8 +169,8 @@ export class FlyDriver extends AbstractHardwareDriver {
                 checks:   getChecksForRole(options.role),
                 restart:  { policy: 'on-failure' },
                 metadata: {
-                    [WORKSPACE_METADATA]: options.workspaceId,
-                    [ROLE_METADATA]:      options.role,
+                    [Fly.WORKSPACE_METADATA]: options.workspaceId,
+                    [Fly.ROLE_METADATA]:      options.role,
                 },
             },
         });
@@ -225,7 +193,7 @@ export class FlyDriver extends AbstractHardwareDriver {
         if (state !== 'running')
             return null;
 
-        return new URL(`http://${resourceId}.vm.${this.app}.internal:${SERVICE_PORT}`);
+        return new URL(`http://${resourceId}.vm.${this.app}.internal:${Fly.SERVICE_PORT}`);
     }
 
     public async start(resourceId: Fleet.Machine.ResourceId): Promise<void> {
@@ -237,7 +205,7 @@ export class FlyDriver extends AbstractHardwareDriver {
     public async stop(resourceId: Fleet.Machine.ResourceId): Promise<void> {
         await this.call('POST', `/machines/${resourceId}/stop`, {
             signal:  'SIGTERM',
-            timeout: `${STOP_TIMEOUT_SECONDS}s`,
+            timeout: `${Fly.STOP_TIMEOUT_SECONDS}s`,
         });
 
         await this.awaitSettled(resourceId, 'stopped');
@@ -281,7 +249,7 @@ export class FlyDriver extends AbstractHardwareDriver {
     }
 
     public async findByWorkspace(workspaceId: Workspace.Id): Promise<AbstractHardwareDriver.Handle[]> {
-        const machines = await this.call<FlyMachine[]>('GET', `/machines?metadata.${WORKSPACE_METADATA}=${workspaceId}`);
+        const machines = await this.call<FlyMachine[]>('GET', `/machines?metadata.${Fly.WORKSPACE_METADATA}=${workspaceId}`);
 
         return machines.map((machine) => ({
             resourceId: Fleet.Machine.ResourceId.parse(machine.id),

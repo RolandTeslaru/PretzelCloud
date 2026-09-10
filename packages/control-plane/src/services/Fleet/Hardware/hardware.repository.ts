@@ -10,10 +10,10 @@ export class HardwareRepository extends Repository(FleetDB) {
 
     /** The driver and the cluster are chosen once. A workspace that already has hardware keeps both. */
     @Transactional('service')
-    public async ensureForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver, clusterId: Fleet.Cluster.Id, releaseId: Fleet.Release.Id) {
+    public async ensureForWorkspace(principal: Principal.Service, workspaceId: Workspace.Id, driver: Fleet.Hardware.Driver, cluster: Fleet.Cluster, releaseId: Fleet.Release.Id) {
         const inserted = await this.trx
             .insertInto('hardware')
-            .values({ workspace_id: workspaceId, driver, cluster_id: clusterId, release_id: releaseId })
+            .values({ workspace_id: workspaceId, driver, cluster_id: cluster.id, region: cluster.region, release_id: releaseId })
             .onConflict((oc) => oc.column('workspace_id').doNothing())
             .returningAll()
             .executeTakeFirst();
@@ -39,6 +39,32 @@ export class HardwareRepository extends Repository(FleetDB) {
             .executeTakeFirst();
 
         return row ? FleetDB.Hardware.Row.parse(row) : undefined;
+    }
+
+    /** Where each workspace lives and what it runs, for the grid. */
+    @Transactional('service')
+    public async getPlacementByWorkspaceIds(principal: Principal.Service, workspaceIds: Workspace.Id[]) {
+        if (workspaceIds.length === 0)
+            return [];
+
+        const rows = await this.trx
+            .selectFrom('hardware')
+            .innerJoin('releases', 'releases.id', 'hardware.release_id')
+            .where('hardware.workspace_id', 'in', workspaceIds)
+            .select([
+                'hardware.workspace_id as workspace_id',
+                'hardware.region as region',
+                'releases.id as release_id',
+                'releases.name as release_name',
+            ])
+            .execute();
+
+        return rows.map((row) => ({
+            workspaceId: row.workspace_id as Workspace.Id,
+            region:      row.region as Fleet.Region.Schema,
+            releaseId:   row.release_id as Fleet.Release.Id,
+            releaseName: row.release_name as Fleet.Release.Name,
+        }));
     }
 
     /** Moves the pin: what the next machine build is built from. */

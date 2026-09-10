@@ -9,8 +9,7 @@ import { AbstractHardwareDriver } from './driver';
 
 const run = promisify(execFile);
 
-export const WORKSPACE_LABEL = 'pretzel.workspace';
-export const ROLE_LABEL      = 'pretzel.role';
+const Docker = Fleet.Driver.Docker;
 
 // Containers report "No such object"; networks report "not found".
 const ABSENT           = /no such \w+|not found/i;
@@ -19,19 +18,6 @@ const ALREADY_ATTACHED = /already exists in network/i;
 // A machine that predates publishing, or one that is stopped, reports this
 // rather than being absent — both mean "no address", not a failure.
 const NOT_PUBLISHED = /no public port|no such \w+|not found/i;
-
-// The port the workspace image serves on.
-const SERVICE_PORT = 3001;
-
-// Bound to loopback, and to a port Docker picks: the router reaches the machine
-// from the host, and nothing on the network can.
-const PUBLISH = `127.0.0.1::${SERVICE_PORT}`;
-
-// Seconds between the stop signal and the kill. The daemon's own default is 1,
-// which is short enough that a busy machine is killed before it has closed its
-// database connections. The workspace image bounds its own shutdown at 10s, so
-// this leaves margin rather than sitting exactly on it.
-const STOP_TIMEOUT_SECONDS = 15;
 
 // The units `docker stats` prints sizes in.
 const BYTE_UNITS: Record<string, number> = {
@@ -101,7 +87,7 @@ export class DockerDriver extends AbstractHardwareDriver {
 
         await this.docker([
             'network', 'create',
-            '--label', `${WORKSPACE_LABEL}=${workspaceId}`,
+            '--label', `${Docker.WORKSPACE_LABEL}=${workspaceId}`,
             name,
         ]);
 
@@ -182,12 +168,12 @@ export class DockerDriver extends AbstractHardwareDriver {
             'run', '-d',
             '--name', options.name,
             '--network', network,
-            '--publish', PUBLISH,
-            '--label', `${WORKSPACE_LABEL}=${options.workspaceId}`,
-            '--label', `${ROLE_LABEL}=${options.role}`,
+            '--publish', Docker.PUBLISH,
+            '--label', `${Docker.WORKSPACE_LABEL}=${options.workspaceId}`,
+            '--label', `${Docker.ROLE_LABEL}=${options.role}`,
             '--env-file', envFile,
             '--restart', 'unless-stopped',
-            '--stop-timeout', String(STOP_TIMEOUT_SECONDS),
+            '--stop-timeout', String(Docker.STOP_TIMEOUT_SECONDS),
             ...this.devMounts(options.role),
             options.image,
         ]));
@@ -211,7 +197,7 @@ export class DockerDriver extends AbstractHardwareDriver {
      * the container is recreated — so it is read each time rather than stored.
      */
     async address(resourceId: Fleet.Machine.ResourceId): Promise<URL | null> {
-        const published = await this.dockerTolerating(NOT_PUBLISHED, ['port', resourceId, String(SERVICE_PORT)]);
+        const published = await this.dockerTolerating(NOT_PUBLISHED, ['port', resourceId, String(Docker.SERVICE_PORT)]);
 
         if (!published)
             return null;
@@ -231,7 +217,7 @@ export class DockerDriver extends AbstractHardwareDriver {
     async stop(resourceId: Fleet.Machine.ResourceId): Promise<void> {
         // Also passed here, not just at create: machines made before the
         // container-level setting existed still carry the daemon's default.
-        await this.docker(['stop', '--timeout', String(STOP_TIMEOUT_SECONDS), resourceId]);
+        await this.docker(['stop', '--timeout', String(Docker.STOP_TIMEOUT_SECONDS), resourceId]);
     }
 
     // The cgroup freezer: processes stop being scheduled and stay resident, the
@@ -288,7 +274,7 @@ export class DockerDriver extends AbstractHardwareDriver {
     async findByWorkspace(workspaceId: Workspace.Id): Promise<AbstractHardwareDriver.Handle[]> {
         const output = await this.docker([
             'ps', '-a',
-            '--filter', `label=${WORKSPACE_LABEL}=${workspaceId}`,
+            '--filter', `label=${Docker.WORKSPACE_LABEL}=${workspaceId}`,
             '--format', '{{.ID}}|{{.State}}',
         ]);
 

@@ -60,31 +60,4 @@ export class ReleaseRepository extends Repository(FleetDB) {
 
         return row ? FleetDB.Release.Row.parse(row) : null;
     }
-
-
-
-
-    /** The release each workspace's hardware is pinned to. */
-    @Transactional('service')
-    public async getByWorkspaceIds(principal: Principal.Service, workspaceIds: Workspace.Id[]) {
-        if (workspaceIds.length === 0)
-            return [];
-
-        const rows = await this.trx
-            .selectFrom('hardware')
-            .innerJoin('releases', 'releases.id', 'hardware.release_id')
-            .where('hardware.workspace_id', 'in', workspaceIds)
-            .select([
-                'hardware.workspace_id as workspace_id',
-                'releases.id as release_id',
-                'releases.name as release_name',
-            ])
-            .execute();
-
-        return rows.map((row) => ({
-            workspaceId: row.workspace_id as Workspace.Id,
-            releaseId:   row.release_id as Fleet.Release.Id,
-            releaseName: row.release_name as Fleet.Release.Name,
-        }));
-    }
 }

@@ -5,6 +5,7 @@ import * as SiloSecretsMod from "./silo-secrets"
 import * as HostnameMod from "./hostname"
 import * as DriverMod from "./driver"
 import * as ReleaseMod from "./release"
+import * as RegionMod from "./region"
 
 // Actual state: what has been materialized for a workspace. Desired state is
 // Workspace, in the portal database. Nothing here can reference it — separate
@@ -19,4 +20,5 @@ export namespace Fleet {
     export import Hostname         = HostnameMod.Hostname
     export import Driver           = DriverMod.Driver
     export import Release          = ReleaseMod.Release
+    export import Region           = RegionMod.Region
 }
