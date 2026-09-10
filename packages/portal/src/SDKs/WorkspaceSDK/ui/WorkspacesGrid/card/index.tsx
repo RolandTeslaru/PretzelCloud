@@ -81,7 +81,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
             </Frame.Panel>
             <Frame.Footer className='flex flex-row gap-1 px-1! py-1! overflow-x-auto w-full h-[35px] [scrollbar-width:none]'>
                 {provision ? (
-                    <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium pl-1.5" />
+                    <ShinyText text={PROVISIONING_STEP[provision]} className="text-sm font-medium my-auto pl-1.5" />
                 ) : (
                     hardwareStatistics ? (
                         <>

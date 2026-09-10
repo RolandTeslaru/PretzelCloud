@@ -21,7 +21,22 @@ import { BillingService } from '@/services/Billing/billing.service';
 
 const PROVISION_ATTEMPTS = 3;
 
-const MAX_WORKSPACES_PER_OWNER = 1;
+const DEFAULT_MAX_WORKSPACES_PER_OWNER = 1;
+
+/** Read per call; a value that is not a whole number fails loudly rather than lifting the cap. */
+function maxWorkspacesPerOwner(): number {
+    const raw = process.env.MAX_WORKSPACES_PER_OWNER;
+
+    if (!raw)
+        return DEFAULT_MAX_WORKSPACES_PER_OWNER;
+
+    const value = Number(raw);
+
+    if (!Number.isInteger(value) || value < 0)
+        throw new Error(`MAX_WORKSPACES_PER_OWNER must be a whole number, got "${raw}"`);
+
+    return value;
+}
 
 /** Unwraps the provisioner's wrapper to ask what actually went wrong underneath. */
 function isTopologyNotRestored(error: unknown): boolean {
@@ -55,12 +70,19 @@ export class WorkspaceService {
         private readonly lockService:         LockService,
         ) {}
 
-    /** One workspace per account for now, whatever its plan — a number, not a plan property, until the downgrade story is settled. */
+    /** A flat cap per account, whatever its plan — a number, not a plan property, until the downgrade story is settled. */
     private async refuseOverOwnerCap(ownerId: User.Id): Promise<void> {
+        const cap = maxWorkspacesPerOwner();
+
         const owned = await this.repository.countByOwner(Principal.SELF, ownerId);
 
-        if (owned >= MAX_WORKSPACES_PER_OWNER)
+        if (owned < cap)
+            return;
+
+        if (cap === 1)
             throw new ForbiddenException('Accounts include one workspace for now. Destroy yours to create another.');
+
+        throw new ForbiddenException(`Accounts include ${cap} workspaces for now. Destroy one to create another.`);
     }
 
     /** Addressing is derived here: a caller cannot address another tenant's channel. */
