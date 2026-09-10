@@ -1,63 +1,16 @@
-import { Button, DropdownMenu, Frame, Spinner, Tooltip } from '@pretzel-graph/standard-ui/foundations'
+import { Button, Frame, Tooltip } from '@pretzel-graph/standard-ui/foundations'
 import { Card } from '@pretzel-graph/standard-ui/foundations/card'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustrations'
-import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
-import { WorkspaceSDK } from '../../sdk'
-import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../status'
-import { MachineStatistic } from './MachineStatistic'
-import { DatabaseStatistic } from './DatabaseStatistic'
+import { WorkspaceSDK } from '../../../sdk'
+import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../../status'
+import { MachineStatistic } from '../MachineStatistic'
+import { DatabaseStatistic } from '../DatabaseStatistic'
+import { CardDropdown } from './dropdown'
 import { ReleaseSDK } from '@/SDKs/ReleaseSDK'
 import { ShinyText } from '@pretzel-graph/standard-ui/components/ShinyText'
-
-
-const copyWorkspaceId = async (id: Workspace.Id) => {
-    try {
-        await navigator.clipboard.writeText(id)
-
-        NotificationSDK.toast.success('Workspace ID copied')
-    }
-    catch {
-        NotificationSDK.toast.error('Could not reach the clipboard')
-    }
-}
-
-
-/** The card's overflow menu. */
-const CardDropdown = ({ workspaceId }: { workspaceId: Workspace.Id }) => (
-    <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-            <Button size="icon-xs" variant="ghost">
-                <SystemIcons.Ellipsis />
-            </Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align='start' side="right">
-            <DropdownMenu.Item
-                className='gap-2 text-xs'
-                onClick={() => copyWorkspaceId(workspaceId)}
-            >
-                <SystemIcons.Copy />
-                Copy Workspace ID
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-                className='gap-2 text-xs'
-                onClick={() => WorkspaceSDK.openConfigurationDialog(workspaceId)}
-            >
-                <SystemIcons.Settings />
-                Open Configuration
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-                className='gap-2 text-xs'
-                onClick={() => WorkspaceSDK.openConfigurationDialog(workspaceId, 'plan')}
-            >
-                <SystemIcons.Sparkles />
-                Upgrade
-            </DropdownMenu.Item>
-        </DropdownMenu.Content>
-    </DropdownMenu.Root>
-)
 
 
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {

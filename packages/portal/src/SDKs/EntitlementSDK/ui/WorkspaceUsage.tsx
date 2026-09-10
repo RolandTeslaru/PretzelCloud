@@ -13,7 +13,7 @@ import {
     useTable,
 } from '@tanstack/react-table'
 import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-import { Frame, Select, Spinner, Table } from '@pretzel-graph/standard-ui/foundations'
+import { Select, Spinner, Table } from '@pretzel-graph/standard-ui/foundations'
 import { Workspace } from '@pretzel-cloud/shared/domain'
 import { FilterHeader, SortIcon, getFacets, includesSome } from '@/components/table-headers'
 import { EntitlementSDK, DEFAULT_WINDOW } from '@/SDKs/EntitlementSDK'
@@ -151,111 +151,105 @@ export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
                         : null
 
     return (
-        <Frame.Root>
-            <Frame.Header>
-                <h4 className='text-sm'>{workspace.displayName}</h4>
-            </Frame.Header>
-            <Frame.Panel>
-                <section className='flex flex-col gap-6'>
-                    <div className='flex items-stretch gap-10'>
+        <section className='flex flex-col gap-6'>
+            <h4 className='text-sm'>{workspace.displayName}</h4>
 
-                        <div className='flex w-1/2'>
-                            {report &&
-                                <UsageMeter report={report} />
-                            }
-                        </div>
+            <div className='flex items-stretch gap-10'>
 
-                        <div className='flex w-1/2'>
-                            {series &&
-                                <UsageBarChart points={series} />
-                            }
-                        </div>
-                    </div>
+                <div className='flex w-1/2'>
+                    {report &&
+                        <UsageMeter report={report} />
+                    }
+                </div>
 
-                    <div className='flex'>
-                        <Select.Root
-                            value={window}
-                            onValueChange={(value) => EntitlementSDK.actions.setWindow(workspace.id, value as Workspace.Usage.Window)}
-                        >
-                            <Select.Trigger size='xs' className='ml-auto w-[140px]'>
-                                <Select.Value />
-                            </Select.Trigger>
+                <div className='flex w-1/2'>
+                    {series &&
+                        <UsageBarChart points={series} />
+                    }
+                </div>
+            </div>
 
-                            <Select.Content align='end'>
-                                {WINDOWS.map(({ window: value, label }) => (
-                                    <Select.Item key={value} value={value} size='xs'>{label}</Select.Item>
-                                ))}
-                            </Select.Content>
-                        </Select.Root>
-                    </div>
+            <div className='flex'>
+                <Select.Root
+                    value={window}
+                    onValueChange={(value) => EntitlementSDK.actions.setWindow(workspace.id, value as Workspace.Usage.Window)}
+                >
+                    <Select.Trigger size='xs' className='ml-auto w-[140px]'>
+                        <Select.Value />
+                    </Select.Trigger>
 
-                    <Table.Root>
-                        <Table.Header>
-                            {table.getHeaderGroups().map(group => (
-                                <Table.Row key={group.id}>
-                                    {group.headers.map(header => (
-                                        <Table.Head key={header.id} className={cn(HEAD_WIDTH[header.column.id], COLUMN_ALIGN[header.column.id])}>
-                                            {header.column.getCanFilter()
-                                                ? <FilterHeader
-                                                    column={header.column}
-                                                    filters={filters}
-                                                    facets={facets[header.column.id] ?? EMPTY_FACETS}
-                                                />
-                                                : header.column.getCanSort()
-                                                    ? (
-                                                        <button
-                                                            className='flex items-center gap-1 hover:text-foreground transition-colors'
-                                                            onClick={header.column.getToggleSortingHandler()}
-                                                        >
-                                                            <table.FlexRender header={header} />
-                                                            <SortIcon direction={header.column.getIsSorted()} />
-                                                        </button>
-                                                    )
-                                                    : <table.FlexRender header={header} />
-                                            }
-                                        </Table.Head>
+                    <Select.Content align='end'>
+                        {WINDOWS.map(({ window: value, label }) => (
+                            <Select.Item key={value} value={value} size='xs'>{label}</Select.Item>
+                        ))}
+                    </Select.Content>
+                </Select.Root>
+            </div>
+
+            <Table.Root>
+                <Table.Header>
+                    {table.getHeaderGroups().map(group => (
+                        <Table.Row key={group.id}>
+                            {group.headers.map(header => (
+                                <Table.Head key={header.id} className={cn(HEAD_WIDTH[header.column.id], COLUMN_ALIGN[header.column.id])}>
+                                    {header.column.getCanFilter()
+                                        ? <FilterHeader
+                                            column={header.column}
+                                            filters={filters}
+                                            facets={facets[header.column.id] ?? EMPTY_FACETS}
+                                        />
+                                        : header.column.getCanSort()
+                                            ? (
+                                                <button
+                                                    className='flex items-center gap-1 hover:text-foreground transition-colors'
+                                                    onClick={header.column.getToggleSortingHandler()}
+                                                >
+                                                    <table.FlexRender header={header} />
+                                                    <SortIcon direction={header.column.getIsSorted()} />
+                                                </button>
+                                            )
+                                            : <table.FlexRender header={header} />
+                                    }
+                                </Table.Head>
+                            ))}
+                        </Table.Row>
+                    ))}
+                </Table.Header>
+
+                <Table.Body>
+                    {recordsQuery.isPending
+                        ? (
+                            <Table.Row className='hover:bg-transparent'>
+                                <Table.Cell colSpan={columns.length}>
+                                    <div className='flex justify-center py-10'>
+                                        <Spinner className='size-4' />
+                                    </div>
+                                </Table.Cell>
+                            </Table.Row>
+                        )
+                        : emptyMessage
+                            ? (
+                                <Table.Row className='hover:bg-transparent'>
+                                    <Table.Cell colSpan={columns.length}>
+                                        <div className='text-sm text-muted-foreground py-10 text-center'>
+                                            {emptyMessage}
+                                        </div>
+                                    </Table.Cell>
+                                </Table.Row>
+                            )
+                            : rows.map(row => (
+                                <Table.Row key={row.id}>
+                                    {row.getAllCells().map(cell => (
+                                        <Table.Cell key={cell.id} className={COLUMN_ALIGN[cell.column.id]}>
+                                            <table.FlexRender cell={cell} />
+                                        </Table.Cell>
                                     ))}
                                 </Table.Row>
-                            ))}
-                        </Table.Header>
+                            ))
+                    }
+                </Table.Body>
+            </Table.Root>
 
-                        <Table.Body>
-                            {recordsQuery.isPending
-                                ? (
-                                    <Table.Row className='hover:bg-transparent'>
-                                        <Table.Cell colSpan={columns.length}>
-                                            <div className='flex justify-center py-10'>
-                                                <Spinner className='size-4' />
-                                            </div>
-                                        </Table.Cell>
-                                    </Table.Row>
-                                )
-                                : emptyMessage
-                                    ? (
-                                        <Table.Row className='hover:bg-transparent'>
-                                            <Table.Cell colSpan={columns.length}>
-                                                <div className='text-sm text-muted-foreground py-10 text-center'>
-                                                    {emptyMessage}
-                                                </div>
-                                            </Table.Cell>
-                                        </Table.Row>
-                                    )
-                                    : rows.map(row => (
-                                        <Table.Row key={row.id}>
-                                            {row.getAllCells().map(cell => (
-                                                <Table.Cell key={cell.id} className={COLUMN_ALIGN[cell.column.id]}>
-                                                    <table.FlexRender cell={cell} />
-                                                </Table.Cell>
-                                            ))}
-                                        </Table.Row>
-                                    ))
-                            }
-                        </Table.Body>
-                    </Table.Root>
-
-                </section>
-
-            </Frame.Panel>
-        </Frame.Root>
+        </section>
     )
 }
