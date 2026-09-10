@@ -1,22 +1,23 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button, Form, Input, Spinner } from '@pretzel-graph/standard-ui/foundations'
+import { Button, Form, Input, Select, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain'
 import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../sdk'
 
 const Schema = z.object({
     displayName: Workspace.DisplayName,
+    region:      Fleet.Region.Schema,
 })
 type Values = z.infer<typeof Schema>
 
 export function CreateWorkspaceDialog({ dialogId }: { dialogId: string }) {
     const form = useForm<Values>({
         resolver: zodResolver(Schema),
-        defaultValues: { displayName: '' },
+        defaultValues: { displayName: '', region: 'us-east-1' },
     })
 
     const onSubmit = async (values: Values) => {
@@ -53,6 +54,25 @@ export function CreateWorkspaceDialog({ dialogId }: { dialogId: string }) {
                                 autoComplete='off'
                             />
                         </Form.Control>
+                        <Form.Message />
+                    </Form.Item>
+                )} />
+
+                <Form.Field control={form.control} name="region" render={({ field }) => (
+                    <Form.Item>
+                        <Form.Label>Region</Form.Label>
+                        <Select.Root value={field.value} onValueChange={field.onChange}>
+                            <Form.Control>
+                                <Select.Trigger>
+                                    <Select.Value />
+                                </Select.Trigger>
+                            </Form.Control>
+                            <Select.Content>
+                                {Fleet.Region.all().map((region) => (
+                                    <Select.Item key={region} value={region}>{Fleet.Region.getDisplayName(region)}</Select.Item>
+                                ))}
+                            </Select.Content>
+                        </Select.Root>
                         <Form.Message />
                     </Form.Item>
                 )} />

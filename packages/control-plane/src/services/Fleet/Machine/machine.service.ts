@@ -31,12 +31,14 @@ export class MachineService {
         driverKind:  Fleet.Hardware.Driver,
         hardwareId:  Fleet.Hardware.Id,
         workspaceId: Workspace.Id,
+        region:      Fleet.Region.Schema,
         spec:        Fleet.Machine.Spec,
     ): Promise<AbstractHardwareDriver.Handle> {
         const driver = this.driverRegistry.getDriverForKind(driverKind);
 
         const handle = await driver.create({
             workspaceId,
+            region,
             name:  Fleet.Machine.Name.create(workspaceId, spec.role),
             role:  spec.role,
             image: spec.image,

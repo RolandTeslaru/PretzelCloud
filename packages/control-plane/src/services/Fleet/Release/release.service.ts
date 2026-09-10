@@ -50,14 +50,4 @@ export class ReleaseService {
 
         return FleetDB.Release.toDomain(row);
     }
-
-
-
-
-    /** Per workspace, the id and name of the release its machines are built from. */
-    public async getInfoForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, { id: Fleet.Release.Id; name: Fleet.Release.Name }>> {
-        const rows = await this.releaseRepository.getByWorkspaceIds(Principal.SELF, workspaceIds);
-
-        return new Map(rows.map((row) => [row.workspaceId, { id: row.releaseId, name: row.releaseName }]));
-    }
 }

@@ -48,6 +48,8 @@ export namespace AbstractHardwareDriver {
 
     export type CreateOptions = {
         workspaceId: Workspace.Id;
+        /** Where the machine goes; a platform without regions ignores it. */
+        region:      Fleet.Region.Schema;
         name:        Fleet.Machine.Name;
         image:       string;
         role:        Fleet.Machine.Role;

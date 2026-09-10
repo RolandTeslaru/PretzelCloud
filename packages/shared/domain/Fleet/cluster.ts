@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { Region } from "./region"
 
 /**
  * A Postgres cluster, in the abstract: databases, roles, and the URL that opens
@@ -21,7 +22,7 @@ export namespace Cluster {
         host:      z.string(),
         port:      z.number().int(),
         ssl:       z.boolean(),
-        region:    z.string(),
+        region:    Region.Schema,
         accepting: z.boolean(),
         createdAt: z.coerce.date(),
         updatedAt: z.coerce.date(),

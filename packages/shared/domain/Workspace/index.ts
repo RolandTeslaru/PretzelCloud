@@ -98,7 +98,8 @@ export namespace Workspace {
         currentPeriodStart: z.coerce.date().nullable(),
         currentPeriodEnd:   z.coerce.date().nullable(),
         ownerId:            User.Id,
-        /** Filled from the fleet at the API seam; no portal column behind them. */
+        /** Filled from the fleet at the API seam; no portal columns behind them. */
+        region:             Fleet.Region.Schema.nullable(),
         releaseId:          Fleet.Release.Id.nullable(),
         releaseName:        z.string().nullable(),
         // Derived where the fleet domain is known; a browser cannot build it.
@@ -422,7 +423,7 @@ export namespace Workspace {
         }
 
         export namespace Create {
-            export const Request = z.object({ displayName: DisplayName })
+            export const Request = z.object({ displayName: DisplayName, region: Fleet.Region.Schema })
             export type  Request = z.infer<typeof Request>
 
             export const Response = z.object({ workspace: Schema })

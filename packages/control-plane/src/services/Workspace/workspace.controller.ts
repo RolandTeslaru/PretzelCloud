@@ -61,7 +61,7 @@ export class WorkspaceController {
         @AuthenticatedUser() principal: Principal.User,
         @ZodBody(API.Create.Request) body: Workspace.API.Create.Request,
     ): Promise<Workspace.API.Create.Response> {
-        return { workspace: await this.workspaceService.create(principal, body.displayName) };
+        return { workspace: await this.workspaceService.create(principal, body.displayName, body.region) };
     }
 
     @Get(':workspaceId')

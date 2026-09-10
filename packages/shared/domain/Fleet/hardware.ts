@@ -1,8 +1,9 @@
 import z from "zod";
 import { WorkspaceId } from "../Workspace/ids";
 import { Machine } from "./machine";
-import { Driver as DriverSchema } from "./driver";
+import { Driver as DriverMod } from "./driver";
 import { Cluster as ClusterSchema } from "./cluster";
+import { Region } from "./region";
 
 /**
  * A workspace's compute, agnostic to how many machines back it. One workspace
@@ -19,8 +20,8 @@ export namespace Hardware {
     export type  Id = z.infer<typeof Id>
 
     // One per hardware — a workspace never mixes a Docker backend with a Fly worker.
-    export const Driver = DriverSchema
-    export type  Driver = DriverSchema
+    export const Driver = DriverMod.Kind
+    export type  Driver = DriverMod.Kind
 
     export const Schema = z.object({
         id:          Id,
@@ -28,6 +29,8 @@ export namespace Hardware {
         driver:      Driver,
         /** The Postgres cluster this workspace's database was created in. */
         clusterId:   ClusterSchema.Id,
+        /** Where it lives: the cluster's region, and where its machines are placed. */
+        region:      Region.Schema,
         // The machines backing it, by id. Ids are stable; their volatile state
         // is read fresh, never carried here.
         machineIds:  z.array(Machine.Id),

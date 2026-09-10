@@ -71,7 +71,7 @@ export class WorkspaceService {
     }
 
 
-    public async create(principal: Principal.User, displayName: string): Promise<Workspace> {
+    public async create(principal: Principal.User, displayName: string, region: Fleet.Region.Schema): Promise<Workspace> {
         const id = Workspace.createId();
 
         // Read first so a missing profile fails before anything is built.
@@ -94,7 +94,7 @@ export class WorkspaceService {
         void (async () => {
             for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
                 try {
-                    await this.provisioning.provision(id, owner, Plan.DEFAULT_PLAN_ID);
+                    await this.provisioning.provision(id, owner, Plan.DEFAULT_PLAN_ID, region);
 
                     // A probe before now cached the absence.
                     this.siloRouter.invalidate(id);
@@ -157,13 +157,18 @@ export class WorkspaceService {
     public async list(principal: Principal.User): Promise<Workspace[]> {
         const workspaces = await this.permission.getWorkspacesForMember(principal);
 
-        // Filled here rather than mapped: the release is the fleet's fact, on its own credential.
-        const releaseInfoByWorkspaceId = await this.release.getInfoForWorkspaces(workspaces.map((workspace) => workspace.id));
+        // Filled here rather than mapped: where it lives and what it runs are the fleet's facts, on its own credential.
+        const placementByWorkspaceId = await this.hardware.getPlacementForWorkspaces(workspaces.map((workspace) => workspace.id));
 
         return workspaces.map((workspace) => {
-            const info = releaseInfoByWorkspaceId.get(workspace.id);
+            const placement = placementByWorkspaceId.get(workspace.id);
 
-            return { ...workspace, releaseId: info?.id ?? null, releaseName: info?.name ?? null };
+            return {
+                ...workspace,
+                region:      placement?.region ?? null,
+                releaseId:   placement?.releaseId ?? null,
+                releaseName: placement?.releaseName ?? null,
+            };
         });
     }
 

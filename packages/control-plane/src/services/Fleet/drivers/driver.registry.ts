@@ -13,18 +13,18 @@ import { FlyDriver } from './fly.driver';
 export class DriverRegistry {
 
     // Stateless, so one of each is all a process ever needs.
-    private readonly drivers: Record<Fleet.Driver, AbstractHardwareDriver> = {
+    private readonly drivers: Record<Fleet.Driver.Kind, AbstractHardwareDriver> = {
         docker: new DockerDriver(),
         fly:    new FlyDriver(),
     };
 
-    public getDriverForKind(kind: Fleet.Driver): AbstractHardwareDriver {
+    public getDriverForKind(kind: Fleet.Driver.Kind): AbstractHardwareDriver {
         return this.drivers[kind];
     }
 
     /** What a workspace built from now on runs on. Nothing existing is affected. */
-    public getKindForNewWorkspaces(): Fleet.Driver {
-        return Fleet.Driver.parse(process.env.MACHINE_DRIVER ?? 'docker');
+    public getKindForNewWorkspaces(): Fleet.Driver.Kind {
+        return Fleet.Driver.Kind.parse(process.env.MACHINE_DRIVER ?? 'docker');
     }
 
     public getDriverForNewWorkspaces(): AbstractHardwareDriver {

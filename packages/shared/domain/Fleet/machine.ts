@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { WorkspaceId } from "../Workspace/ids"
 import { SiloSecrets } from "./silo-secrets"
-import { Driver } from "./driver"
+import { Driver as DriverMod } from "./driver"
 import { Release } from "./release"
 import { Plan } from "../Plan"
 
@@ -229,7 +229,7 @@ export namespace Machine {
         workspaceId: WorkspaceId,
         hardwareId:  z.uuid().brand("Fleet.Hardware.Id"),
         /** Denormalised from hardware. */
-        driver:      Driver,
+        driver:      DriverMod.Kind,
         resourceId:  ResourceId,
         role:        Role,
         size:        z.string(),

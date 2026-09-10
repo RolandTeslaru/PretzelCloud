@@ -36,9 +36,9 @@ export class ProvisioningService {
     ) {}
 
 
-    async provision(workspaceId: Workspace.Id, owner: User, planId: Plan.Id): Promise<void> {
+    async provision(workspaceId: Workspace.Id, owner: User, planId: Plan.Id, region: Fleet.Region.Schema): Promise<void> {
         const databaseUrl = await this.step(workspaceId, 'hardware', () => 
-            this.hardware.provision(workspaceId)
+            this.hardware.provision(workspaceId, region)
         );
 
         await this.step(workspaceId, 'secrets', () =>     

@@ -61,8 +61,8 @@ export class HardwareService {
      * The platform, the cluster, and the workspace's own database on it. Idempotent — the row
      * is written before the database it names. The returned URL carries the password, minted here.
      */
-    async provision(workspaceId: Workspace.Id): Promise<Fleet.Cluster.Database.ConnectionURL> {
-        const cluster = await this.clusterService.getClusterForNewWorkspace();
+    async provision(workspaceId: Workspace.Id, region: Fleet.Region.Schema): Promise<Fleet.Cluster.Database.ConnectionURL> {
+        const cluster = await this.clusterService.getClusterForNewWorkspace(region);
 
         const driverKind = this.driverRegistry.getKindForNewWorkspaces()
 
@@ -71,7 +71,7 @@ export class HardwareService {
         if (!release)
             throw new Error('No release to build workspaces from');
 
-        await this.repository.ensureForWorkspace(Principal.SELF, workspaceId, driverKind, cluster.id, release.id);
+        await this.repository.ensureForWorkspace(Principal.SELF, workspaceId, driverKind, cluster, release.id);
 
         return this.clusterService.createDatabase(
             cluster,
@@ -133,7 +133,7 @@ export class HardwareService {
 
         for (const { role } of ordered) {
             const spec = Fleet.Machine.Spec.create(role, workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost)
-            const handle = await this.machineService.create(hardware.driver, hardware.id, workspaceId, spec);
+            const handle = await this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, spec);
 
             if (role === 'backend')
                 backendHost = await driver.getInternalHostForMachine(handle.resourceId);
@@ -272,6 +272,16 @@ export class HardwareService {
         this.statisticsSampler.invalidate(workspaceId);
 
         this.logger.log(`Destroyed the machines of ${workspaceId}`);
+    }
+
+
+
+
+    /** Where each workspace lives and what it runs, keyed by workspace. */
+    async getPlacementForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, { region: Fleet.Region.Schema; releaseId: Fleet.Release.Id; releaseName: Fleet.Release.Name }>> {
+        const rows = await this.repository.getPlacementByWorkspaceIds(Principal.SELF, workspaceIds);
+
+        return new Map(rows.map((row) => [row.workspaceId, { region: row.region, releaseId: row.releaseId, releaseName: row.releaseName }]));
     }
 
 

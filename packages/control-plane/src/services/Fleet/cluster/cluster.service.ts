@@ -32,14 +32,14 @@ export class ClusterService implements OnModuleDestroy {
 
 
 
-    /** Where a new workspace's database goes. Oldest accepting cluster, so one fills before the next opens. */
-    public async getClusterForNewWorkspace(): Promise<Fleet.Cluster> {
-        const accepting = await this.clusterRepository.getAccepting(Principal.SELF);
+    /** Where a new workspace's database goes: the oldest accepting cluster in its region, so one fills before the next opens. */
+    public async getClusterForNewWorkspace(region: Fleet.Region.Schema): Promise<Fleet.Cluster> {
+        const accepting = await this.clusterRepository.getAccepting(Principal.SELF, region);
 
         const cluster = accepting[0];
 
         if (!cluster)
-            throw new Error('No cluster is accepting new workspaces');
+            throw new Error(`No cluster in ${region} is accepting new workspaces`);
 
         return cluster;
     }

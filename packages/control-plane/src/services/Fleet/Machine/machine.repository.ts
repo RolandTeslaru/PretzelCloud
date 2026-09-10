@@ -52,7 +52,7 @@ export class MachineRepository extends Repository(FleetDB) {
     public async insert(principal: Principal.Service, values: {
         workspace_id: Workspace.Id;
         hardware_id:  Fleet.Hardware.Id;
-        driver:       Fleet.Driver;
+        driver:       Fleet.Driver.Kind;
         external_id:  Fleet.Machine.ResourceId;
         role:         Fleet.Machine.Role;
         size:         string;
