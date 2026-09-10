@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { Button, Form, Input, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
-import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../sdk'
 
 const Schema = z.object({ displayName: Workspace.DisplayName })
@@ -68,6 +68,16 @@ export const GeneralSettings = ({ workspaceId }: { workspaceId: Workspace.Id }) 
                                 <SystemIcons.Copy />
                             </Button>
                         </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <p className="text-sm font-medium">Region</p>
+
+                        <p className="text-muted-foreground text-xs">
+                            {workspace.region
+                                ? `${Fleet.Region.getDisplayName(workspace.region)} · ${workspace.region}`
+                                : 'Not placed yet'}
+                        </p>
                     </div>
 
                     <div className='flex flex-row absolute gap-2 bottom-0 left-0 w-full p-4 '>
