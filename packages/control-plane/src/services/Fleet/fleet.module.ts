@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SiloTokenIssuerModule } from '@/services/SiloSession/token-issuer.module';
 import { RealtimeModule } from '@/services/Realtime/realtime.module';
 import { LockModule } from '@/services/Locking/lock.module';
+import { ListingModule } from '@/services/Listing/listing.module';
 import { DriverRegistry } from './drivers/driver.registry';
 import { ClusterRepository } from './cluster/cluster.repository';
 import { ClusterService } from './cluster/cluster.service';
@@ -26,7 +27,7 @@ import { ReleaseService } from './Release/release.service';
 import { ReleaseController } from './Release/release.controller';
 
 @Module({
-    imports: [SiloTokenIssuerModule, RealtimeModule, LockModule],
+    imports: [SiloTokenIssuerModule, RealtimeModule, LockModule, ListingModule],
     providers: [
         DriverRegistry,
         ClusterRepository, ClusterService,

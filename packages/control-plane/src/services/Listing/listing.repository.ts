@@ -43,6 +43,20 @@ export class ListingRepository extends Repository(PortalDB) {
         return rows.map((row) => PortalDB.Listing.toDomain(PortalDB.Listing.Row.parse(row)));
     }
 
+    @Transactional('service')
+    public async getByBlueprintIds(principal: Principal.Service, blueprintIds: readonly string[]): Promise<Listing[]> {
+        if (blueprintIds.length === 0)
+            return [];
+
+        const rows = await this.trx
+            .selectFrom('listings')
+            .selectAll()
+            .where('blueprint_id', 'in', [...blueprintIds])
+            .execute();
+
+        return rows.map((row) => PortalDB.Listing.toDomain(PortalDB.Listing.Row.parse(row)));
+    }
+
     // The calling workspace's listing ids, keyed by its workflow ids.
     @Transactional('silo')
     public async getOwnedIds(principal: Principal.Silo): Promise<Record<Listing.WorkflowId, Listing.Id>> {

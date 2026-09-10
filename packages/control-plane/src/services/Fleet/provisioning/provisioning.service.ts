@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Fleet, Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, Listing, Plan, User, Workspace } from '@pretzel-cloud/shared/domain';
 import { SiloSecretsService } from '../SiloSecrets/silo-secrets.service';
 import { HardwareService } from '../Hardware/hardware.service';
 import { SiloDatabase } from '../Silo/silo.database';
@@ -9,6 +9,8 @@ import { requireEnv } from '@/db/table';
 import { SiloTokenIssuer } from '@/services/SiloSession/token-issuer.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
+import { ListingRepository } from '@/services/Listing/listing.repository';
+import { Principal } from '@/auth/identity/principal';
 
 export class ProvisioningError extends Error {
     constructor(readonly step: Workspace.Provisioning.Step, cause: unknown) {
@@ -33,6 +35,7 @@ export class ProvisioningService {
         private readonly siloDatabaseService: SiloDatabaseService,
         private readonly siloDatabase:        SiloDatabase,
         private readonly realtime:            RealtimeService,
+        private readonly listingRepository:   ListingRepository,
     ) {}
 
 
@@ -65,6 +68,17 @@ export class ProvisioningService {
         await this.step(workspaceId, 'owner', () => 
             this.siloDatabaseService.transact('seed workspace owner', workspaceId, (trx) => 
                 this.siloDatabase.seedOwner(trx, owner)
+            )
+        );
+
+        // Whatever of the starter set is published right now; a missing one is skipped, not invented.
+        const starters = await this.step(workspaceId, 'starters', () =>
+            this.listingRepository.getByBlueprintIds(Principal.SELF, Listing.Starter.BLUEPRINT_IDS)
+        );
+
+        await this.step(workspaceId, 'starters', () =>
+            this.siloDatabaseService.transact('seed starter workflows', workspaceId, (trx) =>
+                this.siloDatabase.seedStarters(trx, workspaceId, owner, starters)
             )
         );
 
