@@ -19,7 +19,6 @@ import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 const createEvent = Workspace.Event.create;
 import { BillingService } from '@/services/Billing/billing.service';
 
-const PROVISION_ATTEMPTS = 3;
 
 const DEFAULT_MAX_WORKSPACES_PER_OWNER = 1;
 
@@ -114,20 +113,21 @@ export class WorkspaceService {
             throw new ConflictException('Another workspace is already being created');
 
         void (async () => {
-            for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt++) {
-                try {
-                    await this.provisioning.provision(id, owner, Plan.DEFAULT_PLAN_ID, region);
-
-                    // A probe before now cached the absence.
-                    this.siloRouter.invalidate(id);
-
-                    return this.setLifecycleState(id, 'running');
-                }
-                catch (error) {
-                    this.logger.error(`Provisioning ${id} failed (attempt ${attempt}/${PROVISION_ATTEMPTS}): ${error instanceof Error ? error.message : error}`);
-                }
+            try {
+                await this.provisioning.provision(id, owner, Plan.DEFAULT_PLAN_ID, region);
             }
-            await this.abandonCreation(id);
+            catch (error) {
+                this.logger.error(`Provisioning ${id} failed: ${error instanceof Error ? error.message : error}`);
+
+                await this.abandonCreation(id);
+
+                return;
+            }
+
+            // A probe before now cached the absence.
+            this.siloRouter.invalidate(id);
+
+            await this.setLifecycleState(id, 'running');
         })().catch((error: unknown) => this.logger.error(
             `Creating ${id} failed: ${error instanceof Error ? error.message : error}`,
         ));

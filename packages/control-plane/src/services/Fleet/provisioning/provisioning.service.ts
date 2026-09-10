@@ -142,8 +142,21 @@ export class ProvisioningService {
     /** Destroys what exists. Safe to call against a workspace that never got far. */
     async deprovision(workspaceId: Workspace.Id): Promise<void> {
         // Stopped before removed: a killed machine abandons its database connections instead of closing them.
-        await this.hardware.lifecycle.stopAll(workspaceId);
-        await this.hardware.destroy(workspaceId);
+        try {
+            await this.hardware.lifecycle.stopAll(workspaceId);
+        }
+        catch (error) {
+            this.logger.warn(`Could not stop the machines of ${workspaceId}; destroying anyway: ${error instanceof Error ? error.message : error}`);
+        }
+
+        // Machines gone from under the records must not keep the workspace alive.
+        try {
+            await this.hardware.destroy(workspaceId);
+        }
+        catch (error) {
+            this.logger.warn(`Could not destroy the hardware of ${workspaceId}; continuing: ${error instanceof Error ? error.message : error}`);
+        }
+
         await this.hostname.delete(workspaceId);
         await this.siloSecrets.delete(workspaceId);
     }
