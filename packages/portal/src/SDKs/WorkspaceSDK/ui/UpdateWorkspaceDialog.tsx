@@ -91,13 +91,6 @@ export function UpdateWorkspaceDialog({ dialogId, workspaceId }: Props) {
                         <div className='flex flex-col gap-2 pt-6'>
                             <p className='text-sm font-medium'>Changelog</p>
                             <p className='text-xs'>{latestRelease.description}</p>
-                            <p className='text-xs'>{latestRelease.description}</p>
-                            <p className='text-xs'>{latestRelease.description}</p>
-                            <p className='text-xs'>{latestRelease.description}</p>
-                            <p className='text-xs'>{latestRelease.description}</p>
-                            <p className='text-xs'>{latestRelease.description}</p>
-                            <p className='text-xs'>{latestRelease.description}</p>
-                            <p className='text-xs'>{latestRelease.description}</p>
                         </div>
                     }
                 </div>
