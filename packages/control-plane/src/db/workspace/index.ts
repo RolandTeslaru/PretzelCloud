@@ -49,10 +49,32 @@ export namespace WorkspaceDB {
         export type Row = z.infer<typeof Row>;
     }
 
+    /** The columns a starter copy fills; the workspace owns every other one. */
+    export namespace Workflow {
+        export const Row = z.object({
+            id:           z.uuid(),
+            display_name: z.string(),
+            description:  z.string().nullable(),
+            icon:         z.string().nullable(),
+            accent:       z.string().nullable(),
+            icon_color:   z.string().nullable(),
+            data:         z.record(z.string(), z.unknown()),
+            folder_id:    z.uuid(),
+            created_by:   UserD.Id.nullable(),
+            created_at:   z.coerce.date(),
+            updated_at:   z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+
+        // Seeded by the workspace's own migrations; the one folder without a parent.
+        export const ROOT_FOLDER_ID = '00000000-0000-4000-8000-000000000001';
+    }
+
     export interface Tables {
         users:      Table<typeof User.Row, Stamps>;
         members:    Table<typeof Member.Row, Stamps>;
         deployment: Table<typeof Deployment.Row, 'id'>;
+        workflows:  Table<typeof Workflow.Row, Stamps>;
     }
 
     export type Transaction = KyselyTransaction<Tables>;

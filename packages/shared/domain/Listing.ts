@@ -17,6 +17,11 @@ export namespace Listing {
     export const createId = (): Id =>
         `${ID_PREFIX}${crypto.randomUUID().slice(ID_PREFIX.length)}` as Id
 
+    // The extended shelf entries every new workspace starts with a copy of.
+    export namespace Starter {
+        export const BLUEPRINT_IDS = ["Pretzel.Starter.HelloFlow", "Pretzel.Starter.Agent"] as const
+    }
+
     // The owner's local workflow id; unique together with the owner.
     export const WorkflowId = z.uuid()
     export type  WorkflowId = z.infer<typeof WorkflowId>

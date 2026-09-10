@@ -70,6 +70,7 @@ export namespace Workspace {
             "secrets",
             "machines",
             "owner",
+            "starters",
             "hostnames",
             "convert",
             "rebuild",

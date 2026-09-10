@@ -29,6 +29,7 @@ export const PROVISIONING_STEP: Record<Workspace.Provisioning.Step, string> = {
     secrets:    'Creating environment',
     machines:   'Building compute',
     owner:      'Setting up account',
+    starters:   'Adding starter workflows',
     hostnames:  'Registering hostnames',
     convert:    'Applying plan',
     rebuild:    'Rebuilding',
