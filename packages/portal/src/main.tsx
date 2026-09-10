@@ -10,9 +10,14 @@ import { routeTree } from './routeTree.gen'
 
 SystemSDK.init()
 
-// The socket follows the session, not the page: the handshake carries a token,
-// and signing in or out navigates rather than reloads. Registered before init so
-// the session it recovers is itself a transition.
+export const router = createRouter({
+    routeTree,
+    context: {
+        auth: undefined!, // passed in the provider
+    },
+})
+
+// Registered before init so the recovered session counts as a transition.
 AuthSDK.subscribe((auth, previous) => {
     if (auth.isAuthenticated === previous.isAuthenticated)
         return
@@ -21,16 +26,15 @@ AuthSDK.subscribe((auth, previous) => {
         RealtimeSDK.connect(socketUrl())
     else
         RealtimeSDK.disconnect()
+
+    // The provider re-renders later, so the guards are handed the new state here; on boot it mounts with it.
+    if (!previous.isLoading) {
+        router.update({ ...router.options, context: { auth } })
+        router.invalidate()
+    }
 })
 
 AuthSDK.init()
-
-export const router = createRouter({
-    routeTree,
-    context: {
-        auth: undefined!, // passed in the provider
-    },
-})
 
 declare module '@tanstack/react-router' {
     interface Register {
