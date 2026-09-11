@@ -14,10 +14,25 @@ const Schema = z.object({
 })
 type Values = z.infer<typeof Schema>
 
+// Timezone areas closer to Frankfurt than to Virginia.
+const EUROPEAN_AREAS = ['Europe/', 'Africa/']
+
+/** A starting region from the browser's timezone, which needs no location permission. */
+function guessRegion(): Fleet.Region.Schema {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
+
+    for (const area of EUROPEAN_AREAS) {
+        if (timeZone.startsWith(area))
+            return 'eu-central-1'
+    }
+
+    return 'us-east-1'
+}
+
 export function CreateWorkspaceDialog({ dialogId }: { dialogId: string }) {
     const form = useForm<Values>({
         resolver: zodResolver(Schema),
-        defaultValues: { displayName: '', region: 'us-east-1' },
+        defaultValues: { displayName: '', region: guessRegion() },
     })
 
     const onSubmit = async (values: Values) => {
