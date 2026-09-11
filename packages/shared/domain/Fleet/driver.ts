@@ -45,7 +45,8 @@ export namespace Driver {
                 path:         "/health",
                 interval:     "5s",
                 timeout:      "3s",
-                grace_period: "45s",
+                // Failures before serving are expected and tolerated by the health wait.
+                grace_period: "2s",
             },
         }
     }
