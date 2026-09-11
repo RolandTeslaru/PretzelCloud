@@ -23,6 +23,10 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
     public readonly client = authClient
     public readonly getToken = getToken
 
+    // Set while sign-up is creating the profile itself, so the listener does not
+    // look it up first, find nothing, and flash the profile step.
+    public isSigningUp = false
+
     public readonly useStore: BaseSDK.Store<AuthSDK.State> = create(
         immer<AuthSDK.State>(() => ({
             isAuthenticated: false,
@@ -52,7 +56,7 @@ export class AuthSDKImpl extends BaseSDK<AuthSDK.State> {
         }
 
         this.client.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN' && session?.user) {
+            if (event === 'SIGNED_IN' && session?.user && !this.isSigningUp) {
                 setTimeout(() => { this.actions.syncUser() }, 0)
             }
             else if (event === 'SIGNED_OUT') {

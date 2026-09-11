@@ -46,41 +46,48 @@ export function _createAuthActions_(sdk: AuthSDKImpl): AuthSDK.Actions {
          * session exists.
          */
         signup: async (props) => {
-            // A previous attempt may have created the account and failed only on
-            // the profile; reusing that session lets a retry pick a free username
-            // instead of signing up an address the issuer already knows.
-            let session = (await sdk.client.getSession()).data.session
-
-            if (!session) {
-                const { data, error } = await sdk.client.signUp({
-                    email: props.email,
-                    password: props.password,
-                })
-
-                if (error || !data.user) {
-                    NotificationSDK.toast.error(`Could not sign up: ${error?.message}`)
-                    return false;
-                }
-
-                // No session means the address still has to be confirmed, and
-                // there is no token to register the profile row with yet.
-                if (!data.session) {
-                    NotificationSDK.toast.info("Check your email to confirm your address.")
-                    return false;
-                }
-
-                session = data.session
-            }
+            sdk.isSigningUp = true
 
             try {
-                await sdk.actions.register({ username: props.username, displayName: props.displayName })
-            }
-            catch (error) {
-                NotificationSDK.toast.error(getMessageFromError(error))
-                return false;
-            }
+                // A previous attempt may have created the account and failed only on
+                // the profile; reusing that session lets a retry pick a free username
+                // instead of signing up an address the issuer already knows.
+                let session = (await sdk.client.getSession()).data.session
 
-            return sdk.state.isAuthenticated;
+                if (!session) {
+                    const { data, error } = await sdk.client.signUp({
+                        email: props.email,
+                        password: props.password,
+                    })
+
+                    if (error || !data.user) {
+                        NotificationSDK.toast.error(`Could not sign up: ${error?.message}`)
+                        return false;
+                    }
+
+                    // No session means the address still has to be confirmed, and
+                    // there is no token to register the profile row with yet.
+                    if (!data.session) {
+                        NotificationSDK.toast.info("Check your email to confirm your address.")
+                        return false;
+                    }
+
+                    session = data.session
+                }
+
+                try {
+                    await sdk.actions.register({ username: props.username, displayName: props.displayName })
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error))
+                    return false;
+                }
+
+                return sdk.state.isAuthenticated;
+            }
+            finally {
+                sdk.isSigningUp = false
+            }
         },
 
         loginWithProvider: async (provider) => {
