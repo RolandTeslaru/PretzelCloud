@@ -1,4 +1,4 @@
-import { createParamDecorator, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
 import { Principal } from './principal';
 
@@ -11,6 +11,18 @@ export const AuthenticatedUser = createParamDecorator(
             throw new UnauthorizedException('User principal required');
 
         return principal;
+    },
+);
+
+/** The caller, proven an admin. Populated by AdminGuard. */
+export const AuthenticatedAdminUser = createParamDecorator(
+    (_: unknown, context: ExecutionContext): Principal.AdminUser => {
+        const { adminUser } = context.switchToHttp().getRequest<Request>();
+
+        if (!adminUser)
+            throw new NotFoundException();
+
+        return adminUser;
     },
 );
 

@@ -13,6 +13,12 @@ export namespace Principal {
     }
     export type User = z.infer<typeof User.Schema>
 
+    /** A user whose `is_admin` flag was checked this request. Only `requireAdmin` makes one. */
+    export namespace AdminUser {
+        export const Schema = User.Schema.brand('AdminUser')
+    }
+    export type AdminUser = z.infer<typeof AdminUser.Schema>
+
     /** A workspace's own backend, proven by its per-workspace cloud token. */
     export namespace Silo {
         export const Schema = z.object({
@@ -41,5 +47,6 @@ export type Principal = z.infer<typeof Principal.Schema>
 declare module 'express' {
     interface Request {
         principal?: Principal;
+        adminUser?: Principal.AdminUser;
     }
 }

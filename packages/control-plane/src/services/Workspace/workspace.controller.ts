@@ -115,7 +115,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async start(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         // Accepted, not done: bringing a workspace up waits on machines, and a
@@ -131,7 +131,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async stop(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.stop(workspaceId)
@@ -144,7 +144,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async suspend(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.suspend(workspaceId)
@@ -157,7 +157,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async rebuild(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan.id)
@@ -170,7 +170,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async update(
         @WorkspaceScope() workspace: Workspace,
@@ -186,7 +186,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async restart(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.restart(workspaceId)

@@ -4,7 +4,7 @@ import { Principal } from '@/auth/identity/principal';
 import { ListingRepository } from '@/services/Listing/listing.repository';
 
 // The one workspace whose listings form the extended shelf. Unset means none.
-const shelfWorkspace = (): Principal.Silo => {
+export const shelfWorkspace = (): Principal.Silo => {
     const workspaceId = process.env.EXTENDED_SHELF_WORKSPACE_ID;
 
     if (!workspaceId)
@@ -25,23 +25,5 @@ export class ExtendedShelfService {
             return [];
 
         return this.listingRepository.getAllForWorkspace(Principal.SELF, shelfWorkspace().workspaceId);
-    }
-
-    // Tagging runs as the pinned workspace, so RLS scopes it to that workspace's listings.
-    public readonly operator = {
-        add: async (id: Listing.Id, blueprintId: string): Promise<void> => {
-            await this.setBlueprintId(id, blueprintId);
-        },
-
-        remove: async (id: Listing.Id): Promise<void> => {
-            await this.setBlueprintId(id, null);
-        },
-    };
-
-    private async setBlueprintId(id: Listing.Id, blueprintId: string | null): Promise<void> {
-        const updated = await this.listingRepository.setBlueprintId(shelfWorkspace(), id, blueprintId);
-
-        if (updated === 0)
-            throw new NotFoundException('No such listing');
     }
 }

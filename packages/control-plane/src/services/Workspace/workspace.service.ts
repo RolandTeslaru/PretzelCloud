@@ -92,25 +92,20 @@ export class WorkspaceService {
     }
 
 
+    // Account creation and deletion cannot cross while ownership is being written.
+    @Operation('account')
     public async create(principal: Principal.User, displayName: string, region: Fleet.Region.Schema): Promise<Workspace> {
         const id = Workspace.createId();
 
-        // Read first so a missing profile fails before anything is built.
         const owner = await this.userRepository.get(Principal.SELF, principal.userId);
 
         if (!owner)
             throw new NotFoundException('No profile yet');
 
-        // Held across check and insert, so two creates cannot both pass the count.
-        const workspace = await this.lockService.withEphemeralLock('workspace-create', principal.userId, 10_000, async () => {
-            await this.refuseOverOwnerCap(principal.userId);
+        await this.refuseOverOwnerCap(principal.userId);
 
-            // Both rows or neither: no membership row means the owner cannot see it.
-            return this.repository.insert(Principal.SELF, { id, displayName, ownerId: principal.userId });
-        });
-
-        if (!workspace)
-            throw new ConflictException('Another workspace is already being created');
+        // Both rows or neither: no membership row means the owner cannot see it.
+        const workspace = await this.repository.insert(Principal.SELF, { id, displayName, ownerId: principal.userId });
 
         void (async () => {
             try {
@@ -323,7 +318,7 @@ export class WorkspaceService {
 
 
 
-    @Operation()
+    @Operation('workspace')
     public async start(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         await this.ensureCompute(workspaceId);
 
@@ -334,7 +329,7 @@ export class WorkspaceService {
 
 
     /** Gives the machines back. Hardware row, database, hostnames and secrets stay, and traffic rebuilds it. */
-    @Operation()
+    @Operation('workspace')
     public async reclaimCompute(workspaceId: Workspace.Id): Promise<void> {
         // Quiet: the state announced is `sleeping` below, not the `stopped` a stop lands on.
         await this.stop(workspaceId, { emitNoEvents: true });
@@ -368,7 +363,7 @@ export class WorkspaceService {
 
 
     /** Stopping means nothing is left running, worker included. */
-    @Operation()
+    @Operation('workspace')
     public stop(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'stop', options);
     }
@@ -376,7 +371,7 @@ export class WorkspaceService {
 
 
 
-    @Operation()
+    @Operation('workspace')
     public suspend(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'suspend', options);
     }
@@ -385,7 +380,7 @@ export class WorkspaceService {
 
 
     /** Everything down, then answerable again. The worker returns on demand. */
-    @Operation()
+    @Operation('workspace')
     public restart(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
         return this.runTransition(workspaceId, 'restart', options);
     }
@@ -449,7 +444,7 @@ export class WorkspaceService {
      * stay. The machines are destroyed rather than moved, so this announces
      * itself and the transitions inside it stay quiet.
      */
-    @Operation()
+    @Operation('workspace')
     public async rebuild(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
         this.emit(workspaceId, createEvent('rebuild:started', {}));
 
@@ -485,7 +480,7 @@ export class WorkspaceService {
 
 
     /** Moves the pin to the named release and replaces the machines from it. */
-    @Operation()
+    @Operation('workspace')
     public async updateToRelease(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id, releaseId: Fleet.Release.Id): Promise<void> {
         // Fetched before pinning: a release that does not exist is refused here.
         const target = await this.release.getById(releaseId);
@@ -537,7 +532,7 @@ export class WorkspaceService {
 
 
 
-    @Operation()
+    @Operation('workspace')
     public async setPlan(workspaceId: Workspace.Id, ownerId: User.Id, planId: Plan.Id): Promise<void> {
         await this.repository.setPlan(Principal.SELF, workspaceId, planId);
 
@@ -573,9 +568,22 @@ export class WorkspaceService {
 
 
 
-    @Operation(1)
+    @Operation('workspace', 1)
     public async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
-        const { subdomain } = await this.get(workspaceId);
+        const workspace = await this.get(workspaceId);
+
+        if (workspace.ownerId !== principal.userId)
+            throw new ForbiddenException('Only the owner may destroy this workspace');
+
+        await this.destroyWorkspace(workspace, () => this.repository.delete(principal, workspaceId));
+    }
+
+    /** Tears a workspace down with no ownership check; callers settle who may first. */
+    public async destroyWorkspace(workspace: Workspace, deleteRow: () => Promise<void>): Promise<void> {
+        const { id: workspaceId, subdomain } = workspace;
+
+        if (workspace.lifecycleState === 'creating')
+            throw new ConflictException('This workspace is still being created. Retry when provisioning finishes.');
 
         await this.billing.cancelSubscription(workspaceId);
 
@@ -585,7 +593,7 @@ export class WorkspaceService {
 
         await this.listing.deleteAllForWorkspace(workspaceId);
 
-        await this.repository.delete(principal, workspaceId);
+        await deleteRow();
 
         // After the row goes, so the refill finds nothing.
         this.siloRouter.invalidate(workspaceId, [subdomain]);

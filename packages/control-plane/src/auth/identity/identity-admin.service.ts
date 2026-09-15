@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { SignJWT } from 'jose';
 import { User } from '@pretzel-cloud/shared/domain';
 import { requireEnv } from '@/db/table';
@@ -12,6 +12,17 @@ const TOKEN_TTL  = 60;
 export class IdentityAdminService {
 
     private readonly logger = new Logger(IdentityAdminService.name);
+
+    /** An old signed token cannot recreate a profile after account deletion. */
+    public async requireUser(userId: User.Id): Promise<void> {
+        const response = await this.call(`/admin/users/${userId}`, 'GET');
+
+        if (response.status === 404)
+            throw new UnauthorizedException('This account no longer exists');
+
+        if (!response.ok)
+            throw new Error(`Issuer could not verify ${userId}: ${response.status}`);
+    }
 
     /** Removes the credential only; the profile row is separate. */
     public async deleteUser(userId: User.Id): Promise<void> {

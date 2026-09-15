@@ -4,6 +4,7 @@ import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { BaseIconProps } from '@pretzel-graph/standard-ui/icons/baseIcon'
 import { PretzelGraphDropdown } from '@/components/PretzelGraphDropdown'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK'
+import { AuthSDK } from '@/SDKs/AuthSDK'
 
 // What a page beneath this layout may declare about itself.
 declare module '@tanstack/react-router' {
@@ -75,17 +76,22 @@ const NAV_TOP: NavEntry[] = [
     { id: 'billing', label: 'Billing', to: '/billing', icon: SystemIcons.Receipt },
 ]
 
-const Sidebar = () => (
-    <aside className="w-56 shrink-0 flex flex-col">
-        <div className="h-14 px-4 flex items-center">
-            <PretzelGraphDropdown title="PretzelCloud" />
-        </div>
+const Sidebar = () => {
+    const isAdmin = AuthSDK.useStore((s) => s.user?.isAdmin ?? false)
 
-        <nav className="flex-1 p-2 flex flex-col gap-0.5">
-            {NAV_TOP.map((e) => <NavItem key={e.id} entry={e} />)}
-        </nav>
-    </aside>
-)
+    return (
+        <aside className="w-56 shrink-0 flex flex-col">
+            <div className="h-14 px-4 flex items-center">
+                <PretzelGraphDropdown title="PretzelCloud" />
+            </div>
+
+            <nav className="flex-1 p-2 flex flex-col gap-0.5">
+                {NAV_TOP.map((e) => <NavItem key={e.id} entry={e} />)}
+                {isAdmin && <NavItem entry={{ id: 'admin', label: 'Admin', to: '/admin', icon: SystemIcons.Shield }} />}
+            </nav>
+        </aside>
+    )
+}
 
 function NavItem({ entry }: { entry: NavEntry }) {
     const pathname = useRouterState({ select: (s) => s.location.pathname })

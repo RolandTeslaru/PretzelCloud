@@ -27,6 +27,20 @@ export class WorkspaceRepository extends Repository(PortalDB) {
     }
 
     @Transactional('service')
+    public async getByOwnerOrMember(principal: Principal.Service, userId: User.Id) {
+        return this.trx
+            .selectFrom('workspaces')
+            .leftJoin('workspace_members', 'workspace_members.workspace_id', 'workspaces.id')
+            .select(['workspaces.id', 'workspaces.display_name', 'workspaces.owner_id'])
+            .where((eb) => eb.or([
+                eb('workspaces.owner_id', '=', userId),
+                eb('workspace_members.user_id', '=', userId),
+            ]))
+            .distinct()
+            .execute();
+    }
+
+    @Transactional('service')
     public async insert(principal: Principal.Service, values: {
         id:          Workspace.Id;
         displayName: string;

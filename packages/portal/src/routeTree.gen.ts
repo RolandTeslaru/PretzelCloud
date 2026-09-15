@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppAdminRouteImport } from './routes/_app/admin'
 import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppUsageRouteImport } from './routes/_app/usage'
 import { Route as AuthIndexRouteImport } from './routes/auth/index'
@@ -24,6 +25,11 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBillingRoute = AppBillingRouteImport.update({
@@ -56,6 +62,7 @@ const AppCheckoutSuccessWorkspaceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/admin': typeof AppAdminRoute
   '/billing': typeof AppBillingRoute
   '/usage': typeof AppUsageRoute
   '/auth/': typeof AuthIndexRoute
@@ -63,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
 }
 export interface FileRoutesByTo {
+  '/admin': typeof AppAdminRoute
   '/billing': typeof AppBillingRoute
   '/usage': typeof AppUsageRoute
   '/': typeof AppIndexRoute
@@ -73,6 +81,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/admin': typeof AppAdminRoute
   '/_app/billing': typeof AppBillingRoute
   '/_app/usage': typeof AppUsageRoute
   '/_app/': typeof AppIndexRoute
@@ -84,6 +93,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/billing'
     | '/usage'
     | '/auth/'
@@ -91,6 +101,7 @@ export interface FileRouteTypes {
     | '/checkout/success/$workspaceId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/admin'
     | '/billing'
     | '/usage'
     | '/'
@@ -100,6 +111,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/_app/admin'
     | '/_app/billing'
     | '/_app/usage'
     | '/_app/'
@@ -127,6 +139,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/billing': {
@@ -168,6 +187,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRoute
   AppBillingRoute: typeof AppBillingRoute
   AppUsageRoute: typeof AppUsageRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -176,6 +196,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRoute,
   AppBillingRoute: AppBillingRoute,
   AppUsageRoute: AppUsageRoute,
   AppIndexRoute: AppIndexRoute,

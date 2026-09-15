@@ -4,6 +4,11 @@ import { Principal } from '@/auth/identity/principal';
 import { IdentityAdminService } from '@/auth/identity/identity-admin.service';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
 import { UserRepository } from './user.repository';
+import { WorkspaceRepository } from '@/services/Workspace/workspace.repository';
+import { WorkspaceMemberService } from '@/services/Workspace/workspace-member.service';
+import { AdminRepository } from '@/auth/admin.repository';
+import { LockService } from '@/services/Locking/lock.service';
+import { Operation } from '@/decorators/operation';
 
 const USERNAME_TAKEN = 'users_username_lower_key';
 const EMAIL_TAKEN    = 'users_email_lower_key';
@@ -19,16 +24,24 @@ export class UserService {
     constructor(
         private readonly identityAdminService: IdentityAdminService,
         private readonly userRepository: UserRepository,
+        private readonly workspaceRepository: WorkspaceRepository,
+        private readonly adminRepository: AdminRepository,
         @Inject(forwardRef(() => WorkspaceService))
         private readonly workspaceService: WorkspaceService,
+        private readonly workspaceMemberService: WorkspaceMemberService,
+        // Read by `@Operation`, which serialises an account's operations across instances.
+        private readonly lockService: LockService,
     ) {}
 
     /** The id and email come from the verified token, never the body. */
-    async register(principal: Principal.User, body: User.API.Register.Request): Promise<User> {
+    @Operation('account')
+    public async register(principal: Principal.User, body: User.API.Register.Request): Promise<User> {
         const existing = await this.find(principal);
 
         if (existing)
             return existing;
+
+        await this.identityAdminService.requireUser(principal.userId);
 
         try {
             await this.userRepository.insert(Principal.SELF, {
@@ -93,22 +106,34 @@ export class UserService {
         }
     }
 
-    /** Workspaces, then the credential, then the profile. A failure stops the rest. */
+    /** Workspaces and memberships, then the credential and profile. A failure stops the rest. */
+    @Operation('account')
     public async delete(principal: Principal.User): Promise<void> {
-        const owned = await this.userRepository.getOwnedWorkspaceIds(principal);
+        await this.deleteUserData(principal.userId, (workspace) => this.workspaceService.destroy(principal, workspace.id));
+    }
 
-        for (const row of owned)
-            await this.workspaceService.destroy(principal, row.id as Workspace.Id);
+    public async deleteUserData(
+        userId: User.Id,
+        destroyOwned: (workspace: { id: Workspace.Id; display_name: string }) => Promise<void>,
+    ): Promise<void> {
+        const workspaces = await this.workspaceRepository.getByOwnerOrMember(Principal.SELF, userId);
 
-        await this.identityAdminService.deleteUser(principal.userId);
+        for (const workspace of workspaces.filter((row) => row.owner_id === userId))
+            await destroyOwned(workspace);
+
+        for (const workspace of workspaces.filter((row) => row.owner_id !== userId))
+            await this.workspaceMemberService.remove(workspace.id, userId);
+
+        await this.identityAdminService.deleteUser(userId);
 
         try {
-            await this.userRepository.delete(Principal.SELF, principal.userId);
+            await this.userRepository.delete(Principal.SELF, userId);
         }
         catch (error) {
-            this.logger.error(`issuer account ${principal.userId} is gone but its profile row is not`, error);
+            this.logger.error(`issuer account ${userId} is gone but its profile row is not`, error);
 
             throw error;
         }
-    }
-}
+
+        this.adminRepository.invalidate(userId);
+    }}

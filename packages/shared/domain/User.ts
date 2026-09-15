@@ -16,6 +16,7 @@ export namespace User {
         username:    z.string(),
         displayName: z.string(),
         avatarUrl:   z.string().nullable(),
+        isAdmin:     z.boolean(),
         createdAt:   z.coerce.date(),
         updatedAt:   z.coerce.date(),
     })
