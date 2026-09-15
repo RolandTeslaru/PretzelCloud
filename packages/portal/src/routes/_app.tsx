@@ -76,6 +76,11 @@ const NAV_TOP: NavEntry[] = [
     { id: 'billing', label: 'Billing', to: '/billing', icon: SystemIcons.Receipt },
 ]
 
+const NAV_ADMIN: NavEntry[] = [
+    { id: 'admin-workspaces', label: 'All workspaces', to: '/admin/workspaces', icon: SystemIcons.Server },
+    { id: 'admin-users', label: 'All users', to: '/admin/users', icon: SystemIcons.Users },
+]
+
 const Sidebar = () => {
     const isAdmin = AuthSDK.useStore((s) => s.user?.isAdmin ?? false)
 
@@ -87,7 +92,12 @@ const Sidebar = () => {
 
             <nav className="flex-1 p-2 flex flex-col gap-0.5">
                 {NAV_TOP.map((e) => <NavItem key={e.id} entry={e} />)}
-                {isAdmin && <NavItem entry={{ id: 'admin', label: 'Admin', to: '/admin', icon: SystemIcons.Shield }} />}
+                {isAdmin && (
+                    <>
+                        <p className="px-2 pt-4 pb-1 text-xs text-muted-foreground">Admin</p>
+                        {NAV_ADMIN.map((e) => <NavItem key={e.id} entry={e} />)}
+                    </>
+                )}
             </nav>
         </aside>
     )
