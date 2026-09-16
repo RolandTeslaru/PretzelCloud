@@ -8,7 +8,7 @@ import { ListingService } from '@/services/Listing/listing.service';
 import { WorkspaceRepository } from './workspace.repository';
 import { UserRepository } from '@/services/User/user.repository';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
-import { HardwareService, TopologyNotRestored } from '@/services/Fleet/Hardware/hardware.service';
+import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { ReleaseService } from '@/services/Fleet/Release/release.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/identity/principal';
@@ -35,14 +35,6 @@ function maxWorkspacesPerOwner(): number {
         throw new Error(`MAX_WORKSPACES_PER_OWNER must be a whole number, got "${raw}"`);
 
     return value;
-}
-
-/** Unwraps the provisioner's wrapper to ask what actually went wrong underneath. */
-function isTopologyNotRestored(error: unknown): boolean {
-    if (error instanceof TopologyNotRestored)
-        return true;
-
-    return error instanceof Error && error.cause instanceof TopologyNotRestored;
 }
 
 @Injectable()
@@ -225,20 +217,20 @@ export class WorkspaceService {
 
 
     /**
-     * Wakes the worker so it can drain the queue. Called by the workspace's own
+     * Wakes one worker so it can drain the queue. Called by the workspace's own
      * backend before it enqueues, which is the only moment anything knows work
      * is coming.
      */
-    public wakeWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardware.lifecycle.startWorker(workspaceId);
+    public wakeWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
+        return this.hardware.lifecycle.startWorker(workspaceId, workerId);
     }
 
 
 
 
-    /** Stops the worker once its backend reports the queue has been quiet. */
-    public sleepWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardware.lifecycle.stopWorker(workspaceId);
+    /** Stops one worker once its backend reports it has gone quiet. */
+    public sleepWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
+        return this.hardware.lifecycle.stopWorker(workspaceId, workerId);
     }
 
 
@@ -542,19 +534,15 @@ export class WorkspaceService {
         // A bigger plan takes effect now, not at the next re-check.
         this.entitlement.unlock(workspaceId);
 
-        // Down for the conversion, so executions end and pools close.
+        // Down for the rebuild, so executions end and pools close.
         await this.stop(workspaceId);
 
         try {
-            await this.provisioning.convert(workspaceId, ownerId, planId);
+            // Every machine is replaced from the new plan; the database stays.
+            await this.provisioning.rebuild(workspaceId, ownerId, planId);
         }
         catch (error) {
-            // Only when its machines could not be put back. A conversion that
-            // failed and rolled back leaves a working workspace, and freezing it
-            // for that would take away what the owner already had.
-            if (isTopologyNotRestored(error))
-                await this.disable(workspaceId, 'Its machines could not be rebuilt after a failed plan change.');
-
+            // Left wherever the rebuild stopped; the owner can rebuild again.
             this.siloRouter.invalidate(workspaceId);
 
             throw error;

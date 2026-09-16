@@ -49,14 +49,11 @@ export class HardwareStateService {
 
     /** A running worker means work is in flight. */
     async hasRunningWorker(workspaceId: Workspace.Id): Promise<boolean> {
-        const worker = await this.machineService.getByRole(workspaceId, ['worker']);
+        const workers = await this.machineRepository.getWorkers(Principal.SELF, workspaceId);
 
-        if (!worker)
-            return false;
+        const states = await Promise.all(workers.map((worker) => this.machineService.refreshState(worker)));
 
-        const state = await this.machineService.refreshState(worker);
-
-        return state === 'running';
+        return states.includes('running');
     }
 
 

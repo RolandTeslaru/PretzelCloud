@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { connect } from 'node:net';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
@@ -145,19 +145,22 @@ export class HardwareLifecycleService {
 
 
 
-    /** Starts the queue drainer before enqueueing — a sleeping worker is not watching Redis. */
-    async startWorker(workspaceId: Workspace.Id): Promise<void> {
-        const worker = await this.machineService.getByRole(workspaceId, ['worker']);
+    /** One of the workspace's workers, or a not-found — one workspace cannot name another's machine. */
+    private async getWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<Fleet.Machine> {
+        const worker = await this.machineRepository.getWorkerById(Principal.SELF, workspaceId, workerId);
 
-        if (!worker) {
-            // A combined machine is its own worker; anything else means the fleet has lost one.
-            const combined = await this.machineService.getByRole(workspaceId, ['combined']);
+        if (!worker)
+            throw new NotFoundException(`${workspaceId} has no worker ${workerId}`);
 
-            if (combined)
-                return;
+        return worker;
+    }
 
-            throw new Error(`${workspaceId} has no worker machine to start`);
-        }
+
+
+
+    /** Starts one queue drainer before enqueueing — a sleeping worker is not watching Redis. */
+    async startWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
+        const worker = await this.getWorker(workspaceId, workerId);
 
         // The record can lag the machine, so the driver is asked before deciding.
         const state = await this.machineService.refreshState(worker);
@@ -173,12 +176,9 @@ export class HardwareLifecycleService {
 
 
 
-    /** Stops the queue drainer, leaving the backend answering. A combined machine is left alone. */
-    async stopWorker(workspaceId: Workspace.Id): Promise<void> {
-        const worker = await this.machineService.getByRole(workspaceId, ['worker']);
-
-        if (!worker)
-            return;
+    /** Stops one queue drainer, leaving the backend and the other workers as they are. */
+    async stopWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
+        const worker = await this.getWorker(workspaceId, workerId);
 
         // The record can lag the machine, so the driver is asked before deciding.
         const state = await this.machineService.refreshState(worker);

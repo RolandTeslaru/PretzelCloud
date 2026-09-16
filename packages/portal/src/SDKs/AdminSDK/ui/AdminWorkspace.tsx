@@ -152,12 +152,13 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                         </section>
 
                         <section className="space-y-4 py-6">
-                            <h3 className="text-sm font-medium">Topology</h3>
+                            <h3 className="text-sm font-medium">Machines</h3>
 
                             <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
-                                <Fact label="Topology">{workspace.plan.topology}</Fact>
                                 <Fact label="Backend size"><span className="font-mono text-xs">{workspace.plan.backendSize}</span></Fact>
-                                <Fact label="Worker size"><span className="font-mono text-xs">{workspace.plan.workerSize ?? 'Uses backend size'}</span></Fact>
+                                <Fact label="Workers">{Plan.isCombined(workspace.plan) ? 'None, runs on the backend' : workspace.plan.workerCount.toLocaleString()}</Fact>
+                                <Fact label="Worker size"><span className="font-mono text-xs">{workspace.plan.workerSize ?? '—'}</span></Fact>
+                                <Fact label="Executions per worker">{workspace.plan.workerConcurrency.toLocaleString()}</Fact>
                                 <Fact label="Idle backend policy">{workspace.plan.idleBackendPolicy}</Fact>
                             </div>
                         </section>
@@ -166,7 +167,7 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                             <h3 className="text-sm font-medium">Limits</h3>
 
                             <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
-                                <Fact label="Execution concurrency">{workspace.plan.executionConcurrencyLimit.toLocaleString()}</Fact>
+                                <Fact label="Execution concurrency">{Plan.getExecutionConcurrency(workspace.plan).toLocaleString()}</Fact>
                                 <Fact label="Monthly executions">{workspace.plan.maxExecutionsMonthly?.toLocaleString() ?? 'Unlimited'}</Fact>
                                 <Fact label="Monthly uptime">{workspace.plan.maxUptimeHoursMonthly === null ? 'Unlimited' : `${workspace.plan.maxUptimeHoursMonthly.toLocaleString()} hours`}</Fact>
                                 <Fact label="Workflows">{workspace.plan.maxWorkflows?.toLocaleString() ?? 'Unlimited'}</Fact>

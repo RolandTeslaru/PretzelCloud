@@ -54,6 +54,8 @@ export namespace Machine {
             CORS_ORIGIN:                  z.string(),
             PRETZEL_CLOUD_URL:            z.string(),
             PRETZEL_CLOUD_TOKEN:          z.string(),
+            /** The workers this backend drives, comma-separated; empty on a combined machine. */
+            WORKER_IDS:                   z.string(),
             /** Browser-facing values, injected into the served page. */
             PUBLIC_AUTH_URL:              z.string(),
             PUBLIC_CLOUD_URL:             z.string(),
@@ -67,6 +69,7 @@ export namespace Machine {
 
         /** Env for the worker role. */
         export const Worker = Base.extend({
+            WORKER_ID:  z.string(),
             REDIS_HOST: z.string(),
             REDIS_PORT: z.string(),
             API_URL:    z.string(),
@@ -96,6 +99,8 @@ export namespace Machine {
     export namespace Spec {
 
         const Base = z.object({
+            /** Chosen before the machine exists, so the backend can be built knowing its workers. */
+            id:    Id,
             image: z.string(),
             size:  z.string(),
         })
@@ -120,8 +125,9 @@ export namespace Machine {
 
         export const Schema = z.discriminatedUnion("role", [Combined, Backend, Worker])
 
-        /** One role's spec: the backend gets the credentials, the worker only where its sibling is. */
+        /** One role's spec: the backend gets the credentials and its workers' ids, a worker only where its sibling is. */
         export const create = (
+            id:          Id,
             role:        Role,
             workspaceId: WorkspaceId,
             plan:        Plan,
@@ -130,16 +136,9 @@ export namespace Machine {
             backendEnvKeys: EnvKeys.Backend,
             backendHost: string | null,
         ): Spec => {
-            if (role === "combined")
+            if (role === "combined" || role === "backend")
                 return {
-                    role,
-                    image: Release.getImageForRole(release, role),
-                    size:  Plan.getSizeForRole(plan, role),
-                    env:   backendEnvKeys,
-                }
-
-            if (role === "backend")
-                return {
+                    id,
                     role,
                     image: Release.getImageForRole(release, role),
                     size:  Plan.getSizeForRole(plan, role),
@@ -151,11 +150,13 @@ export namespace Machine {
 
             // Built from the base env, so a backend-only key can never leak to a worker.
             return {
+                id,
                 role,
                 image: Release.getImageForRole(release, role),
                 size:  Plan.getSizeForRole(plan, role),
                 env:   {
                     ...baseEnvKeys,
+                    WORKER_ID:  id,
                     REDIS_HOST: backendHost,
                     REDIS_PORT: "6379",
                     API_URL:    `http://${backendHost}:3001`,
@@ -213,11 +214,17 @@ export namespace Machine {
     export namespace Name {
 
         export const Schema = z.string()
-            .regex(/^wspace-[0-9a-f-]{36}-(backend|worker|combined)$/)
+            .regex(/^wspace-[0-9a-f-]{36}-(backend|combined|worker-[0-9a-f]{8})$/)
             .brand("Fleet.Machine.Name")
 
-        export const create = (workspaceId: WorkspaceId, role: Role) =>
-            Schema.parse(`wspace-${workspaceId}-${role}`)
+        /** Workers carry the start of their id, since a workspace runs several. */
+        export const create = (workspaceId: WorkspaceId, role: Role, id: Id) => {
+            const suffix = role === "worker"
+                ? `worker-${id.slice(0, 8)}`
+                : role
+
+            return Schema.parse(`wspace-${workspaceId}-${suffix}`)
+        }
     }
     export type Name = z.infer<typeof Name.Schema>
 

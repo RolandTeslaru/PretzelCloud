@@ -19,7 +19,7 @@ export class MachineRepository extends Repository(FleetDB) {
         return rows.map((row) => FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(row)));
     }
 
-    /** One role's machine, for callers that want a single one rather than all. */
+    /** One role's machine, for roles a workspace has a single one of. */
     @Transactional('service')
     public async getByRole(principal: Principal.Service, workspaceId: Workspace.Id, roles: Fleet.Machine.Role[]): Promise<Fleet.Machine | undefined> {
         const row = await this.trx
@@ -27,6 +27,33 @@ export class MachineRepository extends Repository(FleetDB) {
             .selectAll()
             .where('workspace_id', '=', workspaceId)
             .where('role', 'in', roles)
+            .executeTakeFirst();
+
+        return row ? FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(row)) : undefined;
+    }
+
+    /** Every worker a workspace runs. */
+    @Transactional('service')
+    public async getWorkers(principal: Principal.Service, workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
+        const rows = await this.trx
+            .selectFrom('machines')
+            .selectAll()
+            .where('workspace_id', '=', workspaceId)
+            .where('role', '=', 'worker')
+            .execute();
+
+        return rows.map((row) => FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(row)));
+    }
+
+    /** One worker, only if it belongs to this workspace. */
+    @Transactional('service')
+    public async getWorkerById(principal: Principal.Service, workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<Fleet.Machine | undefined> {
+        const row = await this.trx
+            .selectFrom('machines')
+            .selectAll()
+            .where('id', '=', workerId)
+            .where('workspace_id', '=', workspaceId)
+            .where('role', '=', 'worker')
             .executeTakeFirst();
 
         return row ? FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(row)) : undefined;
@@ -50,6 +77,7 @@ export class MachineRepository extends Repository(FleetDB) {
 
     @Transactional('service')
     public async insert(principal: Principal.Service, values: {
+        id:           Fleet.Machine.Id;
         workspace_id: Workspace.Id;
         hardware_id:  Fleet.Hardware.Id;
         driver:       Fleet.Driver.Kind;
@@ -58,13 +86,20 @@ export class MachineRepository extends Repository(FleetDB) {
         size:         string;
         state:        Fleet.Machine.State;
     }) {
-        return this.trx
+        const insert = this.trx
             .insertInto('machines')
-            .values({ ...values, last_boot_at: new Date(), last_seen_at: null })
-            // The unique index on (workspace_id, role) makes a re-run land here
-            // rather than creating a second machine.
+            .values({ ...values, last_boot_at: new Date(), last_seen_at: null });
+
+        // Workers are many, so only a backend or combined machine has a row to land on.
+        if (values.role === 'worker')
+            return insert.execute();
+
+        // The partial unique index on (workspace_id, role) makes a re-run land here
+        // rather than creating a second machine.
+        return insert
             .onConflict((oc) => oc
                 .columns(['workspace_id', 'role'])
+                .where('role', 'in', ['backend', 'combined'])
                 .doUpdateSet({ external_id: values.external_id, state: values.state, hardware_id: values.hardware_id, driver: values.driver }))
             .execute();
     }

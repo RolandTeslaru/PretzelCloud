@@ -39,7 +39,7 @@ export class MachineService {
         const handle = await driver.create({
             workspaceId,
             region,
-            name:  Fleet.Machine.Name.create(workspaceId, spec.role),
+            name:  Fleet.Machine.Name.create(workspaceId, spec.role, spec.id),
             role:  spec.role,
             image: spec.image,
             size:  spec.size,
@@ -47,6 +47,7 @@ export class MachineService {
         });
 
         await this.machineRepository.insert(Principal.SELF, {
+            id:           spec.id,
             workspace_id: workspaceId,
             hardware_id:  hardwareId,
             driver:       driverKind,
@@ -66,12 +67,12 @@ export class MachineService {
     /**
      * One machine by role, preferring the order given — `['backend',
      * 'combined']` finds a split's backend or the single machine standing in
-     * for it. Reads one row rather than the whole set.
+     * for it. Reads one row rather than the whole set. For roles a workspace has
+     * one of; workers come from `getWorkers`.
      */
     getByRole(workspaceId: Workspace.Id, roles: Fleet.Machine.Role[]): Promise<Fleet.Machine | undefined> {
         return this.machineRepository.getByRole(Principal.SELF, workspaceId, roles);
     }
-
     /** Blocks until this one machine reports serving, not merely started. */
     /** The driver's view, without recording it — for reads that must stay cheap. */
     getState(machine: Fleet.Machine): Promise<Fleet.Machine.State> {

@@ -77,13 +77,13 @@ create table plans (
     stripe_product_id    text,
 
     -- What the plan buys, and what the fleet reads.
-    topology             text not null,
     backend_size         text not null,
-    worker_size          text,
     idle_backend_policy  text not null,
-    -- How many executions may run at once. Memory follows from it: the machine
-    -- running them needs roughly this many isolates' worth.
-    execution_concurrency_limit integer not null default 1,
+    -- Worker machines beside the backend. None means the backend runs executions itself.
+    worker_count         integer not null default 0,
+    worker_size          text,
+    -- Executions one worker runs at once. Its memory follows from it.
+    worker_concurrency   integer not null default 1,
 
     -- Limits. Null is unlimited.
     max_workflows            integer,
@@ -101,22 +101,22 @@ create table plans (
     updated_at           timestamp with time zone default now() not null,
 
     constraint plans_pkey primary key (id),
-    constraint plans_topology_check check (topology in ('combined', 'separate')),
     constraint plans_idle_check     check (idle_backend_policy in ('suspend', 'stop', 'none')),
-    -- A split topology has a worker to size; a combined one has none.
-    constraint plans_worker_size_check check ((topology = 'separate') = (worker_size is not null)),
-    constraint plans_concurrency_check check (execution_concurrency_limit >= 1)
+    -- Workers have a size; a plan without them has none.
+    constraint plans_worker_size_check        check ((worker_count > 0) = (worker_size is not null)),
+    constraint plans_worker_count_check       check (worker_count >= 0),
+    constraint plans_worker_concurrency_check check (worker_concurrency >= 1)
 );
 
 -- Seeded to exactly what the code did before this table existed.
 -- Price ids are per environment, so they are set after the fact rather than
 -- baked in here. Pro exists but is not on sale until its shape is settled.
-insert into plans (id, display_name, description, price_cents, topology, backend_size, worker_size, idle_backend_policy,
-                   execution_concurrency_limit, max_executions_monthly, max_workspace_members, execution_session_retention_days,
+insert into plans (id, display_name, description, price_cents, backend_size, idle_backend_policy,
+                   worker_count, worker_size, worker_concurrency, max_executions_monthly, max_workspace_members, execution_session_retention_days,
                    purchasable, sort_order) values
-    ('free', 'Free', 'One machine. Sleeps when unused.',       0,    'combined', 'shared-1x-1024', null,             'suspend', 2,    100, 1,    1,  true,  0),
-    ('base', 'Base', 'Always on. Runs on its own machine.',    2500, 'separate', 'shared-1x-512',  'shared-4x-7168', 'none',    5,   2500, null, 7,  true,  1),
-    ('pro',  'Pro',  'Always on, with more room to run.',      6000, 'separate', 'shared-1x-1024', 'shared-4x-7168', 'none',    10, 10000, null, 30, false, 2);
+    ('free', 'Free', 'One machine. Sleeps when unused.',       0,    'shared-1x-1024', 'suspend', 0, null,             2,  100,   1,    1,  true,  0),
+    ('base', 'Base', 'Always on. Runs on its own machine.',    2500, 'shared-1x-512',  'none',    1, 'shared-4x-7168', 5,  2500,  null, 7,  true,  1),
+    ('pro',  'Pro',  'Always on, with more room to run.',      6000, 'shared-1x-1024', 'none',    1, 'shared-4x-7168', 10, 10000, null, 30, false, 2);
 
 create table workspaces (
     id           uuid not null,

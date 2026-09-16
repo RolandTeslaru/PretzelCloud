@@ -1,5 +1,6 @@
 import { Controller, Post, UseGuards } from '@nestjs/common';
-import { Workspace } from '@pretzel-cloud/shared/domain';
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
+import { ZodParam } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
 import { SiloAuthGuard } from '@/auth/guards/silo-auth.guard';
 import { WorkspaceIdParam } from '@/auth/guarded-params';
 import { Throttle } from '@nestjs/throttler';
@@ -21,16 +22,22 @@ export class SiloWorkerLifecycleController {
 
     constructor(private readonly workspaceService: WorkspaceService) {}
 
-    @Post(':workspaceId/worker/wake')
-    async wakeWorker(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Record<string, never>> {
-        await this.workspaceService.wakeWorker(workspaceId);
+    @Post(':workspaceId/workers/:workerId/wake')
+    async wakeWorker(
+        @WorkspaceIdParam() workspaceId: Workspace.Id,
+        @ZodParam('workerId', Fleet.Machine.Id) workerId: Fleet.Machine.Id,
+    ): Promise<Record<string, never>> {
+        await this.workspaceService.wakeWorker(workspaceId, workerId);
 
         return {};
     }
 
-    @Post(':workspaceId/worker/sleep')
-    async sleepWorker(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Record<string, never>> {
-        await this.workspaceService.sleepWorker(workspaceId);
+    @Post(':workspaceId/workers/:workerId/sleep')
+    async sleepWorker(
+        @WorkspaceIdParam() workspaceId: Workspace.Id,
+        @ZodParam('workerId', Fleet.Machine.Id) workerId: Fleet.Machine.Id,
+    ): Promise<Record<string, never>> {
+        await this.workspaceService.sleepWorker(workspaceId, workerId);
 
         return {};
     }
