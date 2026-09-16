@@ -35,14 +35,6 @@ export class WorkspaceAdminRepository extends Repository(PortalDB) {
         return rows.map((row) => row.user_id);
     }
 
-    @Transactional('service')
-    public async delete(principal: Principal.Service, workspaceId: Workspace.Id): Promise<void> {
-        await this.trx
-            .deleteFrom('workspaces')
-            .where('id', '=', workspaceId)
-            .execute();
-    }
-
     private _toWorkspace(row: unknown): Workspace {
         const workspaceRow = PortalDB.Workspace.Row.parse(row);
 

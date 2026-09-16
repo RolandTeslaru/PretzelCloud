@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Module, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Module, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { SignJWT } from 'jose';
 import { User, Workspace } from '@pretzel-cloud/shared/domain';
@@ -53,11 +53,10 @@ function harness() {
     } as unknown as AdminRepository;
     const repository = {
         get: async () => { if (!exists) throw new NotFoundException(); return workspace; },
-        delete: async (principal: Principal.User) => { assert.equal(principal, owner); await step('user-row')(); exists = false; },
+        delete: async (principal: Principal.User | Principal.Service) => { await step(principal.type === 'user' ? 'user-row' : 'admin-row')(); exists = false; },
     };
     const workspaceAdminRepository = {
         list: async (): Promise<Workspace[]> => [],
-        delete: async (principal: Principal.Service) => { assert.equal(principal, Principal.SELF); await step('admin-row')(); exists = false; },
     };
     const userAdminRepository = {
         getByIds: async (): Promise<User[]> => [],
@@ -119,11 +118,10 @@ test('admin workspace deletion and access', async (t) => {
         assert.equal(h.exists(), false);
     });
 
-    await t.test('mismatched confirmations and the owner path cause no destructive side effects', async () => {
+    await t.test('mismatched confirmations cause no destructive side effects', async () => {
         const h = harness();
         await assert.rejects(h.adminService.destroy(adminUser, workspaceId, 'customer workspace'), BadRequestException);
         await assert.rejects(h.adminService.destroy(adminUser, workspaceId, ''), BadRequestException);
-        await assert.rejects(h.service.destroy(admin, workspaceId), ForbiddenException);
         assert.deepEqual(h.calls, []);
     });
 
@@ -162,11 +160,11 @@ test('admin workspace deletion and access', async (t) => {
         });
     }
 
-    await t.test('owners retain their normal deletion path', async () => {
+    await t.test('owners delete through the same teardown', async () => {
         const h = harness();
-        await h.service.destroy(owner, workspaceId);
-        assert.equal(h.calls.includes('user-row'), true);
-        assert.equal(h.calls.includes('admin-row'), false);
+        await h.service.destroy(owner, h.workspace);
+        assert.deepEqual(h.calls, ['billing', 'token', 'stop', 'hardware', 'hostnames', 'secrets', 'listings', 'user-row', 'router', 'event']);
+        assert.equal(h.exists(), false);
     });
 
     await t.test('HTTP endpoints enforce signed identity, the admin flag, and body validation', async () => {

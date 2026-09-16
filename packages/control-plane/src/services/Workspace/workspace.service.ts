@@ -568,18 +568,9 @@ export class WorkspaceService {
 
 
 
-    @Operation('workspace', 1)
-    public async destroy(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
-        const workspace = await this.get(workspaceId);
-
-        if (workspace.ownerId !== principal.userId)
-            throw new ForbiddenException('Only the owner may destroy this workspace');
-
-        await this.destroyWorkspace(workspace, () => this.repository.delete(principal, workspaceId));
-    }
-
     /** Tears a workspace down with no ownership check; callers settle who may first. */
-    public async destroyWorkspace(workspace: Workspace, deleteRow: () => Promise<void>): Promise<void> {
+    @Operation('workspace', 1)
+    public async destroy(principal: Principal.User | Principal.Service, workspace: Workspace): Promise<void> {
         const { id: workspaceId, subdomain } = workspace;
 
         if (workspace.lifecycleState === 'creating')
@@ -593,7 +584,7 @@ export class WorkspaceService {
 
         await this.listing.deleteAllForWorkspace(workspaceId);
 
-        await deleteRow();
+        await this.repository.delete(principal, workspaceId);
 
         // After the row goes, so the refill finds nothing.
         this.siloRouter.invalidate(workspaceId, [subdomain]);

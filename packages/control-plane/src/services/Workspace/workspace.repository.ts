@@ -26,18 +26,18 @@ export class WorkspaceRepository extends Repository(PortalDB) {
         return Number(row.count);
     }
 
-    @Transactional('service')
-    public async getByOwnerOrMember(principal: Principal.Service, userId: User.Id) {
-        return this.trx
+    @Transactional('user', 'service')
+    public async getByOwnerOrMember(principal: Principal.User | Principal.Service, userId: User.Id): Promise<Workspace[]> {
+        const rows = await this.trx
             .selectFrom('workspaces')
-            .leftJoin('workspace_members', 'workspace_members.workspace_id', 'workspaces.id')
-            .select(['workspaces.id', 'workspaces.display_name', 'workspaces.owner_id'])
+            .selectAll()
             .where((eb) => eb.or([
-                eb('workspaces.owner_id', '=', userId),
-                eb('workspace_members.user_id', '=', userId),
+                eb('owner_id', '=', userId),
+                eb('id', 'in', eb.selectFrom('workspace_members').select('workspace_id').where('user_id', '=', userId)),
             ]))
-            .distinct()
             .execute();
+
+        return rows.map((row) => this._toWorkspace(row));
     }
 
     @Transactional('service')
@@ -166,8 +166,8 @@ export class WorkspaceRepository extends Repository(PortalDB) {
             .execute();
     }
 
-    @Transactional('user')
-    public async delete(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
+    @Transactional('user', 'service')
+    public async delete(principal: Principal.User | Principal.Service, workspaceId: Workspace.Id): Promise<void> {
         await this.trx
             .deleteFrom('workspaces')
             .where('id', '=', workspaceId)

@@ -40,7 +40,7 @@ export class UserController {
     async delete(
         @AuthenticatedUser() principal: Principal.User,
     ): Promise<void> {
-        await this.userService.delete(principal);
+        await this.userService.delete(principal, principal.userId);
     }
 
     @Patch()

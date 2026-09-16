@@ -130,7 +130,7 @@ export class WorkspaceAdminService {
         this.logger.log(`Admin ${adminUser.userId} requested deletion of workspace ${workspaceId} owned by ${workspace.ownerId}`);
 
         try {
-            await this.workspaceService.destroyWorkspace(workspace, () => this.workspaceAdminRepository.delete(Principal.SELF, workspaceId));
+            await this.workspaceService.destroy(Principal.SELF, workspace);
 
             this.logger.log(`Admin ${adminUser.userId} deleted workspace ${workspaceId}`);
         }

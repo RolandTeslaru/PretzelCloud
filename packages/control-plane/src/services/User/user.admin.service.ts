@@ -1,9 +1,8 @@
-import { BadRequestException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Admin, User } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { Operation } from '@/decorators/operation';
 import { LockService } from '@/services/Locking/lock.service';
-import { WorkspaceAdminService } from '@/services/Workspace/workspace.admin.service';
 import { UserRepository } from './user.repository';
 import { UserAdminRepository } from './user.admin.repository';
 import { UserService } from './user.service';
@@ -18,8 +17,6 @@ export class UserAdminService {
         private readonly userService: UserService,
         private readonly userRepository: UserRepository,
         private readonly userAdminRepository: UserAdminRepository,
-        @Inject(forwardRef(() => WorkspaceAdminService))
-        private readonly workspaceAdminService: WorkspaceAdminService,
         // Read by `@Operation`, which serialises an account's operations across instances.
         private readonly lockService: LockService,
     ) {}
@@ -44,8 +41,7 @@ export class UserAdminService {
         this.logger.log(`Admin ${adminUser.userId} requested deletion of user ${userId}`);
 
         try {
-            await this.userService.deleteUserData(userId, (workspace) =>
-                this.workspaceAdminService.destroy(adminUser, workspace.id, workspace.display_name));
+            await this.userService.delete(Principal.SELF, userId);
 
             this.logger.log(`Admin ${adminUser.userId} deleted user ${userId}`);
         }

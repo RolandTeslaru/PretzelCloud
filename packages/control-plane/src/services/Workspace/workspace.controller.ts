@@ -189,9 +189,9 @@ export class WorkspaceController {
     @RequireOwner()
     async destroy(
         @AuthenticatedUser() principal: Principal.User,
-        @WorkspaceIdParam() workspaceId: Workspace.Id,
+        @WorkspaceScope() workspace: Workspace,
     ): Promise<Workspace.API.Destroy.Response> {
-        await this.workspaceService.destroy(principal, workspaceId);
+        await this.workspaceService.destroy(principal, workspace);
 
         return {};
     }

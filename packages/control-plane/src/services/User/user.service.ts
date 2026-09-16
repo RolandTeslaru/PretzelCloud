@@ -1,5 +1,5 @@
 import { ConflictException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { User, Workspace } from '@pretzel-cloud/shared/domain';
+import { User } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { IdentityAdminService } from '@/auth/identity/identity-admin.service';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
@@ -107,21 +107,14 @@ export class UserService {
     }
 
     /** Workspaces and memberships, then the credential and profile. A failure stops the rest. */
-    @Operation('account')
-    public async delete(principal: Principal.User): Promise<void> {
-        await this.deleteUserData(principal.userId, (workspace) => this.workspaceService.destroy(principal, workspace.id));
-    }
+    @Operation('account', 1)
+    public async delete(principal: Principal.User | Principal.Service, userId: User.Id): Promise<void> {
+        const workspaces = await this.workspaceRepository.getByOwnerOrMember(principal, userId);
 
-    public async deleteUserData(
-        userId: User.Id,
-        destroyOwned: (workspace: { id: Workspace.Id; display_name: string }) => Promise<void>,
-    ): Promise<void> {
-        const workspaces = await this.workspaceRepository.getByOwnerOrMember(Principal.SELF, userId);
+        for (const workspace of workspaces.filter((workspace) => workspace.ownerId === userId))
+            await this.workspaceService.destroy(principal, workspace);
 
-        for (const workspace of workspaces.filter((row) => row.owner_id === userId))
-            await destroyOwned(workspace);
-
-        for (const workspace of workspaces.filter((row) => row.owner_id !== userId))
+        for (const workspace of workspaces.filter((workspace) => workspace.ownerId !== userId))
             await this.workspaceMemberService.remove(workspace.id, userId);
 
         await this.identityAdminService.deleteUser(userId);
@@ -136,4 +129,5 @@ export class UserService {
         }
 
         this.adminRepository.invalidate(userId);
-    }}
+    }
+}
