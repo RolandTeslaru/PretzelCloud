@@ -99,5 +99,13 @@ export namespace Admin {
             export const Request = z.object({ reason: z.string().trim().optional() }).default({})
             export type Request = z.infer<typeof Request>
         }
+
+        export async function disable(api: AxiosInstance, workspaceId: Workspace.Id, body: Disable.Request): Promise<void> {
+            await api.post(`/api/admin/workspaces/${workspaceId}/disable`, body)
+        }
+
+        export async function enable(api: AxiosInstance, workspaceId: Workspace.Id): Promise<void> {
+            await api.post(`/api/admin/workspaces/${workspaceId}/enable`)
+        }
     }
 }

@@ -39,6 +39,16 @@ export const AdminWorkspaceActions = ({ summary, onDeleted }: {
                 </DropdownMenu.SubContent>
             </DropdownMenu.Sub>
             <DropdownMenu.Separator />
+            {summary.workspace.lifecycleState === 'disabled' ? (
+                <DropdownMenu.Item onSelect={() => void AdminSDK.actions.workspaces.enable(summary.workspace.id)}>
+                    <SystemIcons.LockOpen size={14} /> Enable workspace
+                </DropdownMenu.Item>
+            ) : (
+                <DropdownMenu.Item variant="destructive" onSelect={() => AdminSDK.dialogs.openDisableWorkspace(summary)}>
+                    <SystemIcons.LockClosed size={14} /> Disable workspace…
+                </DropdownMenu.Item>
+            )}
+            <DropdownMenu.Separator />
             <DropdownMenu.Item variant="destructive" onSelect={() => AdminSDK.dialogs.openDeleteWorkspace(summary, onDeleted)}>
                 <SystemIcons.Trash2 size={14} /> Delete workspace
             </DropdownMenu.Item>

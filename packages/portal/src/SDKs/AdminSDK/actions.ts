@@ -8,6 +8,8 @@ export type _AdminSDKActions_ = {
         list:      () => Promise<Record<Workspace.Id, Admin.WorkspaceSummary>>
         get:       (workspaceId: Workspace.Id) => Promise<Admin.WorkspaceDetail>
         lifecycle: (workspaceId: Workspace.Id, action: Workspace.Lifecycle.Action) => Promise<void>
+        disable:   (workspaceId: Workspace.Id, reason: string) => Promise<void>
+        enable:    (workspaceId: Workspace.Id) => Promise<void>
         destroy:   (workspaceId: Workspace.Id, confirmation: string) => Promise<void>
     }
     usage: {
@@ -58,6 +60,62 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
                 }
                 catch (error) {
                     NotificationSDK.toast.error(getMessageFromError(error, `Could not ${action} the workspace`))
+                }
+            },
+
+            disable: async (workspaceId, reason) => {
+                const workspace = sdk.state.workspaces[workspaceId]?.workspace ?? sdk.state.details[workspaceId]?.workspace
+
+                try {
+                    await Admin.API.disable(api, workspaceId, { reason })
+
+                    setState((s) => {
+                        const summary = s.workspaces[workspaceId]
+                        const detail = s.details[workspaceId]
+
+                        if (summary) {
+                            summary.workspace.lifecycleState = 'disabled'
+                            summary.workspace.disabledReason = reason
+                        }
+
+                        if (detail) {
+                            detail.workspace.lifecycleState = 'disabled'
+                            detail.workspace.disabledReason = reason
+                        }
+                    })
+
+                    NotificationSDK.toast.success(`${workspace?.displayName ?? workspaceId} disabled`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, 'Could not disable the workspace'))
+                }
+            },
+
+            enable: async (workspaceId) => {
+                const workspace = sdk.state.workspaces[workspaceId]?.workspace ?? sdk.state.details[workspaceId]?.workspace
+
+                try {
+                    await Admin.API.enable(api, workspaceId)
+
+                    setState((s) => {
+                        const summary = s.workspaces[workspaceId]
+                        const detail = s.details[workspaceId]
+
+                        if (summary) {
+                            summary.workspace.lifecycleState = 'sleeping'
+                            summary.workspace.disabledReason = null
+                        }
+
+                        if (detail) {
+                            detail.workspace.lifecycleState = 'sleeping'
+                            detail.workspace.disabledReason = null
+                        }
+                    })
+
+                    NotificationSDK.toast.success(`${workspace?.displayName ?? workspaceId} enabled`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, 'Could not enable the workspace'))
                 }
             },
 

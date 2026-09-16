@@ -4,9 +4,12 @@ import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK
 import { getMessageFromError } from '../api'
 import { DeleteWorkspaceDialog } from './ui/DeleteWorkspaceDialog'
 import { DeleteUserDialog } from './ui/DeleteUserDialog'
+import { DisableWorkspaceDialog } from './ui/DisableWorkspaceDialog'
 import type { AdminSDKImpl } from './sdk'
 
 const deleteWorkspaceDialogId = (workspaceId: Workspace.Id) => `admin-delete-workspace-${workspaceId}`
+
+const disableWorkspaceDialogId = (workspaceId: Workspace.Id) => `admin-disable-workspace-${workspaceId}`
 
 const deleteUserDialogId = (userId: User.Id) => `admin-delete-user-${userId}`
 
@@ -34,6 +37,23 @@ export const openDeleteWorkspaceDialog = (sdk: AdminSDKImpl, summary: Admin.Work
                 catch (error) {
                     NotificationSDK.toast.error(`Could not delete ${workspace.displayName}`, { description: getMessageFromError(error) })
                 }
+            }}
+        />
+    ))
+}
+
+export const openDisableWorkspaceDialog = (sdk: AdminSDKImpl, summary: Admin.WorkspaceSummary) => {
+    const id = disableWorkspaceDialogId(summary.workspace.id)
+
+    DialogSDK.actions.push(id, (props) => (
+        <DisableWorkspaceDialog
+            {...props}
+            summary={summary}
+            onCancel={() => DialogSDK.actions.pop(id)}
+            onConfirm={(reason) => {
+                DialogSDK.actions.pop(id)
+
+                void sdk.actions.workspaces.disable(summary.workspace.id, reason)
             }}
         />
     ))
