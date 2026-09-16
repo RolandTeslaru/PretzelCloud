@@ -17,7 +17,6 @@ export type _WorkspaceSDKActions_ = {
     rebuild:      (workspaceId: Workspace.Id) => Promise<void>
     /** Moves the workspace to the given release; the rebuild events narrate it. */
     update:       (workspaceId: Workspace.Id, releaseId: Fleet.Release.Id) => Promise<void>
-    setPlan:      (workspaceId: Workspace.Id, planId: Plan.Id) => Promise<Workspace>
     applyEvent:   (event: Workspace.Event.Any) => void
     /** The catalogue. Which plan a workspace is on it carries itself. */
     plans: {
@@ -111,14 +110,6 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
         rebuild: async (workspaceId) => { await Workspace.API.rebuild(api, workspaceId) },
 
         update: async (workspaceId, releaseId) => { await Workspace.API.update(api, workspaceId, releaseId) },
-
-        // The plan decides the topology, so the machines are rebuilt behind
-        // this — re-read rather than patching the plan in place.
-        setPlan: async (workspaceId, planId) => {
-            await Workspace.API.setPlan(api, workspaceId, { planId })
-
-            return sdk.actions.refresh(workspaceId)
-        },
 
         plans: {
             list: async () => {

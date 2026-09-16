@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { AlertDialog, Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
-import { Plan, type Workspace } from '@pretzel-cloud/shared/domain'
+import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../../sdk'
 import { StatusBadge } from '../StatusBadge'
@@ -11,12 +11,6 @@ import { StatusBadge } from '../StatusBadge'
 type Action = Workspace.Lifecycle.Action
 
 const REBUILD_CONFIRM_ID = 'rebuild-workspace'
-
-// Topology switching bypasses billing, so it stays local. `localhost` is a
-// reserved TLD that no deployment can serve.
-const DEV_CONTROLS =
-    typeof location !== 'undefined' &&
-    (location.hostname === 'localhost' || location.hostname.endsWith('.localhost'))
 
 
 const MACHINE_ACTIONS: { action: Action; label: string; icon: ReactNode }[] = [
@@ -40,12 +34,8 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
     // whatever the events say — not how long a call took to return.
     const transition = WorkspaceSDK.useStore((s) => s.transitions[workspaceId])
 
-    const [converting, setConverting] = useState<Plan.Id | null>(null)
-
     // Held from `rebuild:started` to `rebuild:succeeded`, so it covers the whole of it.
     const rebuilding = WorkspaceSDK.useStore((s) => s.rebuilding[workspaceId])
-
-    const plans = WorkspaceSDK.useStore((s) => s.plans)
 
 
     if (!workspace) return null
@@ -59,22 +49,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
         }
         catch (error) {
             NotificationSDK.toast.error(getMessageFromError(error, `Could not ${action} the workspace`))
-        }
-    }
-
-    const convert = (plan: Plan) => async () => {
-        setConverting(plan.id)
-
-        try {
-            await WorkspaceSDK.actions.setPlan(workspaceId, plan.id)
-
-            NotificationSDK.toast.success(`Rebuilt on the ${plan.displayName} topology`)
-        }
-        catch (error) {
-            NotificationSDK.toast.error(getMessageFromError(error, 'Could not change the topology'))
-        }
-        finally {
-            setConverting(null)
         }
     }
 
@@ -178,37 +152,6 @@ export const LifecycleSettings = ({ workspaceId }: { workspaceId: Workspace.Id; 
                     ))}
                 </div>
             </div>
-
-            {DEV_CONTROLS && (
-                <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border p-4">
-                    <div className="flex flex-col gap-1">
-                        <p className="text-sm font-medium">Topology</p>
-                        <p className="text-muted-foreground text-xs">
-                            The plan decides how many machines back this workspace: free runs one
-                            combined machine, paid splits the backend and the worker. Changing it
-                            rebuilds the machines — the database is untouched.
-                        </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                        {Object.values(plans).map((plan) => (
-                            <Button
-                                key={plan.id}
-                                variant={workspace.plan.id === plan.id ? 'default' : 'input'}
-                                size="sm"
-                                disabled={converting !== null || workspace.plan.id === plan.id}
-                                onClick={convert(plan)}
-                            >
-                                {converting === plan.id ? <Spinner className="size-3.5" /> : <SystemIcons.Server />}
-                                {plan.displayName}
-                                <span className="text-muted-foreground text-[10px]">
-                                    {Plan.getMachineRoles(plan).length === 1 ? '1 machine' : '2 machines'}
-                                </span>
-                            </Button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

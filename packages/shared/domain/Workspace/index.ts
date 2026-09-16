@@ -480,11 +480,6 @@ export namespace Workspace {
             export type  Response = z.infer<typeof Response>
         }
 
-        export async function setPlan(api: AxiosInstance, workspaceId: Id, req: SetPlan.Request): Promise<SetPlan.Response> {
-            const { data } = await api.patch<SetPlan.Response>(`/api/workspaces/${workspaceId}/plan`, req)
-            return SetPlan.Response.parse(data)
-        }
-
         // One route per action: the verb is the request, nothing dispatches on it.
         export namespace Lifecycle {
             export const Response = z.object({})

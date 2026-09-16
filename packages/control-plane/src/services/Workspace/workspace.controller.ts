@@ -99,18 +99,6 @@ export class WorkspaceController {
         return {};
     }
 
-    @Patch(':workspaceId/plan')
-    @Scoped('workspace')
-    @RequireOwner()
-    async setPlan(
-        @WorkspaceScope() workspace: Workspace,
-        @ZodBody(API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
-    ): Promise<Workspace.API.SetPlan.Response> {
-        await this.workspaceService.setPlan(workspace.id, workspace.ownerId, body.planId);
-
-        return {};
-    }
-
     @Post(':workspaceId/start')
     @Scoped('workspace')
     @RequireOwner()

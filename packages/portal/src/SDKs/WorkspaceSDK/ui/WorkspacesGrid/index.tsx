@@ -15,8 +15,6 @@ const DIRECTIONS: { direction: WorkspaceSDK.SortDirection; label: string }[] = [
     { direction: 'desc', label: 'Descending' },
 ]
 
-const SKELETONS = [0, 1, 2]
-
 const WorkspaceCardSkeleton = () => (
     <Frame.Root className='w-full overflow-hidden'>
         <Frame.Panel className='h-[100px] flex flex-col p-3 pb-2'>
@@ -101,7 +99,7 @@ export const WorkspacesGrid = () => {
     let gridContent
 
     if (isPending && filteredWorkspaces.length === 0)
-        gridContent = SKELETONS.map((index) => <WorkspaceCardSkeleton key={index} />)
+        gridContent = <WorkspaceCardSkeleton />
     
     else if (filteredWorkspaces.length === 0)
         gridContent = (

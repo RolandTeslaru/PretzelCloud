@@ -27,10 +27,9 @@ export const Route = createFileRoute('/_app')({
             throw redirect({ to: '/auth' })
         }
     },
-    // Every page beneath this names a plan somewhere, and they change on the
-    // order of never. A failure is swallowed so the shell still mounts.
-    loader: async () => {
-        await WorkspaceSDK.fetch(WorkspaceSDK.query.plansList).catch(() => null)
+    // Warms the plans for the pages beneath without holding the shell back.
+    loader: () => {
+        void WorkspaceSDK.prefetch(WorkspaceSDK.query.plansList)
 
         return null
     },
