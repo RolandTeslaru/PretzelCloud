@@ -8,7 +8,7 @@ export const Route = createFileRoute('/_app/')({
     // route still mounts; the grid reports it.
     loader: async () => {
         // Fire and forget: badges appear when the answer lands.
-        void ReleaseSDK.fetchLatest().catch(() => null)
+        void ReleaseSDK.fetch(ReleaseSDK.query.latest).catch(() => null)
 
         await WorkspaceSDK.fetch(WorkspaceSDK.query.workspacesList).catch((error) => {
             console.error('Workspace list failed to load:', error)

@@ -24,7 +24,10 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
     const reachable = isReachable(workspace, transition, rebuilding)
 
-    const latestRelease = ReleaseSDK.useStore((s) => s.latest)
+    const [latestRelease] = ReleaseSDK.use(
+        (s) => s.latest,
+        [ReleaseSDK.query.latest],
+    )
 
     const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id && workspace.lifecycleState !== "updating"
 
