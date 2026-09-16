@@ -12,15 +12,12 @@ import {
     tableFeatures,
     useTable,
 } from '@tanstack/react-table'
-import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { Select, Spinner, Table } from '@pretzel-graph/standard-ui/foundations'
 import { Workspace } from '@pretzel-cloud/shared/domain'
 import { FilterHeader, SortIcon, getFacets, includesSome } from '@/components/table-headers'
 import { EntitlementSDK, DEFAULT_WINDOW } from '@/SDKs/EntitlementSDK'
 import { UsageMeter } from './UsageMeter'
 import { UsageBarChart } from './UsageBarChart'
-
-const STALE_TIME = 30_000
 
 const WINDOWS: { window: Workspace.Usage.Window, label: string }[] = [
     { window: 'today', label: 'Today' },
@@ -105,35 +102,35 @@ const NO_RECORDS: Workspace.Usage[] = []
  * One workspace's executions: where it stands against its plan, and each run
  * over a chosen span.
  */
-type UsageActions = Pick<EntitlementSDK.Actions, 'listUsage' | 'getUsageReport' | 'getUsageSeries'>
-
 export function WorkspaceUsage({ workspace, actions = EntitlementSDK.actions, initialReport, showWorkspaceName = true }: {
     workspace: Workspace
-    actions?: UsageActions
+    actions?: EntitlementSDK.UsageActions
     initialReport?: Workspace.Usage.Report
     showWorkspaceName?: boolean
 }) {
-    const window = EntitlementSDK.useStore((s) => s.windows[workspace.id]) ?? DEFAULT_WINDOW
+    const usesEntitlementActions = actions === EntitlementSDK.actions
 
-    const { data: report } = QuerySDK.useQuery<Workspace.Usage.Report, Error>(
-        ['usage', 'report', workspace.id],
-        () => actions.getUsageReport(workspace.id),
-        { staleTime: STALE_TIME, initialData: initialReport },
+    const [{ window, storedReport, storedSeries, storedRecords }, [reportQuery, seriesQuery, recordsQuery]] = EntitlementSDK.use(
+        (s) => {
+            const window = s.windows[workspace.id] ?? DEFAULT_WINDOW
+
+            return {
+                window,
+                storedReport: usesEntitlementActions ? s.reports[workspace.id] : undefined,
+                storedSeries: usesEntitlementActions ? s.series[workspace.id] : undefined,
+                storedRecords: usesEntitlementActions ? s.records[workspace.id]?.[window] : undefined,
+            }
+        },
+        [
+            EntitlementSDK.query.report(workspace.id, actions, initialReport),
+            EntitlementSDK.query.series(workspace.id, actions),
+            EntitlementSDK.query.records(workspace.id, actions),
+        ],
     )
 
-    const { data: series } = QuerySDK.useQuery<Workspace.Usage.Point[], Error>(
-        ['usage', 'series', workspace.id],
-        () => actions.getUsageSeries(workspace.id),
-        { staleTime: STALE_TIME },
-    )
-
-    const recordsQuery = QuerySDK.useQuery<Workspace.Usage[], Error>(
-        ['usage', 'records', workspace.id, window],
-        () => actions.listUsage(workspace.id, window),
-        { staleTime: STALE_TIME },
-    )
-
-    const records = recordsQuery.data ?? NO_RECORDS
+    const report = storedReport ?? reportQuery.data ?? initialReport
+    const series = storedSeries ?? seriesQuery.data
+    const records = storedRecords ?? recordsQuery.data ?? NO_RECORDS
 
     const table = useTable(
         {
