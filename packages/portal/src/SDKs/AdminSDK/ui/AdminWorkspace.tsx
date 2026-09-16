@@ -2,20 +2,23 @@ import type { ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Workspace } from '@pretzel-cloud/shared/domain'
 import { Tabs } from '@pretzel-graph/standard-ui/foundations'
+import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { WorkspaceUsage } from '../../EntitlementSDK/ui/WorkspaceUsage'
-import { DatabaseStatistic } from '../../WorkspaceSDK/ui/WorkspacesGrid/DatabaseStatistic'
-import { MachineStatistic } from '../../WorkspaceSDK/ui/WorkspacesGrid/MachineStatistic'
 import { StatusBadge } from '../../WorkspaceSDK/ui/StatusBadge'
+import { ROLE_ICON } from '../../WorkspaceSDK/ui/WorkspacesGrid/MachineStatistic'
 import { getMessageFromError } from '../../api'
 import { AdminSDK } from '../sdk'
 import { AdminWorkspaceActions } from './AdminWorkspaceActions'
+import { AdminWorkspaceMembers } from './AdminWorkspaceMembers'
 
-const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
+const Fact = ({ label, icon, children }: { label: string; icon?: ReactNode; children: ReactNode }) => (
     <div className="space-y-1">
-        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">{icon}{label}</p>
         <div className="text-sm break-all">{children}</div>
     </div>
 )
+
+const toMegabytes = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`
 
 /** One workspace, whoever owns it. */
 export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) => {
@@ -44,29 +47,31 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
 
     return (
         <section className="space-y-8 px-3 pt-4">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-1">
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-lg font-semibold">{workspace.displayName}</h2>
-                        <StatusBadge workspace={workspace} />
-                    </div>
-                    <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
-                    {workspace.disabledReason && <p className="text-sm text-destructive">{workspace.disabledReason}</p>}
-                </div>
-
-                <AdminWorkspaceActions summary={{ workspace, owner }} onDeleted={() => void navigate({ to: '/admin/workspaces' })} />
-            </div>
 
             <Tabs.Root defaultValue="general" className="gap-4">
-                <Tabs.List size="sm" className="w-fit mr-auto justify-start overflow-x-auto">
-                    <Tabs.Trigger value="general">General</Tabs.Trigger>
-                    <Tabs.Trigger value="usage">Execution usage</Tabs.Trigger>
-                    <Tabs.Trigger value="hardware">Hardware</Tabs.Trigger>
-                    <Tabs.Trigger value="members">Members ({members.length})</Tabs.Trigger>
-                </Tabs.List>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-semibold">{workspace.displayName}</h2>
+                            <StatusBadge workspace={workspace} />
+                        </div>
+                        {workspace.disabledReason && <p className="text-sm text-destructive">{workspace.disabledReason}</p>}
+                    </div>
+
+                    <Tabs.List size="sm" className="w-fit ml-auto justify-start overflow-x-auto">
+                        <Tabs.Trigger value="general">General</Tabs.Trigger>
+                        <Tabs.Trigger value="usage">Execution usage</Tabs.Trigger>
+                        <Tabs.Trigger value="hardware">Hardware</Tabs.Trigger>
+                        <Tabs.Trigger value="members">Members ({members.length})</Tabs.Trigger>
+                    </Tabs.List>
+                    <AdminWorkspaceActions summary={{ workspace, owner }} onDeleted={() => void navigate({ to: '/admin/workspaces' })} />
+                </div>
 
                 <Tabs.Content value="general">
                     <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                        <Fact label="Workspace ID">
+                            <span className="font-mono text-xs">{workspace.id}</span>
+                        </Fact>
                         <Fact label="Owner">
                             <p>{owner.displayName}</p>
                             <p className="text-xs text-muted-foreground">{owner.email}</p>
@@ -92,10 +97,42 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
 
                 <Tabs.Content value="hardware">
                     {hardwareStatistics ? (
-                        <div className="space-y-3">
-                            {hardwareStatistics.databaseSizeBytes !== null && <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes} />}
-                            {machines.map(([machineId, statistics]) => <MachineStatistic key={machineId} machineStatistics={statistics} />)}
-                            <p className="text-xs text-muted-foreground">Captured {hardwareStatistics.capturedAt.toLocaleString()}</p>
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                                <Fact label="Database size" icon={<SystemIcons.Database className="size-3.5" />}>
+                                    {hardwareStatistics.databaseSizeBytes !== null ? toMegabytes(hardwareStatistics.databaseSizeBytes) : '—'}
+                                </Fact>
+                                <Fact label="Captured">{hardwareStatistics.capturedAt.toLocaleString()}</Fact>
+                            </div>
+
+                            {machines.map(([machineId, machine]) => {
+                                const RoleIcon = ROLE_ICON[machine.role]
+
+                                return (
+                                    <div key={machineId} className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <RoleIcon className="size-4 text-muted-foreground" />
+                                            <p className="text-sm font-medium capitalize">{machine.role} machine</p>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                                            <Fact label="Machine">
+                                                <p className="font-mono text-xs">{machineId}</p>
+                                            </Fact>
+                                            <Fact label="State">{machine.state}</Fact>
+                                            <Fact label="CPU">{machine.cpuPercent !== null ? `${Math.round(machine.cpuPercent)}%` : '—'}</Fact>
+                                            <Fact label="Memory">
+                                                {machine.memUsedBytes !== null && machine.memTotalBytes !== null ? (
+                                                    <>
+                                                        <p>{Math.round(machine.memUsedBytes / machine.memTotalBytes * 100)}%</p>
+                                                        <p className="text-xs text-muted-foreground">{toMegabytes(machine.memUsedBytes)} of {toMegabytes(machine.memTotalBytes)}</p>
+                                                    </>
+                                                ) : '—'}
+                                            </Fact>
+                                        </div>
+                                    </div>
+                                )
+                            })}
                         </div>
                     ) : (
                         <p className="text-sm text-muted-foreground">No readings while the machines are down.</p>
@@ -103,15 +140,7 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                 </Tabs.Content>
 
                 <Tabs.Content value="members">
-                    <div className="space-y-2">
-                        {members.map((member) => (
-                            <div key={member.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-                                <span>{member.displayName}</span>
-                                <span className="text-xs text-muted-foreground break-all">{member.email}</span>
-                                {member.id === owner.id && <span className="text-xs text-muted-foreground">owner</span>}
-                            </div>
-                        ))}
-                    </div>
+                    <AdminWorkspaceMembers members={members} ownerId={owner.id} />
                 </Tabs.Content>
             </Tabs.Root>
         </section>

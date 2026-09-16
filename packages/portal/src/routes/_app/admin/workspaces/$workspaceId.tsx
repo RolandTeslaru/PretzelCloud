@@ -4,9 +4,8 @@ import { AdminSDK } from '@/SDKs/AdminSDK'
 import { AdminWorkspace } from '@/SDKs/AdminSDK/ui/AdminWorkspace'
 
 export const Route = createFileRoute('/_app/admin/workspaces/$workspaceId')({
-    // Fills the store before the page renders; a failure is left for the page to report.
-    loader: async ({ params }) => {
-        await AdminSDK.fetch(AdminSDK.query.workspace(params.workspaceId as Workspace.Id)).catch(() => null)
+    loader: ({ params }) => {
+        void AdminSDK.prefetch(AdminSDK.query.workspace(params.workspaceId as Workspace.Id))
 
         return null
     },

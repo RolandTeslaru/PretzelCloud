@@ -17,7 +17,7 @@ export const AdminWorkspaceActions = ({ summary, onDeleted }: {
 }) => (
     <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${summary.workspace.displayName} owned by ${summary.owner.email}`}>
+            <Button variant="input" size="icon-sm" aria-label={`Actions for ${summary.workspace.displayName} owned by ${summary.owner.email}`}>
                 <SystemIcons.Ellipsis size={16} />
             </Button>
         </DropdownMenu.Trigger>

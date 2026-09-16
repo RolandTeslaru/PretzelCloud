@@ -4,8 +4,8 @@ import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
 import { WorkspaceUsage } from '@/SDKs/EntitlementSDK/ui/WorkspaceUsage'
 
 export const Route = createFileRoute('/_app/usage')({
-    loader: async () => {
-        await WorkspaceSDK.fetch(WorkspaceSDK.query.workspacesList).catch(() => null)
+    loader: () => {
+        void WorkspaceSDK.prefetch(WorkspaceSDK.query.workspacesList)
 
         return null
     },

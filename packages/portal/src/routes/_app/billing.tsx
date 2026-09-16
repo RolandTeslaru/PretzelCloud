@@ -6,8 +6,8 @@ import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
 import { WorkspacesBillingTable } from '@/SDKs/BillingSDK/ui/WorkspacesBillingTable'
 
 export const Route = createFileRoute('/_app/billing')({
-    loader: async () => {
-        await WorkspaceSDK.fetch(WorkspaceSDK.query.workspacesList).catch(() => null)
+    loader: () => {
+        void WorkspaceSDK.prefetch(WorkspaceSDK.query.workspacesList)
 
         return null
     },

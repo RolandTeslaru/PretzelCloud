@@ -5,7 +5,7 @@ import { Tooltip } from '@pretzel-graph/standard-ui/foundations'
 
 const toMegabytes = (bytes: number) => Math.round(bytes / 1024 ** 2)
 
-const ROLE_ICON: Record<Fleet.Machine.Role, ComponentType<{ className?: string }>> = {
+export const ROLE_ICON: Record<Fleet.Machine.Role, ComponentType<{ className?: string }>> = {
     combined: SystemIcons.Cpu,
     backend:  SystemIcons.Server,
     worker:   SystemIcons.Cpu,
