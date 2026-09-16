@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
 import { Admin, Workspace } from '@pretzel-cloud/shared/domain';
 import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
 import { AdminGuard } from '@/auth/guards/admin.guard';
@@ -17,6 +17,39 @@ export class WorkspaceAdminController {
         @AuthenticatedAdminUser() adminUser: Principal.AdminUser,
     ): Promise<Admin.API.List.Response> {
         return { workspaces: await this.workspaceAdminService.list(adminUser) };
+    }
+
+    @Get(':workspaceId')
+    public async get(
+        @AuthenticatedAdminUser() adminUser: Principal.AdminUser,
+        @ZodParam('workspaceId', Workspace.Id) workspaceId: Workspace.Id,
+    ): Promise<Admin.API.Get.Response> {
+        return this.workspaceAdminService.get(adminUser, workspaceId);
+    }
+
+    @Get(':workspaceId/executions')
+    public async listUsage(
+        @AuthenticatedAdminUser() adminUser: Principal.AdminUser,
+        @ZodParam('workspaceId', Workspace.Id) workspaceId: Workspace.Id,
+        @Query('window') window?: string,
+    ): Promise<Workspace.API.ListUsage.Response> {
+        return { records: await this.workspaceAdminService.listUsage(adminUser, workspaceId, Workspace.Usage.Window.catch('week').parse(window)) };
+    }
+
+    @Get(':workspaceId/executions/series')
+    public async getUsageSeries(
+        @AuthenticatedAdminUser() adminUser: Principal.AdminUser,
+        @ZodParam('workspaceId', Workspace.Id) workspaceId: Workspace.Id,
+    ): Promise<Workspace.API.GetUsageSeries.Response> {
+        return { points: await this.workspaceAdminService.getUsageSeries(adminUser, workspaceId) };
+    }
+
+    @Get(':workspaceId/executions/report')
+    public async getUsageReport(
+        @AuthenticatedAdminUser() adminUser: Principal.AdminUser,
+        @ZodParam('workspaceId', Workspace.Id) workspaceId: Workspace.Id,
+    ): Promise<Workspace.API.GetUsageReport.Response> {
+        return this.workspaceAdminService.getUsageReport(adminUser, workspaceId);
     }
 
     @Delete(':workspaceId')

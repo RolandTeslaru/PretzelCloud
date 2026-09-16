@@ -1,8 +1,11 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Admin, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { Operation } from '@/decorators/operation';
 import { LockService } from '@/services/Locking/lock.service';
+import { EntitlementService } from '@/services/Entitlement/entitlement.service';
+import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
+import { HardwareStatisticsSampler } from '@/services/Fleet/Hardware/statistics.sampler';
 import { UserAdminRepository } from '@/services/User/user.admin.repository';
 import { WorkspaceAdminRepository } from './workspace.admin.repository';
 import { WorkspaceService } from './workspace.service';
@@ -17,6 +20,9 @@ export class WorkspaceAdminService {
         private readonly workspaceService:         WorkspaceService,
         private readonly workspaceAdminRepository: WorkspaceAdminRepository,
         private readonly userAdminRepository:      UserAdminRepository,
+        private readonly hardware:                 HardwareService,
+        private readonly hardwareStatistics:       HardwareStatisticsSampler,
+        private readonly entitlement:              EntitlementService,
         // Read by `@Operation`, which serialises a workspace's operations across instances.
         private readonly lockService:              LockService,
     ) {}
@@ -36,6 +42,63 @@ export class WorkspaceAdminService {
 
             return owner ? [{ workspace, owner }] : [];
         });
+    }
+
+    /** One workspace with its fleet facts, the people on it, and what it has used. */
+    public async get(adminUser: Principal.AdminUser, workspaceId: Workspace.Id): Promise<Admin.WorkspaceDetail> {
+        const workspace = await this.workspaceService.get(workspaceId);
+
+        const memberIds = await this.workspaceAdminRepository.getMemberIds(Principal.SELF, workspaceId);
+
+        const users = await this.userAdminRepository.getByIds(Principal.SELF, [...new Set([workspace.ownerId, ...memberIds])]);
+
+        const owner = users.find((user) => user.id === workspace.ownerId);
+
+        if (!owner)
+            throw new NotFoundException('This workspace has no owner on record');
+
+        const [placements, usage, hardwareStatistics] = await Promise.all([
+            this.hardware.getPlacementForWorkspaces([workspaceId]),
+            this.entitlement.getPeriodUsageReport(workspaceId),
+            this.hardwareStatistics.get(workspaceId),
+        ]);
+
+        const placement = placements.get(workspaceId);
+
+        return {
+            workspace: {
+                ...workspace,
+                region:      placement?.region ?? null,
+                releaseId:   placement?.releaseId ?? null,
+                releaseName: placement?.releaseName ?? null,
+            },
+            owner,
+            members: users.filter((user) => memberIds.includes(user.id)),
+            usage,
+            hardwareStatistics,
+        };
+    }
+
+    public async listUsage(adminUser: Principal.AdminUser, workspaceId: Workspace.Id, window: Workspace.Usage.Window): Promise<Workspace.Usage[]> {
+        await this.workspaceService.get(workspaceId);
+
+        return this.entitlement.executions.get(workspaceId, Workspace.Usage.getPeriodFromWindow(window));
+    }
+
+    public async getUsageSeries(adminUser: Principal.AdminUser, workspaceId: Workspace.Id): Promise<Workspace.Usage.Point[]> {
+        await this.workspaceService.get(workspaceId);
+
+        const period = await this.entitlement.getBillingPeriod(workspaceId);
+
+        const points = await this.entitlement.executions.getDailyCounts(workspaceId, period);
+
+        return Workspace.Usage.getDailySeries(period, points);
+    }
+
+    public async getUsageReport(adminUser: Principal.AdminUser, workspaceId: Workspace.Id): Promise<Workspace.Usage.Report> {
+        await this.workspaceService.get(workspaceId);
+
+        return this.entitlement.getPeriodUsageReport(workspaceId);
     }
 
     @Operation('workspace', 1)

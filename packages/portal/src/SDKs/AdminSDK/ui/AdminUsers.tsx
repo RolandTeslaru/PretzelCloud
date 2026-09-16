@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Admin } from '@pretzel-cloud/shared/domain'
-import { Button, DropdownMenu, Input } from '@pretzel-graph/standard-ui/foundations'
+import { Button, DropdownMenu, SearchInput } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { AuthSDK } from '../../AuthSDK'
@@ -13,7 +13,9 @@ const PAGE_SIZE = 20
 export const AdminUsers = () => {
     const { error, isPending, isFetching, refetch } = AdminSDK.useUsersQuery()
 
-    const users = AdminSDK.useStore((s) => s.users)
+    const usersById = AdminSDK.useStore((s) => s.users)
+
+    const users = Object.values(usersById)
 
     const currentUserId = AuthSDK.useStore((s) => s.user?.id)
 
@@ -47,26 +49,19 @@ export const AdminUsers = () => {
 
     return (
         <section className="space-y-5 px-3 pt-4">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h2 className="text-lg font-semibold">All users</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Find an account by name, email, or ID and manage it.</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+            <div className="flex flex-wrap items-center gap-3">
+                <SearchInput
+                    wrapperClassName="w-full max-w-md"
+                    size="sm"
+                    placeholder="Search users…"
+                    aria-label="Search users"
+                    onSearch={onSearch}
+                />
+                {!isPending && <span className="text-xs text-muted-foreground">{filtered.length} of {users.length} users</span>}
+                <Button variant="input" size="sm" className="ml-auto" onClick={() => void refetch()} disabled={isFetching}>
                     <SystemIcons.RefreshCcw size={14} className={isFetching ? 'animate-spin' : ''} />
                     Refresh
                 </Button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-                <Input
-                    className="max-w-md"
-                    placeholder="Search users…"
-                    aria-label="Search users"
-                    value={search}
-                    onChange={(event) => onSearch(event.target.value)}
-                />
-                {!isPending && <span className="text-xs text-muted-foreground">{filtered.length} of {users.length} users</span>}
             </div>
 
             {error && (

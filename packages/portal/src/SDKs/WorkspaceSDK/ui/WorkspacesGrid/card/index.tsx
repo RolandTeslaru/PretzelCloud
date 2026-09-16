@@ -5,7 +5,7 @@ import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustratio
 import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../../sdk'
-import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../../status'
+import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../../StatusBadge'
 import { MachineStatistic } from '../MachineStatistic'
 import { DatabaseStatistic } from '../DatabaseStatistic'
 import { CardDropdown } from './dropdown'

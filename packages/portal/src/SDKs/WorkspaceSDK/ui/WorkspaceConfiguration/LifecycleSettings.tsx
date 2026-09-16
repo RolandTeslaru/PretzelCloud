@@ -6,7 +6,7 @@ import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK
 import { Plan, type Workspace } from '@pretzel-cloud/shared/domain'
 import { getMessageFromError } from '@/SDKs/api'
 import { WorkspaceSDK } from '../../sdk'
-import { StatusBadge } from '../status'
+import { StatusBadge } from '../StatusBadge'
 
 type Action = Workspace.Lifecycle.Action
 

@@ -4,11 +4,17 @@ import type { AdminSDKImpl } from './sdk'
 
 export type _AdminSDKActions_ = {
     workspaces: {
-        list:    () => Promise<Admin.WorkspaceSummary[]>
+        list:    () => Promise<Record<Workspace.Id, Admin.WorkspaceSummary>>
+        get:     (workspaceId: Workspace.Id) => Promise<Admin.WorkspaceDetail>
         destroy: (workspaceId: Workspace.Id, confirmation: string) => Promise<void>
     }
+    usage: {
+        listUsage:      (workspaceId: Workspace.Id, window: Workspace.Usage.Window) => Promise<Workspace.Usage[]>
+        getUsageReport: (workspaceId: Workspace.Id) => Promise<Workspace.Usage.Report>
+        getUsageSeries: (workspaceId: Workspace.Id) => Promise<Workspace.Usage.Point[]>
+    }
     users: {
-        list:   () => Promise<Admin.UserSummary[]>
+        list:   () => Promise<Record<User.Id, Admin.UserSummary>>
         delete: (userId: User.Id, confirmation: string) => Promise<void>
     }
 }
@@ -21,22 +27,36 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
             list: async () => {
                 const { workspaces } = await Admin.API.list(api)
 
+                const workspacesById = Object.fromEntries(workspaces.map((summary) => [summary.workspace.id, summary])) as Record<Workspace.Id, Admin.WorkspaceSummary>
+
                 setState((s) => {
-                    s.workspaces = workspaces
+                    s.workspaces = workspacesById
                 })
 
-                return workspaces
+                return workspacesById
+            },
+
+            get: async (workspaceId) => {
+                const detail = await Admin.API.get(api, workspaceId)
+
+                setState((s) => {
+                    s.details[workspaceId] = detail
+                })
+
+                return detail
             },
 
             destroy: async (workspaceId, confirmation) => {
                 await Admin.API.destroy(api, workspaceId, { confirmation })
 
                 setState((s) => {
-                    const destroyed = s.workspaces.find((summary) => summary.workspace.id === workspaceId)
+                    const destroyed = s.workspaces[workspaceId]
 
-                    s.workspaces = s.workspaces.filter((summary) => summary.workspace.id !== workspaceId)
+                    delete s.workspaces[workspaceId]
 
-                    const owner = s.users.find((user) => user.id === destroyed?.owner.id)
+                    delete s.details[workspaceId]
+
+                    const owner = destroyed ? s.users[destroyed.owner.id] : undefined
 
                     if (owner)
                         owner.ownedWorkspaceCount -= 1
@@ -44,15 +64,33 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
             },
         },
 
+        usage: {
+            listUsage: async (workspaceId, window) => {
+                const { records } = await Admin.API.Usage.list(api, workspaceId, window)
+
+                return records
+            },
+
+            getUsageReport: (workspaceId) => Admin.API.Usage.getReport(api, workspaceId),
+
+            getUsageSeries: async (workspaceId) => {
+                const { points } = await Admin.API.Usage.getSeries(api, workspaceId)
+
+                return points
+            },
+        },
+
         users: {
             list: async () => {
                 const { users } = await Admin.API.Users.list(api)
 
+                const usersById = Object.fromEntries(users.map((user) => [user.id, user])) as Record<User.Id, Admin.UserSummary>
+
                 setState((s) => {
-                    s.users = users
+                    s.users = usersById
                 })
 
-                return users
+                return usersById
             },
 
             // Their owned workspaces are deleted with them, so those rows go too.
@@ -60,9 +98,13 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
                 await Admin.API.Users.remove(api, userId, { confirmation })
 
                 setState((s) => {
-                    s.users = s.users.filter((user) => user.id !== userId)
+                    delete s.users[userId]
 
-                    s.workspaces = s.workspaces.filter((summary) => summary.owner.id !== userId)
+                    for (const summary of Object.values(s.workspaces).filter((row) => row.owner.id === userId)) {
+                        delete s.details[summary.workspace.id]
+
+                        delete s.workspaces[summary.workspace.id]
+                    }
                 })
             },
         },

@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Admin } from '@pretzel-cloud/shared/domain'
-import { Button, DropdownMenu, Input } from '@pretzel-graph/standard-ui/foundations'
+import { useNavigate } from '@tanstack/react-router'
+import { Button, SearchInput } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
+import { StatusBadge } from '../../WorkspaceSDK/ui/StatusBadge'
 import { getMessageFromError } from '../../api'
 import { AdminSDK } from '../sdk'
+import { AdminWorkspaceActions } from './AdminWorkspaceActions'
 
 const PAGE_SIZE = 20
 
@@ -11,7 +13,11 @@ const PAGE_SIZE = 20
 export const AdminWorkspaces = () => {
     const { error, isPending, isFetching, refetch } = AdminSDK.useWorkspacesQuery()
 
-    const summaries = AdminSDK.useStore((s) => s.workspaces)
+    const workspacesById = AdminSDK.useStore((s) => s.workspaces)
+
+    const summaries = Object.values(workspacesById)
+
+    const navigate = useNavigate()
 
     const [search, setSearch] = useState('')
 
@@ -36,30 +42,21 @@ export const AdminWorkspaces = () => {
         setPage(0)
     }
 
-    const openDelete = (summary: Admin.WorkspaceSummary) => AdminSDK.openDeleteWorkspaceDialog(summary)
-
     return (
         <section className="space-y-5 px-3 pt-4">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h2 className="text-lg font-semibold">All workspaces</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Find a workspace by name, owner, or ID and manage its deletion.</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+            <div className="flex flex-wrap items-center gap-3">
+                <SearchInput
+                    wrapperClassName="w-full max-w-md"
+                    size="sm"
+                    placeholder="Search workspaces or owners…"
+                    aria-label="Search workspaces or owners"
+                    onSearch={onSearch}
+                />
+                {!isPending && <span className="text-xs text-muted-foreground">{filtered.length} of {summaries.length} workspaces</span>}
+                <Button variant="input" size="sm" className="ml-auto" onClick={() => void refetch()} disabled={isFetching}>
                     <SystemIcons.RefreshCcw size={14} className={isFetching ? 'animate-spin' : ''} />
                     Refresh
                 </Button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-                <Input
-                    className="max-w-md"
-                    placeholder="Search workspaces or owners…"
-                    aria-label="Search workspaces or owners"
-                    value={search}
-                    onChange={(event) => onSearch(event.target.value)}
-                />
-                {!isPending && <span className="text-xs text-muted-foreground">{filtered.length} of {summaries.length} workspaces</span>}
             </div>
 
             {error && (
@@ -89,7 +86,19 @@ export const AdminWorkspaces = () => {
                                     const { workspace, owner } = summary
 
                                     return (
-                                        <tr key={workspace.id}>
+                                        <tr
+                                            key={workspace.id}
+                                            className="cursor-pointer"
+                                            tabIndex={0}
+                                            onClick={() => void navigate({ to: '/admin/workspaces/$workspaceId', params: { workspaceId: workspace.id } })}
+                                            onKeyDown={(event) => {
+                                                if (event.key !== 'Enter' && event.key !== ' ') return
+
+                                                event.preventDefault()
+
+                                                void navigate({ to: '/admin/workspaces/$workspaceId', params: { workspaceId: workspace.id } })
+                                            }}
+                                        >
                                             <td className="px-4 py-4">
                                                 <p className="font-medium break-words">{workspace.displayName}</p>
                                                 <p className="mt-1 text-[10px] font-mono text-muted-foreground">{workspace.id}</p>
@@ -100,24 +109,13 @@ export const AdminWorkspaces = () => {
                                             </td>
                                             <td className="px-4 py-4 whitespace-nowrap">{workspace.plan.displayName}</td>
                                             <td className="px-4 py-4">
-                                                <span title={workspace.disabledReason ?? undefined} className={`inline-block rounded-full px-2 py-1 text-xs whitespace-nowrap ${workspace.lifecycleState === 'disabled' || workspace.lifecycleState === 'provisioning_failed' ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'}`}>
-                                                    {workspace.lifecycleState.replaceAll('_', ' ')}
+                                                <span title={workspace.disabledReason ?? undefined}>
+                                                    <StatusBadge workspace={workspace} />
                                                 </span>
                                             </td>
                                             <td className="px-4 py-4 whitespace-nowrap text-xs text-muted-foreground">{workspace.createdAt.toLocaleDateString()}</td>
-                                            <td className="px-4 py-4">
-                                                <DropdownMenu.Root>
-                                                    <DropdownMenu.Trigger asChild>
-                                                        <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${workspace.displayName} owned by ${owner.email}`}>
-                                                            <SystemIcons.Ellipsis size={16} />
-                                                        </Button>
-                                                    </DropdownMenu.Trigger>
-                                                    <DropdownMenu.Content align="end">
-                                                        <DropdownMenu.Item variant="destructive" onSelect={() => openDelete(summary)}>
-                                                            <SystemIcons.Trash2 size={14} /> Delete workspace
-                                                        </DropdownMenu.Item>
-                                                    </DropdownMenu.Content>
-                                                </DropdownMenu.Root>
+                                            <td className="px-4 py-4" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                                                <AdminWorkspaceActions summary={summary} />
                                             </td>
                                         </tr>
                                     )

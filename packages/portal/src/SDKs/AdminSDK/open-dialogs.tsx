@@ -11,7 +11,7 @@ const deleteWorkspaceDialogId = (workspaceId: Workspace.Id) => `admin-delete-wor
 const deleteUserDialogId = (userId: User.Id) => `admin-delete-user-${userId}`
 
 // Confirms by name, closes at once, and reports the outcome as a toast.
-export const openDeleteWorkspaceDialog = (sdk: AdminSDKImpl, summary: Admin.WorkspaceSummary) => {
+export const openDeleteWorkspaceDialog = (sdk: AdminSDKImpl, summary: Admin.WorkspaceSummary, onDeleted?: () => void) => {
     const { workspace } = summary
 
     const id = deleteWorkspaceDialogId(workspace.id)
@@ -28,6 +28,8 @@ export const openDeleteWorkspaceDialog = (sdk: AdminSDKImpl, summary: Admin.Work
                     await sdk.actions.workspaces.destroy(workspace.id, confirmation)
 
                     NotificationSDK.toast.success(`${workspace.displayName} deleted`)
+
+                    onDeleted?.()
                 }
                 catch (error) {
                     NotificationSDK.toast.error(`Could not delete ${workspace.displayName}`, { description: getMessageFromError(error) })

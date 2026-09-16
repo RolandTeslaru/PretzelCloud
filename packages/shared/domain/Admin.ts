@@ -13,6 +13,16 @@ export namespace Admin {
     export const UserSummary = User.Schema.extend({ ownedWorkspaceCount: z.coerce.number().int().nonnegative() })
     export type UserSummary = z.infer<typeof UserSummary>
 
+    /** One workspace with everything an admin needs to answer for it. */
+    export const WorkspaceDetail = z.object({
+        workspace:          Workspace.Schema,
+        owner:              User.Schema,
+        members:            z.array(User.Schema),
+        usage:              Workspace.Usage.Report,
+        hardwareStatistics: Workspace.HardwareStatistics.Schema.nullable(),
+    })
+    export type WorkspaceDetail = z.infer<typeof WorkspaceDetail>
+
     export namespace API {
         export namespace Users {
             export namespace List {
@@ -43,6 +53,33 @@ export namespace Admin {
         export async function list(api: AxiosInstance): Promise<List.Response> {
             const { data } = await api.get('/api/admin/workspaces')
             return List.Response.parse(data)
+        }
+
+        export namespace Get {
+            export const Response = WorkspaceDetail
+            export type Response = z.infer<typeof Response>
+        }
+
+        export async function get(api: AxiosInstance, workspaceId: Workspace.Id): Promise<Get.Response> {
+            const { data } = await api.get(`/api/admin/workspaces/${workspaceId}`)
+            return Get.Response.parse(data)
+        }
+
+        export namespace Usage {
+            export async function list(api: AxiosInstance, workspaceId: Workspace.Id, window: Workspace.Usage.Window): Promise<Workspace.API.ListUsage.Response> {
+                const { data } = await api.get(`/api/admin/workspaces/${workspaceId}/executions`, { params: { window } })
+                return Workspace.API.ListUsage.Response.parse(data)
+            }
+
+            export async function getSeries(api: AxiosInstance, workspaceId: Workspace.Id): Promise<Workspace.API.GetUsageSeries.Response> {
+                const { data } = await api.get(`/api/admin/workspaces/${workspaceId}/executions/series`)
+                return Workspace.API.GetUsageSeries.Response.parse(data)
+            }
+
+            export async function getReport(api: AxiosInstance, workspaceId: Workspace.Id): Promise<Workspace.API.GetUsageReport.Response> {
+                const { data } = await api.get(`/api/admin/workspaces/${workspaceId}/executions/report`)
+                return Workspace.API.GetUsageReport.Response.parse(data)
+            }
         }
 
         export namespace Destroy {

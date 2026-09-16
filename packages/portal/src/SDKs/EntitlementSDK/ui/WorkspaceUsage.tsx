@@ -105,24 +105,31 @@ const NO_RECORDS: Workspace.Usage[] = []
  * One workspace's executions: where it stands against its plan, and each run
  * over a chosen span.
  */
-export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
+type UsageActions = Pick<EntitlementSDK.Actions, 'listUsage' | 'getUsageReport' | 'getUsageSeries'>
+
+export function WorkspaceUsage({ workspace, actions = EntitlementSDK.actions, initialReport, showWorkspaceName = true }: {
+    workspace: Workspace
+    actions?: UsageActions
+    initialReport?: Workspace.Usage.Report
+    showWorkspaceName?: boolean
+}) {
     const window = EntitlementSDK.useStore((s) => s.windows[workspace.id]) ?? DEFAULT_WINDOW
 
     const { data: report } = QuerySDK.useQuery<Workspace.Usage.Report, Error>(
         ['usage', 'report', workspace.id],
-        () => EntitlementSDK.actions.getUsageReport(workspace.id),
-        { staleTime: STALE_TIME },
+        () => actions.getUsageReport(workspace.id),
+        { staleTime: STALE_TIME, initialData: initialReport },
     )
 
     const { data: series } = QuerySDK.useQuery<Workspace.Usage.Point[], Error>(
         ['usage', 'series', workspace.id],
-        () => EntitlementSDK.actions.getUsageSeries(workspace.id),
+        () => actions.getUsageSeries(workspace.id),
         { staleTime: STALE_TIME },
     )
 
     const recordsQuery = QuerySDK.useQuery<Workspace.Usage[], Error>(
         ['usage', 'records', workspace.id, window],
-        () => EntitlementSDK.actions.listUsage(workspace.id, window),
+        () => actions.listUsage(workspace.id, window),
         { staleTime: STALE_TIME },
     )
 
@@ -152,7 +159,7 @@ export function WorkspaceUsage({ workspace }: { workspace: Workspace }) {
 
     return (
         <section className='flex flex-col gap-6'>
-            <h4 className='text-sm'>{workspace.displayName}</h4>
+            {showWorkspaceName && <h4 className='text-sm'>{workspace.displayName}</h4>}
 
             <div className='flex items-stretch gap-10'>
 

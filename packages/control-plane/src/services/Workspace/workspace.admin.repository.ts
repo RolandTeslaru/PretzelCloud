@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Workspace } from '@pretzel-cloud/shared/domain';
+import { User, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { Repository, Transactional } from '@/db/repository';
 import { Principal } from '@/auth/identity/principal';
@@ -22,6 +22,17 @@ export class WorkspaceAdminRepository extends Repository(PortalDB) {
             .execute();
 
         return rows.map((row) => this._toWorkspace(row));
+    }
+
+    @Transactional('service')
+    public async getMemberIds(principal: Principal.Service, workspaceId: Workspace.Id): Promise<User.Id[]> {
+        const rows = await this.trx
+            .selectFrom('workspace_members')
+            .select('user_id')
+            .where('workspace_id', '=', workspaceId)
+            .execute();
+
+        return rows.map((row) => row.user_id);
     }
 
     @Transactional('service')

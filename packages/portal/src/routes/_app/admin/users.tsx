@@ -9,5 +9,6 @@ export const Route = createFileRoute('/_app/admin/users')({
 
         return null
     },
+    staticData: { title: 'All users' },
     component: AdminUsers,
 })
