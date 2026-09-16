@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Admin, Workspace } from '@pretzel-cloud/shared/domain';
+import { Admin, Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { Operation } from '@/decorators/operation';
 import { LockService } from '@/services/Locking/lock.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
+import { PlanRegistry } from '@/services/Plan/plan.registry';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { HardwareStatisticsSampler } from '@/services/Fleet/Hardware/statistics.sampler';
 import { UserAdminRepository } from '@/services/User/user.admin.repository';
@@ -23,6 +24,7 @@ export class WorkspaceAdminService {
         private readonly hardware:                 HardwareService,
         private readonly hardwareStatistics:       HardwareStatisticsSampler,
         private readonly entitlement:              EntitlementService,
+        private readonly planRegistry:              PlanRegistry,
         // Read by `@Operation`, which serialises a workspace's operations across instances.
         private readonly lockService:              LockService,
     ) {}
@@ -147,5 +149,29 @@ export class WorkspaceAdminService {
 
     public async enable(adminUser: Principal.AdminUser, workspaceId: Workspace.Id): Promise<void> {
         await this.workspaceService.enable(workspaceId);
+    }
+
+    public async assertPlanChangeAllowed(adminUser: Principal.AdminUser, workspaceId: Workspace.Id, planId: Plan.Id): Promise<Workspace> {
+        const workspace = await this.workspaceService.get(workspaceId);
+
+        if (workspace.lifecycleState === 'disabled')
+            throw new BadRequestException('Enable this workspace before changing its plan.');
+
+        if (workspace.subscriptionStatus !== null && !['canceled', 'incomplete_expired'].includes(workspace.subscriptionStatus))
+            throw new BadRequestException('Stripe still controls this workspace plan.');
+
+        if (!this.planRegistry.find(planId))
+            throw new NotFoundException(`No such plan: ${planId}`);
+
+        if (workspace.plan.id === planId)
+            throw new BadRequestException('This workspace is already on that plan.');
+
+        return workspace;
+    }
+
+    public async setPlan(adminUser: Principal.AdminUser, workspace: Workspace, planId: Plan.Id): Promise<void> {
+        this.logger.log(`Admin ${adminUser.userId} assigned plan ${planId} to workspace ${workspace.id}`);
+
+        await this.workspaceService.setPlan(workspace.id, workspace.ownerId, planId);
     }
 }

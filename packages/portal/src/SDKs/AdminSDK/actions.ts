@@ -1,4 +1,4 @@
-import { Admin, User, Workspace } from '@pretzel-cloud/shared/domain'
+import { Admin, type Plan, User, Workspace } from '@pretzel-cloud/shared/domain'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { api, getMessageFromError } from '../api'
 import type { AdminSDKImpl } from './sdk'
@@ -10,12 +10,16 @@ export type _AdminSDKActions_ = {
         lifecycle: (workspaceId: Workspace.Id, action: Workspace.Lifecycle.Action) => Promise<void>
         disable:   (workspaceId: Workspace.Id, reason: string) => Promise<void>
         enable:    (workspaceId: Workspace.Id) => Promise<void>
+        setPlan:   (workspaceId: Workspace.Id, plan: Plan) => Promise<void>
         destroy:   (workspaceId: Workspace.Id, confirmation: string) => Promise<void>
     }
     usage: {
         listUsage:      (workspaceId: Workspace.Id, window: Workspace.Usage.Window) => Promise<Workspace.Usage[]>
         getUsageReport: (workspaceId: Workspace.Id) => Promise<Workspace.Usage.Report>
         getUsageSeries: (workspaceId: Workspace.Id) => Promise<Workspace.Usage.Point[]>
+    }
+    plans: {
+        list: () => Promise<Record<Plan.Id, Plan>>
     }
     users: {
         list:   () => Promise<Record<User.Id, Admin.UserSummary>>
@@ -119,6 +123,30 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
                 }
             },
 
+            setPlan: async (workspaceId, plan) => {
+                const workspace = sdk.state.workspaces[workspaceId]?.workspace ?? sdk.state.details[workspaceId]?.workspace
+
+                try {
+                    await Admin.API.setPlan(api, workspaceId, { planId: plan.id })
+
+                    setState((s) => {
+                        const summary = s.workspaces[workspaceId]
+                        const detail = s.details[workspaceId]
+
+                        if (summary)
+                            summary.workspace.plan = plan
+
+                        if (detail)
+                            detail.workspace.plan = plan
+                    })
+
+                    NotificationSDK.toast.success(`${workspace?.displayName ?? workspaceId}: plan change requested`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, 'Could not change the workspace plan'))
+                }
+            },
+
             destroy: async (workspaceId, confirmation) => {
                 await Admin.API.destroy(api, workspaceId, { confirmation })
 
@@ -150,6 +178,18 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
                 const { points } = await Admin.API.Usage.getSeries(api, workspaceId)
 
                 return points
+            },
+        },
+
+        plans: {
+            list: async () => {
+                const { plans } = await Admin.API.Plans.list(api)
+
+                const plansById = Object.fromEntries(plans.map((plan) => [plan.id, plan])) as Record<Plan.Id, Plan>
+
+                setState((s) => { s.plans = plansById })
+
+                return plansById
             },
         },
 

@@ -105,4 +105,20 @@ export class WorkspaceAdminController {
 
         return {};
     }
+
+    @Post(':workspaceId/plan')
+    @RefuseIfBusy('workspace', 1)
+    @HttpCode(202)
+    public async setPlan(
+        @AuthenticatedAdminUser() adminUser: Principal.AdminUser,
+        @ZodParam('workspaceId', Workspace.Id) workspaceId: Workspace.Id,
+        @ZodBody(Admin.API.SetPlan.Request) body: Admin.API.SetPlan.Request,
+    ): Promise<Workspace.API.Lifecycle.Response> {
+        const workspace = await this.workspaceAdminService.assertPlanChangeAllowed(adminUser, workspaceId, body.planId);
+
+        void this.workspaceAdminService.setPlan(adminUser, workspace, body.planId)
+            .catch((error: unknown) => this.logger.error(`Assigning plan ${body.planId} to ${workspaceId} failed: ${error instanceof Error ? error.message : error}`));
+
+        return {};
+    }
 }

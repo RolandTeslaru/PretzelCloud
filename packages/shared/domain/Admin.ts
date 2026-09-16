@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { AxiosInstance } from 'axios'
+import { Plan } from './Plan'
 import { Workspace } from './Workspace'
 import { User } from './User'
 
@@ -42,6 +43,16 @@ export namespace Admin {
 
             export async function remove(api: AxiosInstance, userId: User.Id, body: Delete.Request): Promise<void> {
                 await api.delete(`/api/admin/users/${userId}`, { data: body })
+            }
+        }
+
+        export namespace Plans {
+            export const Response = Plan.API.List.Response
+            export type Response = z.infer<typeof Response>
+
+            export async function list(api: AxiosInstance): Promise<Response> {
+                const { data } = await api.get('/api/admin/plans')
+                return Response.parse(data)
             }
         }
 
@@ -106,6 +117,15 @@ export namespace Admin {
 
         export async function enable(api: AxiosInstance, workspaceId: Workspace.Id): Promise<void> {
             await api.post(`/api/admin/workspaces/${workspaceId}/enable`)
+        }
+
+        export namespace SetPlan {
+            export const Request = Workspace.API.SetPlan.Request
+            export type Request = z.infer<typeof Request>
+        }
+
+        export async function setPlan(api: AxiosInstance, workspaceId: Workspace.Id, body: SetPlan.Request): Promise<void> {
+            await api.post(`/api/admin/workspaces/${workspaceId}/plan`, body)
         }
     }
 }

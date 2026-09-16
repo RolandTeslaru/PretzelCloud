@@ -41,6 +41,19 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
 
     public readonly selectors: WorkspaceSDK.Selectors = workspaceSelectors
 
+    public override cleanup() {
+        this.setState((s) => {
+            s.workspaces = {}
+            s.plans = {}
+            s.transitions = {}
+            s.rebuilding = {}
+            s.destroying = {}
+            s.updating = {}
+            s.provisioning = {}
+            s.hardwareStatistics = {}
+        })
+    }
+
     /** One entry per workspace the store holds, for as long as it holds it. */
     public readonly runtime = {
         unsubscribeByWorkspaceId: new Map<Workspace.Id, () => void>()

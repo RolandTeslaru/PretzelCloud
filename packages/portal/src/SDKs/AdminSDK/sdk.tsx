@@ -1,7 +1,7 @@
 import { immer } from 'zustand/middleware/immer'
 import { createWithEqualityFn } from 'zustand/traditional'
 import { shallow } from 'zustand/shallow'
-import { Admin, User, Workspace } from '@pretzel-cloud/shared/domain'
+import { Admin, Plan, User, Workspace } from '@pretzel-cloud/shared/domain'
 import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createAdminSDKActions, type _AdminSDKActions_ } from './actions'
@@ -23,9 +23,19 @@ export class AdminSDKImpl extends BaseSDK<AdminSDK.State> {
             workspaces: {},
             users: {},
             details: {},
+            plans: {},
         })),
         shallow
     )
+
+    public override cleanup() {
+        this.setState((s) => {
+            s.workspaces = {}
+            s.users = {}
+            s.details = {}
+            s.plans = {}
+        })
+    }
 
     public readonly query = {
         workspacesList: {
@@ -43,6 +53,11 @@ export class AdminSDKImpl extends BaseSDK<AdminSDK.State> {
             queryKey: ['admin', 'users'] as const,
             queryFn:  () => this.actions.users.list(),
         },
+        plansList: {
+            ...QUERY_OPTIONS,
+            queryKey: ['admin', 'plans'] as const,
+            queryFn:  () => this.actions.plans.list(),
+        },
     }
 
     public readonly actions: AdminSDK.Actions = createAdminSDKActions(this)
@@ -57,6 +72,7 @@ export namespace AdminSDK {
         users: Record<User.Id, Admin.UserSummary>
         /** Whatever workspace pages have been opened, by id. */
         details: Partial<Record<Workspace.Id, Admin.WorkspaceDetail>>
+        plans: Record<Plan.Id, Plan>
     }
 
     export type Actions = _AdminSDKActions_

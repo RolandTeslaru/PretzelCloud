@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Workspace } from '@pretzel-cloud/shared/domain'
-import { Tabs } from '@pretzel-graph/standard-ui/foundations'
+import { Plan, Workspace } from '@pretzel-cloud/shared/domain'
+import { Button, DropdownMenu, Tabs } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { WorkspaceUsage } from '../../EntitlementSDK/ui/WorkspaceUsage'
 import { StatusBadge } from '../../WorkspaceSDK/ui/StatusBadge'
@@ -20,11 +20,13 @@ const Fact = ({ label, icon, children }: { label: string; icon?: ReactNode; chil
 
 const toMegabytes = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`
 
+const STRIPE_TERMINAL_STATUSES = ['canceled', 'incomplete_expired']
+
 /** One workspace, whoever owns it. */
 export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) => {
-    const [detail, [query]] = AdminSDK.useWith(
-        (s) => s.details[workspaceId],
-        [AdminSDK.query.workspace(workspaceId)],
+    const [{ detail, plansById }, [query]] = AdminSDK.useWith(
+        (s) => ({ detail: s.details[workspaceId], plansById: s.plans }),
+        [AdminSDK.query.workspace(workspaceId), AdminSDK.query.plansList],
     )
 
     const { error, isPending } = query
@@ -45,6 +47,11 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
 
     const machines = Object.entries(hardwareStatistics?.machines ?? {})
 
+    const stripeControlsPlan = workspace.subscriptionStatus !== null
+        && !STRIPE_TERMINAL_STATUSES.includes(workspace.subscriptionStatus)
+
+    const canSetPlan = workspace.lifecycleState !== 'disabled' && !stripeControlsPlan
+
     return (
         <section className="space-y-8 px-3 pt-4">
 
@@ -60,6 +67,7 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
 
                     <Tabs.List size="sm" className="w-fit ml-auto justify-start overflow-x-auto">
                         <Tabs.Trigger value="general">General</Tabs.Trigger>
+                        <Tabs.Trigger value="plan">Plan and billing</Tabs.Trigger>
                         <Tabs.Trigger value="usage">Execution usage</Tabs.Trigger>
                         <Tabs.Trigger value="hardware">Hardware</Tabs.Trigger>
                         <Tabs.Trigger value="members">Members ({members.length})</Tabs.Trigger>
@@ -76,11 +84,6 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                             <p>{owner.displayName}</p>
                             <p className="text-xs text-muted-foreground">{owner.email}</p>
                         </Fact>
-                        <Fact label="Plan">{workspace.plan.displayName}</Fact>
-                        <Fact label="Subscription">
-                            {workspace.subscriptionStatus ?? 'none'}
-                            {workspace.currentPeriodEnd && <p className="text-xs text-muted-foreground">renews {workspace.currentPeriodEnd.toLocaleDateString()}</p>}
-                        </Fact>
                         <Fact label="Region">{workspace.region ?? '—'}</Fact>
                         <Fact label="Release">{workspace.releaseName ?? '—'}</Fact>
                         <Fact label="Created">{workspace.createdAt.toLocaleDateString()}</Fact>
@@ -88,6 +91,89 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                         <Fact label="App">
                             <a href={workspace.appUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{workspace.appUrl}</a>
                         </Fact>
+                    </div>
+                </Tabs.Content>
+
+                <Tabs.Content value="plan">
+                    <div className="divide-y divide-border/60">
+                        <section className="space-y-4 pb-6">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <h3 className="text-sm font-medium">Plan</h3>
+                                    <p className="text-xs text-muted-foreground">{workspace.plan.description}</p>
+                                    {!canSetPlan && (
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            {workspace.lifecycleState === 'disabled'
+                                                ? 'Enable this workspace before changing its plan.'
+                                                : `Stripe controls this plan while the subscription is ${workspace.subscriptionStatus}.`}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <DropdownMenu.Root>
+                                    <DropdownMenu.Trigger asChild>
+                                        <Button variant="input" size="sm" disabled={!canSetPlan || Object.keys(plansById).length === 0}>
+                                            <SystemIcons.Receipt /> Set plan
+                                        </Button>
+                                    </DropdownMenu.Trigger>
+                                    <DropdownMenu.Content align="end">
+                                        {Object.values(plansById).map((plan) => (
+                                            <DropdownMenu.Item
+                                                key={plan.id}
+                                                disabled={plan.id === workspace.plan.id}
+                                                onSelect={() => void AdminSDK.actions.workspaces.setPlan(workspace.id, plan)}
+                                            >
+                                                <span className="flex-1">{plan.displayName}</span>
+                                                <span className="text-xs text-muted-foreground">{Plan.getPriceLabel(plan)}</span>
+                                            </DropdownMenu.Item>
+                                        ))}
+                                    </DropdownMenu.Content>
+                                </DropdownMenu.Root>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                                <Fact label="Name">{workspace.plan.displayName}</Fact>
+                                <Fact label="Plan ID"><span className="font-mono text-xs">{workspace.plan.id}</span></Fact>
+                                <Fact label="Listed price">{Plan.getPriceLabel(workspace.plan)}/month</Fact>
+                                <Fact label="Purchasable">{workspace.plan.purchasable ? 'Yes' : 'No'}</Fact>
+                            </div>
+                        </section>
+
+                        <section className="space-y-4 py-6">
+                            <h3 className="text-sm font-medium">Billing</h3>
+
+                            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                                <Fact label="Subscription status">{workspace.subscriptionStatus ?? 'None'}</Fact>
+                                <Fact label="Current period starts">{workspace.currentPeriodStart?.toLocaleDateString() ?? '—'}</Fact>
+                                <Fact label="Current period ends">{workspace.currentPeriodEnd?.toLocaleDateString() ?? '—'}</Fact>
+                                <Fact label="Stripe product ID"><span className="font-mono text-xs">{workspace.plan.stripeProductId ?? '—'}</span></Fact>
+                                <Fact label="Stripe price ID"><span className="font-mono text-xs">{workspace.plan.stripePriceId ?? '—'}</span></Fact>
+                            </div>
+                        </section>
+
+                        <section className="space-y-4 py-6">
+                            <h3 className="text-sm font-medium">Topology</h3>
+
+                            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                                <Fact label="Topology">{workspace.plan.topology}</Fact>
+                                <Fact label="Backend size"><span className="font-mono text-xs">{workspace.plan.backendSize}</span></Fact>
+                                <Fact label="Worker size"><span className="font-mono text-xs">{workspace.plan.workerSize ?? 'Uses backend size'}</span></Fact>
+                                <Fact label="Idle backend policy">{workspace.plan.idleBackendPolicy}</Fact>
+                            </div>
+                        </section>
+
+                        <section className="space-y-4 pt-6">
+                            <h3 className="text-sm font-medium">Limits</h3>
+
+                            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                                <Fact label="Execution concurrency">{workspace.plan.executionConcurrencyLimit.toLocaleString()}</Fact>
+                                <Fact label="Monthly executions">{workspace.plan.maxExecutionsMonthly?.toLocaleString() ?? 'Unlimited'}</Fact>
+                                <Fact label="Monthly uptime">{workspace.plan.maxUptimeHoursMonthly === null ? 'Unlimited' : `${workspace.plan.maxUptimeHoursMonthly.toLocaleString()} hours`}</Fact>
+                                <Fact label="Workflows">{workspace.plan.maxWorkflows?.toLocaleString() ?? 'Unlimited'}</Fact>
+                                <Fact label="Workspace members">{workspace.plan.maxWorkspaceMembers?.toLocaleString() ?? 'Unlimited'}</Fact>
+                                <Fact label="Execution session retention">{workspace.plan.executionSessionRetentionDays === null ? 'Indefinite' : `${workspace.plan.executionSessionRetentionDays.toLocaleString()} days`}</Fact>
+                            </div>
+                        </section>
                     </div>
                 </Tabs.Content>
 

@@ -25,6 +25,15 @@ export class EntitlementSDKImpl extends BaseSDK<EntitlementSDK.State> {
         shallow
     )
 
+    public override cleanup() {
+        this.setState((s) => {
+            s.windows = {}
+            s.reports = {}
+            s.series = {}
+            s.records = {}
+        })
+    }
+
     public readonly query = {
         report: (workspaceId: Workspace.Id, actions: EntitlementSDK.UsageActions = this.actions, initialData?: Workspace.Usage.Report) => ({
             queryKey: ['usage', 'report', workspaceId] as const,

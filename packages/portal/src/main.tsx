@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import './index.css'
 import { SystemSDK } from '@pretzel-graph/standard-ui/SDKs/SystemSDK'
+import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { AuthSDK } from './SDKs/AuthSDK/sdk'
 import { RealtimeSDK, socketUrl } from './SDKs/RealtimeSDK'
 import { routeTree } from './routeTree.gen'
@@ -25,7 +26,7 @@ AuthSDK.subscribe((auth, previous) => {
     if (auth.isAuthenticated)
         RealtimeSDK.connect(socketUrl())
     else
-        RealtimeSDK.disconnect()
+        SDK.cleanup()
 
     // The provider re-renders later, so the guards are handed the new state here; on boot it mounts with it.
     if (!previous.isLoading) {
