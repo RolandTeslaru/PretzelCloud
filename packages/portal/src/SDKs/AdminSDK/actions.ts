@@ -1,12 +1,14 @@
 import { Admin, User, Workspace } from '@pretzel-cloud/shared/domain'
-import { api } from '../api'
+import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
+import { api, getMessageFromError } from '../api'
 import type { AdminSDKImpl } from './sdk'
 
 export type _AdminSDKActions_ = {
     workspaces: {
-        list:    () => Promise<Record<Workspace.Id, Admin.WorkspaceSummary>>
-        get:     (workspaceId: Workspace.Id) => Promise<Admin.WorkspaceDetail>
-        destroy: (workspaceId: Workspace.Id, confirmation: string) => Promise<void>
+        list:      () => Promise<Record<Workspace.Id, Admin.WorkspaceSummary>>
+        get:       (workspaceId: Workspace.Id) => Promise<Admin.WorkspaceDetail>
+        lifecycle: (workspaceId: Workspace.Id, action: Workspace.Lifecycle.Action) => Promise<void>
+        destroy:   (workspaceId: Workspace.Id, confirmation: string) => Promise<void>
     }
     usage: {
         listUsage:      (workspaceId: Workspace.Id, window: Workspace.Usage.Window) => Promise<Workspace.Usage[]>
@@ -44,6 +46,19 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
                 })
 
                 return detail
+            },
+
+            lifecycle: async (workspaceId, action) => {
+                const workspace = sdk.state.workspaces[workspaceId]?.workspace ?? sdk.state.details[workspaceId]?.workspace
+
+                try {
+                    await Admin.API.lifecycle(api, workspaceId, action)
+
+                    NotificationSDK.toast.success(`${workspace?.displayName ?? workspaceId}: ${action} requested`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, `Could not ${action} the workspace`))
+                }
             },
 
             destroy: async (workspaceId, confirmation) => {

@@ -116,7 +116,7 @@ const columns: ColumnDef<typeof features, Workspace, any>[] = [
                 size='sm'
                 variant='ghost'
                 className='h-7 text-xs'
-                onClick={() => WorkspaceSDK.openConfigurationDialog(getValue() as Workspace.Id, 'plan')}
+                onClick={() => WorkspaceSDK.dialogs.openConfiguration(getValue() as Workspace.Id, 'plan')}
             >
                 Change plan
             </Button>

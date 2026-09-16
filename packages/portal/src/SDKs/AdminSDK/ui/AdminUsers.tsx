@@ -11,9 +11,12 @@ const PAGE_SIZE = 20
 
 /** Every account. The query owns the request; the store owns the data. */
 export const AdminUsers = () => {
-    const { error, isPending, isFetching, refetch } = AdminSDK.useUsersQuery()
+    const [usersById, [query]] = AdminSDK.use(
+        (s) => s.users,
+        [AdminSDK.query.usersList],
+    )
 
-    const usersById = AdminSDK.useStore((s) => s.users)
+    const { error, isPending, isFetching, refetch } = query
 
     const users = Object.values(usersById)
 
@@ -110,7 +113,7 @@ export const AdminUsers = () => {
                                                     <DropdownMenu.Item onSelect={() => void copyUserId(user)}>
                                                         <SystemIcons.Copy size={14} /> Copy user ID
                                                     </DropdownMenu.Item>
-                                                    <DropdownMenu.Item variant="destructive" disabled={user.id === currentUserId} onSelect={() => AdminSDK.openDeleteUserDialog(user)}>
+                                                    <DropdownMenu.Item variant="destructive" disabled={user.id === currentUserId} onSelect={() => AdminSDK.dialogs.openDeleteUser(user)}>
                                                         <SystemIcons.Trash2 size={14} /> Delete user
                                                     </DropdownMenu.Item>
                                                 </DropdownMenu.Content>

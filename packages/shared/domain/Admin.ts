@@ -65,6 +65,10 @@ export namespace Admin {
             return Get.Response.parse(data)
         }
 
+        export async function lifecycle(api: AxiosInstance, workspaceId: Workspace.Id, action: Workspace.Lifecycle.Action): Promise<void> {
+            await api.post(`/api/admin/workspaces/${workspaceId}/lifecycle/${action}`)
+        }
+
         export namespace Usage {
             export async function list(api: AxiosInstance, workspaceId: Workspace.Id, window: Workspace.Usage.Window): Promise<Workspace.API.ListUsage.Response> {
                 const { data } = await api.get(`/api/admin/workspaces/${workspaceId}/executions`, { params: { window } })

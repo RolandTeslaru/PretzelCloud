@@ -57,7 +57,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                                     size="sm"
                                     variant="active"
                                     className='gap-2 animate-pulse'
-                                    onClick={(event) => { event.stopPropagation(); WorkspaceSDK.openUpdateDialog(workspace.id) }}
+                                    onClick={(event) => { event.stopPropagation(); WorkspaceSDK.dialogs.openUpdate(workspace.id) }}
                                 >
                                     <SystemIcons.ArrowBigUpDash className='fill-current size-4' />
                                     Update

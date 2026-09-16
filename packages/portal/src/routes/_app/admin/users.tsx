@@ -5,7 +5,7 @@ import { AdminUsers } from '@/SDKs/AdminSDK/ui/AdminUsers'
 export const Route = createFileRoute('/_app/admin/users')({
     // Fills the store before the table renders; a failure is left for the table to report.
     loader: async () => {
-        await AdminSDK.fetchUsers().catch(() => null)
+        await AdminSDK.fetch(AdminSDK.query.usersList).catch(() => null)
 
         return null
     },

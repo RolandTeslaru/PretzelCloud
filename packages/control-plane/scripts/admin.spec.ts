@@ -14,6 +14,7 @@ import { AdminRepository } from '@/auth/admin.repository';
 import { WorkspaceAdminController } from '@/services/Workspace/workspace.admin.controller';
 import { WorkspaceAdminService } from '@/services/Workspace/workspace.admin.service';
 import { WorkspaceService } from '@/services/Workspace/workspace.service';
+import { LockService } from '@/services/Locking/lock.service';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
 import { UserController } from '@/services/User/user.controller';
 import { UserService } from '@/services/User/user.service';
@@ -85,7 +86,7 @@ function harness() {
         userAdminRepository,
         lockService,
     }) as WorkspaceAdminService;
-    return { service, adminService, workspaceAdminRepository, userAdminRepository, adminRepository, admins, calls, workspace, setFailure: (name?: string) => { failure = name; }, setBusy: () => { busy = true; }, exists: () => exists };
+    return { service, adminService, workspaceAdminRepository, userAdminRepository, adminRepository, admins, calls, workspace, lockService, setFailure: (name?: string) => { failure = name; }, setBusy: () => { busy = true; }, exists: () => exists };
 }
 
 test('admin workspace deletion and access', async (t) => {
@@ -178,6 +179,7 @@ test('admin workspace deletion and access', async (t) => {
                 { provide: IdentityResolver, useClass: TokenIdentityResolver },
                 { provide: AdminRepository, useValue: h.adminRepository },
                 { provide: WorkspaceAdminService, useValue: h.adminService },
+                { provide: LockService, useValue: h.lockService },
                 { provide: UserService, useValue: { get: profile, register: profile } },
             ],
         })

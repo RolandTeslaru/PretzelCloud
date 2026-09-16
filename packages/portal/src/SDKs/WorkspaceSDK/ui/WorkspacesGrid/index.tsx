@@ -82,7 +82,7 @@ export const WorkspacesGrid = () => {
             <div className='flex flex-row justify-end gap-2 w-full'>
                 <SearchInput className='rounded-full! w-[200px] text-xs!' size="sm" onSearch={setQuery} placeholder="Search for a workspace" />
                 <SortMenu sort={sort} onChange={setSort} />
-                <Button size="sm" onClick={() => WorkspaceSDK.openCreateWorkspaceDialog()}>
+                <Button size="sm" onClick={() => WorkspaceSDK.dialogs.openCreateWorkspace()}>
                     <SystemIcons.Plus /> New workspace
                 </Button>
             </div>
@@ -91,7 +91,7 @@ export const WorkspacesGrid = () => {
             <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
                 {filteredWorkspaces.length === 0 && (
                     <Button className="w-[340px] h-[140px] bg-transparent! border-1 border-border shadow-none! hover:bg-white/10 cursor-pointer"
-                        onClick={() => WorkspaceSDK.openCreateWorkspaceDialog()}
+                        onClick={() => WorkspaceSDK.dialogs.openCreateWorkspace()}
                     >
 
                         <SystemIcons.Plus className='text-border! size-10! m-auto'/>

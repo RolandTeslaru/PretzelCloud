@@ -18,7 +18,7 @@ export const DangerSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dia
                     </p>
                 </div>
 
-                <Button variant="destructive" size="sm" className="mr-auto" onClick={() => WorkspaceSDK.openDestroyDialog(workspaceId)}>
+                <Button variant="destructive" size="sm" className="mr-auto" onClick={() => WorkspaceSDK.dialogs.openDestroy(workspaceId)}>
                     Destroy workspace
                 </Button>
             </div>

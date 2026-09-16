@@ -59,7 +59,7 @@ const UpdateFooter = ({workspace}: {workspace: Workspace | undefined}) => {
 
     return (
         <Button className='gap-2 w-full flex rounded-full' variant="active"
-            onClick={() => WorkspaceSDK.openUpdateDialog(workspace.id)}
+            onClick={() => WorkspaceSDK.dialogs.openUpdate(workspace.id)}
         >
             <SystemIcons.ArrowBigUpDash className='size-4'/>
             <p className='text-xs h-auto mt-0.5'>

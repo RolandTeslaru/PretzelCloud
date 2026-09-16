@@ -11,9 +11,12 @@ const PAGE_SIZE = 20
 
 /** Every workspace across every owner. The query owns the request; the store owns the data. */
 export const AdminWorkspaces = () => {
-    const { error, isPending, isFetching, refetch } = AdminSDK.useWorkspacesQuery()
+    const [workspacesById, [query]] = AdminSDK.use(
+        (s) => s.workspaces,
+        [AdminSDK.query.workspacesList],
+    )
 
-    const workspacesById = AdminSDK.useStore((s) => s.workspaces)
+    const { error, isPending, isFetching, refetch } = query
 
     const summaries = Object.values(workspacesById)
 

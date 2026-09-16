@@ -19,9 +19,12 @@ const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
 
 /** One workspace, whoever owns it. */
 export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) => {
-    const { error, isPending } = AdminSDK.useWorkspaceQuery(workspaceId)
+    const [detail, [query]] = AdminSDK.use(
+        (s) => s.details[workspaceId],
+        [AdminSDK.query.workspace(workspaceId)],
+    )
 
-    const detail = AdminSDK.useStore((s) => s.details[workspaceId])
+    const { error, isPending } = query
 
     const navigate = useNavigate()
 

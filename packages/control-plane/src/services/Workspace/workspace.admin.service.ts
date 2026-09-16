@@ -101,6 +101,25 @@ export class WorkspaceAdminService {
         return this.entitlement.getPeriodUsageReport(workspaceId);
     }
 
+    public async assertLifecycleAllowed(adminUser: Principal.AdminUser, workspaceId: Workspace.Id): Promise<void> {
+        const workspace = await this.workspaceService.get(workspaceId);
+
+        if (workspace.lifecycleState === 'disabled')
+            throw new BadRequestException('Enable this workspace before changing its lifecycle.');
+    }
+
+    @Operation('workspace', 1)
+    public async lifecycle(adminUser: Principal.AdminUser, workspaceId: Workspace.Id, action: Workspace.Lifecycle.Action): Promise<void> {
+        this.logger.log(`Admin ${adminUser.userId} requested ${action} for workspace ${workspaceId}`);
+
+        switch (action) {
+            case 'start':   return this.workspaceService.start(workspaceId);
+            case 'stop':    return this.workspaceService.stop(workspaceId);
+            case 'suspend': return this.workspaceService.suspend(workspaceId);
+            case 'restart': return this.workspaceService.restart(workspaceId);
+        }
+    }
+
     @Operation('workspace', 1)
     public async destroy(adminUser: Principal.AdminUser, workspaceId: Workspace.Id, confirmation: string): Promise<void> {
         const workspace = await this.workspaceService.get(workspaceId);

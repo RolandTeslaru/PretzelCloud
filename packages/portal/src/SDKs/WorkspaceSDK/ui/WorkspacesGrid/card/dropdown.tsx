@@ -35,14 +35,14 @@ export const CardDropdown = ({ workspaceId }: { workspaceId: Workspace.Id }) => 
             </DropdownMenu.Item>
             <DropdownMenu.Item
                 className='gap-2 text-xs'
-                onClick={() => WorkspaceSDK.openConfigurationDialog(workspaceId)}
+                onClick={() => WorkspaceSDK.dialogs.openConfiguration(workspaceId)}
             >
                 <SystemIcons.Settings />
                 Open Configuration
             </DropdownMenu.Item>
             <DropdownMenu.Item
                 className='gap-2 text-xs'
-                onClick={() => WorkspaceSDK.openConfigurationDialog(workspaceId, 'plan')}
+                onClick={() => WorkspaceSDK.dialogs.openConfiguration(workspaceId, 'plan')}
             >
                 <SystemIcons.Sparkles />
                 Upgrade
