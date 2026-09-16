@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, DropdownMenu, SearchInput } from '@pretzel-graph/standard-ui/foundations'
+import { Button, DropdownMenu, Frame, SearchInput, Skeleton } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { WorkspaceSDK } from '../../sdk'
 import { DEFAULT_SORT } from '../../selectors'
@@ -14,6 +14,29 @@ const DIRECTIONS: { direction: WorkspaceSDK.SortDirection; label: string }[] = [
     { direction: 'asc',  label: 'Ascending' },
     { direction: 'desc', label: 'Descending' },
 ]
+
+const SKELETONS = [0, 1, 2]
+
+const WorkspaceCardSkeleton = () => (
+    <Frame.Root className='w-full overflow-hidden'>
+        <Frame.Panel className='h-[100px] flex flex-col p-3 pb-2'>
+            <div className='flex items-center gap-2'>
+                <Skeleton className='size-6 rounded-full' />
+                <Skeleton className='h-4 w-32' />
+                <Skeleton className='ml-auto size-6 rounded-full' />
+            </div>
+
+            <div className='mt-auto flex gap-1.5'>
+                <Skeleton className='h-5 w-20 rounded-full' />
+                <Skeleton className='h-5 w-16 rounded-full' />
+            </div>
+        </Frame.Panel>
+
+        <Frame.Footer className='h-[35px] px-2! py-2!'>
+            <Skeleton className='h-3 w-40' />
+        </Frame.Footer>
+    </Frame.Root>
+)
 
 const SortMenu = ({ sort, onChange }: {
     sort: WorkspaceSDK.Sort
@@ -73,7 +96,25 @@ export const WorkspacesGrid = () => {
         [WorkspaceSDK.query.workspacesList],
     )
 
-    const { error, isPending } = request
+    const { isPending } = request
+
+    let gridContent
+
+    if (isPending && filteredWorkspaces.length === 0)
+        gridContent = SKELETONS.map((index) => <WorkspaceCardSkeleton key={index} />)
+    
+    else if (filteredWorkspaces.length === 0)
+        gridContent = (
+            <Button className="w-[340px] h-[140px] bg-transparent! border-1 border-border shadow-none! hover:bg-white/10 cursor-pointer"
+                onClick={() => WorkspaceSDK.dialogs.openCreateWorkspace()}
+            >
+                <SystemIcons.Plus className='text-border! size-10! m-auto'/>
+            </Button>
+        )
+    else
+        gridContent = filteredWorkspaces.map((workspace) => (
+            <WorkspaceCard key={workspace.id} workspace={workspace} />
+        ))
 
     return (
         <>
@@ -89,18 +130,7 @@ export const WorkspacesGrid = () => {
 
 
             <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
-                {filteredWorkspaces.length === 0 && (
-                    <Button className="w-[340px] h-[140px] bg-transparent! border-1 border-border shadow-none! hover:bg-white/10 cursor-pointer"
-                        onClick={() => WorkspaceSDK.dialogs.openCreateWorkspace()}
-                    >
-
-                        <SystemIcons.Plus className='text-border! size-10! m-auto'/>
-                    </Button>
-
-                )}
-                {filteredWorkspaces.map((workspace) => (
-                    <WorkspaceCard key={workspace.id} workspace={workspace} />
-                ))}
+                {gridContent}
             </div>
         </>
     )
