@@ -47,7 +47,7 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel, ...templa
 
 // The store row can be gone while the dialog still is — a destroyed workspace renders nothing here.
 const UpdateFooter = ({workspace}: {workspace: Workspace | undefined}) => {
-    const [latestRelease] = ReleaseSDK.use(
+    const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
         [ReleaseSDK.query.latest],
     )

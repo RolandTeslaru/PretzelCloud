@@ -24,7 +24,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
     const reachable = isReachable(workspace, transition, rebuilding)
 
-    const [latestRelease] = ReleaseSDK.use(
+    const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
         [ReleaseSDK.query.latest],
     )

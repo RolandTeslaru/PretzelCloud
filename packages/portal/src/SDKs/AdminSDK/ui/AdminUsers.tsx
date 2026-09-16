@@ -11,7 +11,7 @@ const PAGE_SIZE = 20
 
 /** Every account. The query owns the request; the store owns the data. */
 export const AdminUsers = () => {
-    const [usersById, [query]] = AdminSDK.use(
+    const [usersById, [query]] = AdminSDK.useWith(
         (s) => s.users,
         [AdminSDK.query.usersList],
     )

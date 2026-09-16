@@ -19,7 +19,7 @@ const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
 
 /** One workspace, whoever owns it. */
 export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) => {
-    const [detail, [query]] = AdminSDK.use(
+    const [detail, [query]] = AdminSDK.useWith(
         (s) => s.details[workspaceId],
         [AdminSDK.query.workspace(workspaceId)],
     )

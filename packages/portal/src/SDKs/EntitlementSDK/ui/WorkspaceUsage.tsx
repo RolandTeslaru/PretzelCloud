@@ -110,7 +110,7 @@ export function WorkspaceUsage({ workspace, actions = EntitlementSDK.actions, in
 }) {
     const usesEntitlementActions = actions === EntitlementSDK.actions
 
-    const [{ window, storedReport, storedSeries, storedRecords }, [reportQuery, seriesQuery, recordsQuery]] = EntitlementSDK.use(
+    const [{ window, storedReport, storedSeries, storedRecords }, [reportQuery, seriesQuery, recordsQuery]] = EntitlementSDK.useWith(
         (s) => {
             const window = s.windows[workspace.id] ?? DEFAULT_WINDOW
 

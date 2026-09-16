@@ -18,7 +18,7 @@ type Props = {
 export function UpdateWorkspaceDialog({ dialogId, workspaceId }: Props) {
     const workspace = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])
 
-    const [latestRelease] = ReleaseSDK.use(
+    const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
         [ReleaseSDK.query.latest],
     )

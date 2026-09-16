@@ -91,7 +91,7 @@ export const WorkspacesGrid = () => {
 
     const [sort, setSort] = useState<WorkspaceSDK.Sort>(DEFAULT_SORT)
 
-    const [filteredWorkspaces, [request]] = WorkspaceSDK.use(
+    const [filteredWorkspaces, [request]] = WorkspaceSDK.useWith(
         (s) => s.selectors.matching(s, query, sort),
         [WorkspaceSDK.query.workspacesList],
     )

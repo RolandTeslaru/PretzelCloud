@@ -11,7 +11,7 @@ const PAGE_SIZE = 20
 
 /** Every workspace across every owner. The query owns the request; the store owns the data. */
 export const AdminWorkspaces = () => {
-    const [workspacesById, [query]] = AdminSDK.use(
+    const [workspacesById, [query]] = AdminSDK.useWith(
         (s) => s.workspaces,
         [AdminSDK.query.workspacesList],
     )

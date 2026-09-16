@@ -5,8 +5,8 @@ import { ReleaseSDK } from '@/SDKs/ReleaseSDK'
 
 export const Route = createFileRoute('/_app/')({
     loader: () => {
-        void ReleaseSDK.fetch(ReleaseSDK.query.latest).catch(() => null)
-        void WorkspaceSDK.fetch(WorkspaceSDK.query.workspacesList).catch(() => null)
+        void ReleaseSDK.prefetch(ReleaseSDK.query.latest)
+        void WorkspaceSDK.prefetch(WorkspaceSDK.query.workspacesList)
 
         return null
     },
