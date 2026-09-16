@@ -26,6 +26,20 @@ export class WorkspaceRepository extends Repository(PortalDB) {
         return Number(row.count);
     }
 
+    @Transactional('user', 'service')
+    public async getByOwnerOrMember(principal: Principal.User | Principal.Service, userId: User.Id): Promise<Workspace[]> {
+        const rows = await this.trx
+            .selectFrom('workspaces')
+            .selectAll()
+            .where((eb) => eb.or([
+                eb('owner_id', '=', userId),
+                eb('id', 'in', eb.selectFrom('workspace_members').select('workspace_id').where('user_id', '=', userId)),
+            ]))
+            .execute();
+
+        return rows.map((row) => this._toWorkspace(row));
+    }
+
     @Transactional('service')
     public async insert(principal: Principal.Service, values: {
         id:          Workspace.Id;
@@ -152,8 +166,8 @@ export class WorkspaceRepository extends Repository(PortalDB) {
             .execute();
     }
 
-    @Transactional('user')
-    public async delete(principal: Principal.User, workspaceId: Workspace.Id): Promise<void> {
+    @Transactional('user', 'service')
+    public async delete(principal: Principal.User | Principal.Service, workspaceId: Workspace.Id): Promise<void> {
         await this.trx
             .deleteFrom('workspaces')
             .where('id', '=', workspaceId)

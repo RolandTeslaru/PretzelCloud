@@ -17,6 +17,10 @@ export class BillingSDKImpl extends BaseSDK<BillingSDK.State> {
         shallow
     )
 
+    public override cleanup() {
+        this.setState((s) => { s.pending = null })
+    }
+
     public readonly actions: BillingSDK.Actions = createBillingSDKActions(this)
 }
 

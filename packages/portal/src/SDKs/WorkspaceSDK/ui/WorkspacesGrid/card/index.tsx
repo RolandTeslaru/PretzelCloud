@@ -5,7 +5,7 @@ import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustratio
 import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../../sdk'
-import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../../status'
+import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../../StatusBadge'
 import { MachineStatistic } from '../MachineStatistic'
 import { DatabaseStatistic } from '../DatabaseStatistic'
 import { CardDropdown } from './dropdown'
@@ -15,16 +15,20 @@ import { ShinyText } from '@pretzel-graph/standard-ui/components/ShinyText'
 
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
-    const [transition, provision, rebuilding, hardwareStatistics] = WorkspaceSDK.useStore(s => [
+    const [transition, provision, rebuilding, destroying, hardwareStatistics] = WorkspaceSDK.useStore(s => [
         s.transitions[workspace.id],
         s.provisioning[workspace.id],
         s.rebuilding[workspace.id],
+        s.destroying[workspace.id],
         s.hardwareStatistics[workspace.id]
     ])
 
-    const reachable = isReachable(workspace, transition, rebuilding)
+    const reachable = isReachable(workspace, transition, rebuilding, destroying)
 
-    const latestRelease = ReleaseSDK.useStore((s) => s.latest)
+    const [latestRelease] = ReleaseSDK.useWith(
+        (s) => s.latest,
+        [ReleaseSDK.query.latest],
+    )
 
     const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id && workspace.lifecycleState !== "updating"
 
@@ -57,7 +61,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                                     size="sm"
                                     variant="active"
                                     className='gap-2 animate-pulse'
-                                    onClick={(event) => { event.stopPropagation(); WorkspaceSDK.openUpdateDialog(workspace.id) }}
+                                    onClick={(event) => { event.stopPropagation(); WorkspaceSDK.dialogs.openUpdate(workspace.id) }}
                                 >
                                     <SystemIcons.ArrowBigUpDash className='fill-current size-4' />
                                     Update

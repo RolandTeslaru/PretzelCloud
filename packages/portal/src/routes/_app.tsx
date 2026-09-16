@@ -4,6 +4,7 @@ import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import type { BaseIconProps } from '@pretzel-graph/standard-ui/icons/baseIcon'
 import { PretzelGraphDropdown } from '@/components/PretzelGraphDropdown'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK'
+import { AuthSDK } from '@/SDKs/AuthSDK'
 
 // What a page beneath this layout may declare about itself.
 declare module '@tanstack/react-router' {
@@ -26,10 +27,9 @@ export const Route = createFileRoute('/_app')({
             throw redirect({ to: '/auth' })
         }
     },
-    // Every page beneath this names a plan somewhere, and they change on the
-    // order of never. A failure is swallowed so the shell still mounts.
-    loader: async () => {
-        await WorkspaceSDK.fetchPlans().catch(() => null)
+    // Warms the plans for the pages beneath without holding the shell back.
+    loader: () => {
+        void WorkspaceSDK.prefetch(WorkspaceSDK.query.plansList)
 
         return null
     },
@@ -75,17 +75,32 @@ const NAV_TOP: NavEntry[] = [
     { id: 'billing', label: 'Billing', to: '/billing', icon: SystemIcons.Receipt },
 ]
 
-const Sidebar = () => (
-    <aside className="w-56 shrink-0 flex flex-col">
-        <div className="h-14 px-4 flex items-center">
-            <PretzelGraphDropdown title="PretzelCloud" />
-        </div>
+const NAV_ADMIN: NavEntry[] = [
+    { id: 'admin-workspaces', label: 'All workspaces', to: '/admin/workspaces', icon: SystemIcons.Server },
+    { id: 'admin-users', label: 'All users', to: '/admin/users', icon: SystemIcons.Users },
+]
 
-        <nav className="flex-1 p-2 flex flex-col gap-0.5">
-            {NAV_TOP.map((e) => <NavItem key={e.id} entry={e} />)}
-        </nav>
-    </aside>
-)
+const Sidebar = () => {
+    const isAdmin = AuthSDK.useStore((s) => s.user?.isAdmin ?? false)
+
+    return (
+        <aside className="w-56 shrink-0 flex flex-col">
+            <div className="h-14 px-4 flex items-center">
+                <PretzelGraphDropdown title="PretzelCloud" />
+            </div>
+
+            <nav className="flex-1 p-2 flex flex-col gap-0.5">
+                {NAV_TOP.map((e) => <NavItem key={e.id} entry={e} />)}
+                {isAdmin && (
+                    <>
+                        <p className="px-2 pt-4 pb-1 text-xs text-muted-foreground">Admin</p>
+                        {NAV_ADMIN.map((e) => <NavItem key={e.id} entry={e} />)}
+                    </>
+                )}
+            </nav>
+        </aside>
+    )
+}
 
 function NavItem({ entry }: { entry: NavEntry }) {
     const pathname = useRouterState({ select: (s) => s.location.pathname })

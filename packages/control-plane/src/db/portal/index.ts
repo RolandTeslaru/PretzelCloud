@@ -31,6 +31,7 @@ export namespace PortalDB {
             display_name:       z.string(),
             avatar_url:         z.string().nullable(),
             stripe_customer_id: z.string().nullable(),
+            is_admin:           z.boolean(),
             created_at:         z.coerce.date(),
             updated_at:         z.coerce.date(),
         });
@@ -42,6 +43,7 @@ export namespace PortalDB {
             username:    row.username,
             displayName: row.display_name,
             avatarUrl:   row.avatar_url,
+            isAdmin:     row.is_admin,
             createdAt:   row.created_at,
             updatedAt:   row.updated_at,
         });
@@ -189,7 +191,7 @@ export namespace PortalDB {
     }
 
     export interface Tables {
-        users:             Table<typeof User.Row, Stamps>;
+        users:             Table<typeof User.Row, Stamps | 'is_admin'>;
         workspaces:        Table<typeof Workspace.Row, Stamps | 'lifecycle_state' | 'disabled_at' | 'disabled_reason' | 'abandoned_at'>;
         workspace_members: Table<typeof Member.Row, 'created_at'>;
         stripe_events:     Table<typeof StripeEvent.Row, 'received_at'>;

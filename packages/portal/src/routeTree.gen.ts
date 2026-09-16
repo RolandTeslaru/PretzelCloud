@@ -11,9 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppAdminRouteImport } from './routes/_app/admin'
 import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppUsageRouteImport } from './routes/_app/usage'
 import { Route as AuthIndexRouteImport } from './routes/auth/index'
+import { Route as AppAdminIndexRouteImport } from './routes/_app/admin/index'
+import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
+import { Route as AppAdminWorkspacesIndexRouteImport } from './routes/_app/admin/workspaces/index'
+import { Route as AppAdminWorkspacesWorkspaceIdRouteImport } from './routes/_app/admin/workspaces/$workspaceId'
 import { Route as AppCheckoutCancelledWorkspaceIdRouteImport } from './routes/_app/checkout/cancelled.$workspaceId'
 import { Route as AppCheckoutSuccessWorkspaceIdRouteImport } from './routes/_app/checkout/success.$workspaceId'
 
@@ -24,6 +29,11 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBillingRoute = AppBillingRouteImport.update({
@@ -41,6 +51,27 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   path: '/auth/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppAdminIndexRoute = AppAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminWorkspacesIndexRoute = AppAdminWorkspacesIndexRouteImport.update({
+  id: '/workspaces/',
+  path: '/workspaces/',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminWorkspacesWorkspaceIdRoute =
+  AppAdminWorkspacesWorkspaceIdRouteImport.update({
+    id: '/workspaces/$workspaceId',
+    path: '/workspaces/$workspaceId',
+    getParentRoute: () => AppAdminRoute,
+  } as any)
 const AppCheckoutCancelledWorkspaceIdRoute =
   AppCheckoutCancelledWorkspaceIdRouteImport.update({
     id: '/checkout/cancelled/$workspaceId',
@@ -56,56 +87,84 @@ const AppCheckoutSuccessWorkspaceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/admin': typeof AppAdminRouteWithChildren
   '/billing': typeof AppBillingRoute
   '/usage': typeof AppUsageRoute
   '/auth/': typeof AuthIndexRoute
+  '/admin/users': typeof AppAdminUsersRoute
+  '/admin/': typeof AppAdminIndexRoute
+  '/admin/workspaces/$workspaceId': typeof AppAdminWorkspacesWorkspaceIdRoute
   '/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
   '/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
+  '/admin/workspaces/': typeof AppAdminWorkspacesIndexRoute
 }
 export interface FileRoutesByTo {
   '/billing': typeof AppBillingRoute
   '/usage': typeof AppUsageRoute
   '/': typeof AppIndexRoute
   '/auth': typeof AuthIndexRoute
+  '/admin/users': typeof AppAdminUsersRoute
+  '/admin': typeof AppAdminIndexRoute
+  '/admin/workspaces/$workspaceId': typeof AppAdminWorkspacesWorkspaceIdRoute
   '/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
   '/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
+  '/admin/workspaces': typeof AppAdminWorkspacesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/admin': typeof AppAdminRouteWithChildren
   '/_app/billing': typeof AppBillingRoute
   '/_app/usage': typeof AppUsageRoute
   '/_app/': typeof AppIndexRoute
   '/auth/': typeof AuthIndexRoute
+  '/_app/admin/users': typeof AppAdminUsersRoute
+  '/_app/admin/': typeof AppAdminIndexRoute
+  '/_app/admin/workspaces/$workspaceId': typeof AppAdminWorkspacesWorkspaceIdRoute
   '/_app/checkout/cancelled/$workspaceId': typeof AppCheckoutCancelledWorkspaceIdRoute
   '/_app/checkout/success/$workspaceId': typeof AppCheckoutSuccessWorkspaceIdRoute
+  '/_app/admin/workspaces/': typeof AppAdminWorkspacesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/billing'
     | '/usage'
     | '/auth/'
+    | '/admin/users'
+    | '/admin/'
+    | '/admin/workspaces/$workspaceId'
     | '/checkout/cancelled/$workspaceId'
     | '/checkout/success/$workspaceId'
+    | '/admin/workspaces/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/billing'
     | '/usage'
     | '/'
     | '/auth'
+    | '/admin/users'
+    | '/admin'
+    | '/admin/workspaces/$workspaceId'
     | '/checkout/cancelled/$workspaceId'
     | '/checkout/success/$workspaceId'
+    | '/admin/workspaces'
   id:
     | '__root__'
     | '/_app'
+    | '/_app/admin'
     | '/_app/billing'
     | '/_app/usage'
     | '/_app/'
     | '/auth/'
+    | '/_app/admin/users'
+    | '/_app/admin/'
+    | '/_app/admin/workspaces/$workspaceId'
     | '/_app/checkout/cancelled/$workspaceId'
     | '/_app/checkout/success/$workspaceId'
+    | '/_app/admin/workspaces/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -129,6 +188,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/billing': {
       id: '/_app/billing'
       path: '/billing'
@@ -150,6 +216,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/admin/': {
+      id: '/_app/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AppAdminIndexRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/users': {
+      id: '/_app/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AppAdminUsersRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/workspaces/': {
+      id: '/_app/admin/workspaces/'
+      path: '/workspaces'
+      fullPath: '/admin/workspaces/'
+      preLoaderRoute: typeof AppAdminWorkspacesIndexRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/workspaces/$workspaceId': {
+      id: '/_app/admin/workspaces/$workspaceId'
+      path: '/workspaces/$workspaceId'
+      fullPath: '/admin/workspaces/$workspaceId'
+      preLoaderRoute: typeof AppAdminWorkspacesWorkspaceIdRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
     '/_app/checkout/cancelled/$workspaceId': {
       id: '/_app/checkout/cancelled/$workspaceId'
       path: '/checkout/cancelled/$workspaceId'
@@ -167,7 +261,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppAdminRouteChildren {
+  AppAdminUsersRoute: typeof AppAdminUsersRoute
+  AppAdminIndexRoute: typeof AppAdminIndexRoute
+  AppAdminWorkspacesWorkspaceIdRoute: typeof AppAdminWorkspacesWorkspaceIdRoute
+  AppAdminWorkspacesIndexRoute: typeof AppAdminWorkspacesIndexRoute
+}
+
+const AppAdminRouteChildren: AppAdminRouteChildren = {
+  AppAdminUsersRoute: AppAdminUsersRoute,
+  AppAdminIndexRoute: AppAdminIndexRoute,
+  AppAdminWorkspacesWorkspaceIdRoute: AppAdminWorkspacesWorkspaceIdRoute,
+  AppAdminWorkspacesIndexRoute: AppAdminWorkspacesIndexRoute,
+}
+
+const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
+  AppAdminRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRouteWithChildren
   AppBillingRoute: typeof AppBillingRoute
   AppUsageRoute: typeof AppUsageRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -176,6 +289,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRouteWithChildren,
   AppBillingRoute: AppBillingRoute,
   AppUsageRoute: AppUsageRoute,
   AppIndexRoute: AppIndexRoute,

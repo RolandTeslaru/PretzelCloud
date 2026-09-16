@@ -163,13 +163,8 @@ export class ProvisioningService {
             this.logger.warn(`Could not stop the machines of ${workspaceId}; destroying anyway: ${error instanceof Error ? error.message : error}`);
         }
 
-        // Machines gone from under the records must not keep the workspace alive.
-        try {
-            await this.hardware.destroy(workspaceId);
-        }
-        catch (error) {
-            this.logger.warn(`Could not destroy the hardware of ${workspaceId}; continuing: ${error instanceof Error ? error.message : error}`);
-        }
+        // Keep the workspace and its credentials available for a retry if cleanup fails.
+        await this.hardware.destroy(workspaceId);
 
         await this.hostname.delete(workspaceId);
         await this.siloSecrets.delete(workspaceId);

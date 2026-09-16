@@ -8,6 +8,8 @@ import { createEntitlementSDKActions, type _EntitlementSDKActions_ } from './act
 
 export const DEFAULT_WINDOW: Workspace.Usage.Window = 'week'
 
+const STALE_TIME = 30_000
+
 @SDK('Entitlement')
 export class EntitlementSDKImpl extends BaseSDK<EntitlementSDK.State> {
 
@@ -16,9 +18,44 @@ export class EntitlementSDKImpl extends BaseSDK<EntitlementSDK.State> {
     public readonly useStore: BaseSDK.Store<EntitlementSDK.State> = createWithEqualityFn(
         immer<EntitlementSDK.State>(() => ({
             windows: {},
+            reports: {},
+            series: {},
+            records: {},
         })),
         shallow
     )
+
+    public override cleanup() {
+        this.setState((s) => {
+            s.windows = {}
+            s.reports = {}
+            s.series = {}
+            s.records = {}
+        })
+    }
+
+    public readonly query = {
+        report: (workspaceId: Workspace.Id, actions: EntitlementSDK.UsageActions = this.actions, initialData?: Workspace.Usage.Report) => ({
+            queryKey: ['usage', 'report', workspaceId] as const,
+            queryFn:  () => actions.getUsageReport(workspaceId),
+            staleTime: STALE_TIME,
+            initialData,
+        }),
+        series: (workspaceId: Workspace.Id, actions: EntitlementSDK.UsageActions = this.actions) => ({
+            queryKey: ['usage', 'series', workspaceId] as const,
+            queryFn:  () => actions.getUsageSeries(workspaceId),
+            staleTime: STALE_TIME,
+        }),
+        records: (workspaceId: Workspace.Id, actions: EntitlementSDK.UsageActions = this.actions) => {
+            const window = this.state.windows[workspaceId] ?? DEFAULT_WINDOW
+
+            return {
+                queryKey: ['usage', 'records', workspaceId, window] as const,
+                queryFn:  () => actions.listUsage(workspaceId, window),
+                staleTime: STALE_TIME,
+            }
+        },
+    }
 
     public readonly actions: EntitlementSDK.Actions = createEntitlementSDKActions(this)
 }
@@ -30,7 +67,11 @@ export namespace EntitlementSDK {
         // Kept here rather than in each table, so a window survives navigating
         // away and back. Absent means DEFAULT_WINDOW.
         windows: Partial<Record<Workspace.Id, Workspace.Usage.Window>>
+        reports: Partial<Record<Workspace.Id, Workspace.Usage.Report>>
+        series: Partial<Record<Workspace.Id, Workspace.Usage.Point[]>>
+        records: Partial<Record<Workspace.Id, Partial<Record<Workspace.Usage.Window, Workspace.Usage[]>>>>
     }
 
     export type Actions = _EntitlementSDKActions_
+    export type UsageActions = Pick<Actions, 'listUsage' | 'getUsageReport' | 'getUsageSeries'>
 }

@@ -1,4 +1,5 @@
 export { User } from "./User"
+export { Admin } from "./Admin"
 export { Workspace } from "./Workspace"
 export { Plan } from "./Plan"
 export { Billing } from "./Billing"

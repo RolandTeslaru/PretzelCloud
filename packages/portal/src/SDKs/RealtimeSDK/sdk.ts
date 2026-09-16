@@ -158,6 +158,14 @@ export class RealtimeSDKImpl extends BaseSDK<RealtimeSDK.State> {
             this.socket = null;
         }
     }
+
+    public override cleanup() {
+        this.disconnect();
+        this.listeners.clear();
+        this.currentUrl = null;
+        this.reconnectAttempts = 0;
+        this.setState((s) => { s.isConnected = false; });
+    }
 }
 
 export const RealtimeSDK = SDK.get<RealtimeSDKImpl>("Realtime")

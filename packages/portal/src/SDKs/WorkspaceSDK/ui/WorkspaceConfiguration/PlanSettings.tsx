@@ -1,15 +1,19 @@
-import { Badge, Button, Spinner } from '@pretzel-graph/standard-ui/foundations'
+import { Badge, Button, Skeleton, Spinner } from '@pretzel-graph/standard-ui/foundations'
 import { SystemIcons } from '@pretzel-graph/standard-ui/icons'
 import { Plan, type Workspace } from '@pretzel-cloud/shared/domain'
 import { BillingSDK } from '@/SDKs/BillingSDK'
 import { WorkspaceSDK } from '../../sdk'
+
+const PLAN_SKELETONS = [0, 1, 2]
 
 export const PlanSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialogId: string }) => {
     const workspace = WorkspaceSDK.useStore((s) => s.workspaces[workspaceId])
 
     const busy = BillingSDK.useStore((s) => s.pending)
 
-    const plansById = WorkspaceSDK.useStore((s) => s.plans)
+    const [plansById, [plansRequest]] = WorkspaceSDK.useWith((s) => s.plans, [WorkspaceSDK.query.plansList])
+
+    const isLoadingPlans = plansRequest.isPending && Object.keys(plansById).length === 0
 
     if (!workspace) return null
 
@@ -25,6 +29,16 @@ export const PlanSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialo
             </div>
 
             <div className="flex flex-col gap-3">
+                {isLoadingPlans && PLAN_SKELETONS.map((index) => (
+                    <div key={index} className="flex flex-col gap-1.5 py-1">
+                        <div className="flex items-center gap-2">
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="h-3 w-16" />
+                        </div>
+                        <Skeleton className="h-3 w-56" />
+                    </div>
+                ))}
+
                 {Object.values(plansById).map((plan) => {
                     const current = workspace.plan.id === plan.id
 

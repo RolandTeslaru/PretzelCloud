@@ -20,13 +20,26 @@ export function createEntitlementSDKActions(sdk: EntitlementSDKImpl): _Entitleme
         listUsage: async (workspaceId, window) => {
             const { records } = await Workspace.API.listUsage(api, workspaceId, window)
 
+            setState((s) => {
+                s.records[workspaceId] ??= {}
+                s.records[workspaceId][window] = records
+            })
+
             return records
         },
 
-        getUsageReport: (workspaceId) => Workspace.API.getUsageReport(api, workspaceId),
+        getUsageReport: async (workspaceId) => {
+            const report = await Workspace.API.getUsageReport(api, workspaceId)
+
+            setState((s) => { s.reports[workspaceId] = report })
+
+            return report
+        },
 
         getUsageSeries: async (workspaceId) => {
             const { points } = await Workspace.API.getUsageSeries(api, workspaceId)
+
+            setState((s) => { s.series[workspaceId] = points })
 
             return points
         },

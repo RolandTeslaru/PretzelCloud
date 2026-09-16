@@ -32,6 +32,11 @@ const getStarterMeta = (listing: Listing) => {
 @Injectable()
 export class SiloDatabase {
 
+    /** Membership and API keys cascade; shared content keeps its rows with blank attribution. */
+    public async deleteUser(trx: Trx, userId: User.Id): Promise<void> {
+        await trx.deleteFrom('users').where('id', '=', userId).execute();
+    }
+
     /** Idempotent. Refuses a second owner rather than adding one. */
     public async seedOwner(trx: Trx, owner: User): Promise<void> {
         // Locked, so a concurrent seed waits rather than writing a second owner.

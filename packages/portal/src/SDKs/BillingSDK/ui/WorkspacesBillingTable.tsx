@@ -11,7 +11,7 @@ import {
     tableFeatures,
     useTable,
 } from '@tanstack/react-table'
-import { Badge, Button, Table } from '@pretzel-graph/standard-ui/foundations'
+import { Badge, Button, Spinner, Table } from '@pretzel-graph/standard-ui/foundations'
 import { Plan, type Workspace } from '@pretzel-cloud/shared/domain'
 import { FilterHeader, SortIcon, getFacets, includesSome } from '@/components/table-headers'
 import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
@@ -116,7 +116,7 @@ const columns: ColumnDef<typeof features, Workspace, any>[] = [
                 size='sm'
                 variant='ghost'
                 className='h-7 text-xs'
-                onClick={() => WorkspaceSDK.openConfigurationDialog(getValue() as Workspace.Id, 'plan')}
+                onClick={() => WorkspaceSDK.dialogs.openConfiguration(getValue() as Workspace.Id, 'plan')}
             >
                 Change plan
             </Button>
@@ -135,7 +135,10 @@ const HEAD_WIDTH: Record<string, string> = {
 const EMPTY_FACETS = new Map<unknown, number>()
 
 export function WorkspacesBillingTable() {
-    const workspacesById = WorkspaceSDK.useStore((s) => s.workspaces)
+    const [workspacesById, [request]] = WorkspaceSDK.useWith(
+        (s) => s.workspaces,
+        [WorkspaceSDK.query.workspacesList],
+    )
 
     const workspaces = useMemo(() => Object.values(workspacesById), [workspacesById])
 
@@ -156,7 +159,8 @@ export function WorkspacesBillingTable() {
     const facets = useMemo(() => getFacets(workspaces, FILTERABLE, filters), [workspaces, filters])
 
     const emptyMessage =
-        workspaces.length === 0 ? 'No workspaces yet.'
+        request.error ? 'Could not load workspaces.'
+            : workspaces.length === 0 ? 'No workspaces yet.'
             : rows.length === 0 ? 'No workspaces match these filters.'
                 : null
 
@@ -214,7 +218,17 @@ export function WorkspacesBillingTable() {
                 </Table.Header>
 
                 <Table.Body>
-                    {emptyMessage
+                    {request.isPending && workspaces.length === 0
+                        ? (
+                            <Table.Row className='hover:bg-transparent'>
+                                <Table.Cell colSpan={columns.length}>
+                                    <div role='status' className='flex justify-center py-10'>
+                                        <Spinner className='size-4' />
+                                    </div>
+                                </Table.Cell>
+                            </Table.Row>
+                        )
+                        : emptyMessage
                         ? (
                             <Table.Row className='hover:bg-transparent'>
                                 <Table.Cell colSpan={columns.length}>

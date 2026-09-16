@@ -3,6 +3,7 @@
     "version": "0.0.1",
     "private": true,
     "scripts": {
+        "test:admin": "ts-node -r tsconfig-paths/register scripts/admin.spec.ts",
         "migrate": "ts-node -r tsconfig-paths/register src/db/migrate.ts",
         "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && cp -R migrations dist/control-plane/migrations",
         "start": "node dist/control-plane/src/main.js",

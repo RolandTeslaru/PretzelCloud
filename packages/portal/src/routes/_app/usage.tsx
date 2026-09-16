@@ -4,8 +4,8 @@ import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
 import { WorkspaceUsage } from '@/SDKs/EntitlementSDK/ui/WorkspaceUsage'
 
 export const Route = createFileRoute('/_app/usage')({
-    loader: async () => {
-        await WorkspaceSDK.fetchWorkspaces().catch(() => null)
+    loader: () => {
+        void WorkspaceSDK.prefetch(WorkspaceSDK.query.workspacesList)
 
         return null
     },
@@ -14,9 +14,12 @@ export const Route = createFileRoute('/_app/usage')({
 })
 
 function UsagePage() {
-    const { isPending } = WorkspaceSDK.useWorkspacesQuery()
+    const [workspacesById, [request]] = WorkspaceSDK.useWith(
+        (s) => s.workspaces,
+        [WorkspaceSDK.query.workspacesList],
+    )
 
-    const workspacesById = WorkspaceSDK.useStore((s) => s.workspaces)
+    const { isPending } = request
 
     const workspaces = Object.values(workspacesById)
 

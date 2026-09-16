@@ -99,23 +99,11 @@ export class WorkspaceController {
         return {};
     }
 
-    @Patch(':workspaceId/plan')
-    @Scoped('workspace')
-    @RequireOwner()
-    async setPlan(
-        @WorkspaceScope() workspace: Workspace,
-        @ZodBody(API.SetPlan.Request) body: Workspace.API.SetPlan.Request,
-    ): Promise<Workspace.API.SetPlan.Response> {
-        await this.workspaceService.setPlan(workspace.id, workspace.ownerId, body.planId);
-
-        return {};
-    }
-
     @Post(':workspaceId/start')
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async start(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         // Accepted, not done: bringing a workspace up waits on machines, and a
@@ -131,7 +119,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async stop(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.stop(workspaceId)
@@ -144,7 +132,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async suspend(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.suspend(workspaceId)
@@ -157,7 +145,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async rebuild(@WorkspaceScope() workspace: Workspace): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.rebuild(workspace.id, workspace.ownerId, workspace.plan.id)
@@ -170,7 +158,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async update(
         @WorkspaceScope() workspace: Workspace,
@@ -186,7 +174,7 @@ export class WorkspaceController {
     @Scoped('workspace')
     @RequireOwner()
     @RequireEnabled()
-    @RefuseIfBusy()
+    @RefuseIfBusy('workspace')
     @HttpCode(202)
     async restart(@WorkspaceIdParam() workspaceId: Workspace.Id): Promise<Workspace.API.Lifecycle.Response> {
         void this.workspaceService.restart(workspaceId)
@@ -199,11 +187,14 @@ export class WorkspaceController {
     @Delete(':workspaceId')
     @Scoped('workspace')
     @RequireOwner()
+    @RefuseIfBusy('workspace', 1)
+    @HttpCode(202)
     async destroy(
         @AuthenticatedUser() principal: Principal.User,
-        @WorkspaceIdParam() workspaceId: Workspace.Id,
+        @WorkspaceScope() workspace: Workspace,
     ): Promise<Workspace.API.Destroy.Response> {
-        await this.workspaceService.destroy(principal, workspaceId);
+        void this.workspaceService.destroy(principal, workspace)
+            .catch((error: unknown) => this.logger.error(`Destroying ${workspace.id} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};
     }

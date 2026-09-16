@@ -288,6 +288,19 @@ export namespace Workspace {
 
         export const Destroyed = Base.extend({ type: z.literal('destroyed') })
 
+        export namespace Destroy {
+
+            export const Started = Base.extend({ type: z.literal('destroy:started') })
+
+            export const Failed = Base.extend({
+                type:   z.literal('destroy:failed'),
+                reason: z.string(),
+            })
+
+            export type  Started = z.infer<typeof Started>
+            export type  Failed = z.infer<typeof Failed>
+        }
+
         export namespace Rebuild {
 
             export const Started = Base.extend({ type: z.literal('rebuild:started') })
@@ -377,6 +390,8 @@ export namespace Workspace {
             LifecycleChanged,
             PlanChanged,
             Destroyed,
+            Destroy.Started,
+            Destroy.Failed,
             HardwareStatistics,
             Provisioning.Step,
             Provisioning.StepFailed,
@@ -478,11 +493,6 @@ export namespace Workspace {
             export type  Request = z.infer<typeof Request>
             export const Response = z.object({})
             export type  Response = z.infer<typeof Response>
-        }
-
-        export async function setPlan(api: AxiosInstance, workspaceId: Id, req: SetPlan.Request): Promise<SetPlan.Response> {
-            const { data } = await api.patch<SetPlan.Response>(`/api/workspaces/${workspaceId}/plan`, req)
-            return SetPlan.Response.parse(data)
         }
 
         // One route per action: the verb is the request, nothing dispatches on it.

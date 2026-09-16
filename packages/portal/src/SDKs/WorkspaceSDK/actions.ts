@@ -17,7 +17,6 @@ export type _WorkspaceSDKActions_ = {
     rebuild:      (workspaceId: Workspace.Id) => Promise<void>
     /** Moves the workspace to the given release; the rebuild events narrate it. */
     update:       (workspaceId: Workspace.Id, releaseId: Fleet.Release.Id) => Promise<void>
-    setPlan:      (workspaceId: Workspace.Id, planId: Plan.Id) => Promise<Workspace>
     applyEvent:   (event: Workspace.Event.Any) => void
     /** The catalogue. Which plan a workspace is on it carries itself. */
     plans: {
@@ -36,6 +35,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
 
             delete s.transitions[workspace.id]
             delete s.rebuilding[workspace.id]
+            delete s.destroying[workspace.id]
             delete s.provisioning[workspace.id]
         })
     }
@@ -50,6 +50,7 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                 s.workspaces = workspacesById
                 s.transitions = {}
                 s.rebuilding = {}
+                s.destroying = {}
                 s.provisioning = {}
                 s.hardwareStatistics = hardwareStatistics ?? {}
             })
@@ -95,10 +96,6 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
 
         destroy: async (workspaceId) => {
             await Workspace.API.destroy(api, workspaceId)
-
-            setState((s) => {
-                delete s.workspaces[workspaceId]
-            })
         },
 
         // Accepted, not done: the request returns before the machine has moved,
@@ -111,14 +108,6 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
         rebuild: async (workspaceId) => { await Workspace.API.rebuild(api, workspaceId) },
 
         update: async (workspaceId, releaseId) => { await Workspace.API.update(api, workspaceId, releaseId) },
-
-        // The plan decides the topology, so the machines are rebuilt behind
-        // this — re-read rather than patching the plan in place.
-        setPlan: async (workspaceId, planId) => {
-            await Workspace.API.setPlan(api, workspaceId, { planId })
-
-            return sdk.actions.refresh(workspaceId)
-        },
 
         plans: {
             list: async () => {
@@ -148,9 +137,15 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
         applyEvent: (event) => {
             setState((s) => {
                 if (event.type === 'destroyed') {
+                    const destroyed = s.workspaces[event.workspaceId]
+
+                    if (destroyed)
+                        NotificationSDK.toast.success(`${destroyed.displayName} destroyed`)
+
                     delete s.workspaces[event.workspaceId]
                     delete s.transitions[event.workspaceId]
                     delete s.rebuilding[event.workspaceId]
+                    delete s.destroying[event.workspaceId]
                     delete s.updating[event.workspaceId]
                     delete s.provisioning[event.workspaceId]
                     delete s.hardwareStatistics[event.workspaceId]
@@ -223,6 +218,18 @@ export function createWorkspaceSDKActions(sdk: WorkspaceSDKImpl): _WorkspaceSDKA
                         delete s.updating[event.workspaceId]
 
                         NotificationSDK.toast.error(`Could not update ${card.displayName} to ${event.releaseName}`, { description: event.reason })
+
+                        break
+
+                    case 'destroy:started':
+                        s.destroying[event.workspaceId] = true
+
+                        break
+
+                    case 'destroy:failed':
+                        delete s.destroying[event.workspaceId]
+
+                        NotificationSDK.toast.error(`Could not destroy ${card.displayName}`, { description: event.reason })
 
                         break
 

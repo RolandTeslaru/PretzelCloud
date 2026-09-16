@@ -105,8 +105,6 @@ export const openDestroyDialog = (sdk: WorkspaceSDKImpl, workspaceId: Workspace.
                 try {
                     await sdk.actions.destroy(workspaceId)
 
-                    NotificationSDK.toast.success(`${workspace.displayName} destroyed`)
-
                     DialogSDK.actions.pop(configurationDialogId(workspaceId))
                 }
                 catch {

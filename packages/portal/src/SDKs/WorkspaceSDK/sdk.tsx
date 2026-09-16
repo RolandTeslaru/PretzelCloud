@@ -7,13 +7,17 @@ import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createWorkspaceSDKActions, type _WorkspaceSDKActions_ } from './actions'
 import { workspaceSelectors, type WorkspaceSDKSelectors } from './selectors'
-import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
-import { openConfigurationDialog, openCreateWorkspaceDialog, openDestroyDialog, openUpdateDialog } from './open-dialogs'
+import { _createWorkspaceDialogs_, type _WorkspaceSDKDialogs } from './dialogs'
 
 const WORKSPACES_STALE_TIME = 30_000
 
 // Plans change on the order of never, so a session reads them once.
 const PLANS_STALE_TIME = Infinity
+
+const QUERY_OPTIONS = {
+    retry: 5,
+    retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
+}
 
 @SDK('Workspace')
 export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
@@ -26,6 +30,7 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
             plans: {},
             transitions: {},
             rebuilding: {},
+            destroying: {},
             updating: {},
             provisioning: {},
             hardwareStatistics: {},
@@ -36,51 +41,41 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
 
     public readonly selectors: WorkspaceSDK.Selectors = workspaceSelectors
 
+    public override cleanup() {
+        this.setState((s) => {
+            s.workspaces = {}
+            s.plans = {}
+            s.transitions = {}
+            s.rebuilding = {}
+            s.destroying = {}
+            s.updating = {}
+            s.provisioning = {}
+            s.hardwareStatistics = {}
+        })
+    }
+
     /** One entry per workspace the store holds, for as long as it holds it. */
     public readonly runtime = {
         unsubscribeByWorkspaceId: new Map<Workspace.Id, () => void>()
     }
 
-    /** One descriptor, so every caller names the same cache entry. */
-    private readonly workspacesQuery = {
-        queryKey:  ['workspaces'] as const,
-        queryFn:   () => this.actions.list(),
-        staleTime: WORKSPACES_STALE_TIME,
+    public readonly query = {
+        workspacesList: {
+            ...QUERY_OPTIONS,
+            queryKey:  ['workspaces'] as const,
+            queryFn:   () => this.actions.list(),
+            staleTime: WORKSPACES_STALE_TIME,
+        },
+        plansList: {
+            ...QUERY_OPTIONS,
+            queryKey:  ['plans'] as const,
+            queryFn:   () => this.actions.plans.list(),
+            staleTime: PLANS_STALE_TIME,
+        },
     }
-
-    /** Seeds the store; the subscription below keeps it live from there. */
-    public useWorkspacesQuery = () => QuerySDK.useQuery<Record<Workspace.Id, Workspace>, Error>(
-        this.workspacesQuery.queryKey,
-        this.workspacesQuery.queryFn,
-        { staleTime: this.workspacesQuery.staleTime },
-    )
-
-    /** The same query for route loaders, which run before anything renders. */
-    public fetchWorkspaces = () => QuerySDK.client.fetchQuery(this.workspacesQuery)
-
-    private readonly plansQuery = {
-        queryKey:  ['plans'] as const,
-        queryFn:   () => this.actions.plans.list(),
-        staleTime: PLANS_STALE_TIME,
-    }
-
-    public usePlansQuery = () => QuerySDK.useQuery<Record<Plan.Id, Plan>, Error>(
-        this.plansQuery.queryKey,
-        this.plansQuery.queryFn,
-        { staleTime: this.plansQuery.staleTime },
-    )
-
-    public fetchPlans = () => QuerySDK.client.fetchQuery(this.plansQuery)
-
-    public openCreateWorkspaceDialog = openCreateWorkspaceDialog
-
-    public openConfigurationDialog = openConfigurationDialog
-
-    public openUpdateDialog = openUpdateDialog
-
-    public openDestroyDialog = (workspaceId: Workspace.Id) => openDestroyDialog(this, workspaceId)
 
     public readonly actions: WorkspaceSDK.Actions = createWorkspaceSDKActions(this)
+    public readonly dialogs: WorkspaceSDK.Dialogs = _createWorkspaceDialogs_(this)
 }
 
 export const WorkspaceSDK = SDK.get<WorkspaceSDKImpl>('Workspace')
@@ -119,6 +114,8 @@ export namespace WorkspaceSDK {
         plans: Record<Plan.Id, Plan>
         transitions: Partial<Record<Workspace.Id, Workspace.Lifecycle.Action>>
         rebuilding: Partial<Record<Workspace.Id, boolean>>
+        /** Held from `destroy:started` until the workspace is gone or the destroy fails. */
+        destroying: Partial<Record<Workspace.Id, boolean>>
         /** The release name a workspace is moving to, while it moves. */
         updating: Partial<Record<Workspace.Id, string>>
         provisioning: Partial<Record<Workspace.Id, Workspace.Provisioning.Step>>
@@ -133,4 +130,5 @@ export namespace WorkspaceSDK {
 
     export type Selectors = WorkspaceSDKSelectors
     export type Actions = _WorkspaceSDKActions_
+    export type Dialogs = _WorkspaceSDKDialogs
 }

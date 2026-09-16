@@ -4,7 +4,7 @@ import { PortalDB } from '@/db/portal';
 import { Repository, Transactional } from '@/db/repository';
 import { Principal } from '@/auth/identity/principal';
 
-/** Row operations on `users`, plus the ownership index a user may see. */
+/** Row operations on `users`. */
 @Injectable()
 export class UserRepository extends Repository(PortalDB) {
 
@@ -58,15 +58,6 @@ export class UserRepository extends Repository(PortalDB) {
         await this.trx
             .deleteFrom('users')
             .where('id', '=', userId)
-            .execute();
-    }
-
-    @Transactional('user')
-    public async getOwnedWorkspaceIds(principal: Principal.User) {
-        return this.trx
-            .selectFrom('workspaces')
-            .select('id')
-            .where('owner_id', '=', principal.userId)
             .execute();
     }
 }
