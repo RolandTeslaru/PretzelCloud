@@ -8,7 +8,7 @@ import { WorkspaceSDK } from '@/SDKs/WorkspaceSDK/sdk'
 
 export const Route = createFileRoute('/_app/checkout/success/$workspaceId')({
     loader: async () => {
-        await WorkspaceSDK.fetchWorkspaces().catch(() => null)
+        await WorkspaceSDK.fetch(WorkspaceSDK.query.workspacesList).catch(() => null)
 
         return null
     },

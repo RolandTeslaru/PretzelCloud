@@ -64,16 +64,16 @@ const SortMenu = ({ sort, onChange }: {
  * refetch.
  */
 export const WorkspacesGrid = () => {
-
-    // Keep so the data stays fresh
-    const { error, isPending } = WorkspaceSDK.useWorkspacesQuery()
-
     const [query, setQuery] = useState('')
 
     const [sort, setSort] = useState<WorkspaceSDK.Sort>(DEFAULT_SORT)
 
-    const filteredWorkspaces = WorkspaceSDK.useStore((s) => s.selectors.matching(s, query, sort))
+    const [filteredWorkspaces, [request]] = WorkspaceSDK.use(
+        (s) => s.selectors.matching(s, query, sort),
+        [WorkspaceSDK.query.workspacesList],
+    )
 
+    const { error, isPending } = request
 
     return (
         <>

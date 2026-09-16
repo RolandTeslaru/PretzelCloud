@@ -7,7 +7,7 @@ import { WorkspacesBillingTable } from '@/SDKs/BillingSDK/ui/WorkspacesBillingTa
 
 export const Route = createFileRoute('/_app/billing')({
     loader: async () => {
-        await WorkspaceSDK.fetchWorkspaces().catch(() => null)
+        await WorkspaceSDK.fetch(WorkspaceSDK.query.workspacesList).catch(() => null)
 
         return null
     },

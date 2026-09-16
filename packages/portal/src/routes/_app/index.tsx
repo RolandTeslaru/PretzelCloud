@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_app/')({
         // Fire and forget: badges appear when the answer lands.
         void ReleaseSDK.fetchLatest().catch(() => null)
 
-        await WorkspaceSDK.fetchWorkspaces().catch((error) => {
+        await WorkspaceSDK.fetch(WorkspaceSDK.query.workspacesList).catch((error) => {
             console.error('Workspace list failed to load:', error)
 
             return null

@@ -30,7 +30,7 @@ export const Route = createFileRoute('/_app')({
     // Every page beneath this names a plan somewhere, and they change on the
     // order of never. A failure is swallowed so the shell still mounts.
     loader: async () => {
-        await WorkspaceSDK.fetchPlans().catch(() => null)
+        await WorkspaceSDK.fetch(WorkspaceSDK.query.plansList).catch(() => null)
 
         return null
     },

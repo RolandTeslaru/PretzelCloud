@@ -7,13 +7,17 @@ import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createWorkspaceSDKActions, type _WorkspaceSDKActions_ } from './actions'
 import { workspaceSelectors, type WorkspaceSDKSelectors } from './selectors'
-import { QuerySDK } from '@pretzel-graph/standard-ui/SDKs/QuerySDK/sdk'
 import { _createWorkspaceDialogs_, type _WorkspaceSDKDialogs } from './dialogs'
 
 const WORKSPACES_STALE_TIME = 30_000
 
 // Plans change on the order of never, so a session reads them once.
 const PLANS_STALE_TIME = Infinity
+
+const QUERY_OPTIONS = {
+    retry: 5,
+    retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
+}
 
 @SDK('Workspace')
 export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
@@ -41,36 +45,20 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
         unsubscribeByWorkspaceId: new Map<Workspace.Id, () => void>()
     }
 
-    /** One descriptor, so every caller names the same cache entry. */
-    private readonly workspacesQuery = {
-        queryKey:  ['workspaces'] as const,
-        queryFn:   () => this.actions.list(),
-        staleTime: WORKSPACES_STALE_TIME,
+    public readonly query = {
+        workspacesList: {
+            ...QUERY_OPTIONS,
+            queryKey:  ['workspaces'] as const,
+            queryFn:   () => this.actions.list(),
+            staleTime: WORKSPACES_STALE_TIME,
+        },
+        plansList: {
+            ...QUERY_OPTIONS,
+            queryKey:  ['plans'] as const,
+            queryFn:   () => this.actions.plans.list(),
+            staleTime: PLANS_STALE_TIME,
+        },
     }
-
-    /** Seeds the store; the subscription below keeps it live from there. */
-    public useWorkspacesQuery = () => QuerySDK.useQuery<Record<Workspace.Id, Workspace>, Error>(
-        this.workspacesQuery.queryKey,
-        this.workspacesQuery.queryFn,
-        { staleTime: this.workspacesQuery.staleTime },
-    )
-
-    /** The same query for route loaders, which run before anything renders. */
-    public fetchWorkspaces = () => QuerySDK.client.fetchQuery(this.workspacesQuery)
-
-    private readonly plansQuery = {
-        queryKey:  ['plans'] as const,
-        queryFn:   () => this.actions.plans.list(),
-        staleTime: PLANS_STALE_TIME,
-    }
-
-    public usePlansQuery = () => QuerySDK.useQuery<Record<Plan.Id, Plan>, Error>(
-        this.plansQuery.queryKey,
-        this.plansQuery.queryFn,
-        { staleTime: this.plansQuery.staleTime },
-    )
-
-    public fetchPlans = () => QuerySDK.client.fetchQuery(this.plansQuery)
 
     public readonly actions: WorkspaceSDK.Actions = createWorkspaceSDKActions(this)
     public readonly dialogs: WorkspaceSDK.Dialogs = _createWorkspaceDialogs_(this)
