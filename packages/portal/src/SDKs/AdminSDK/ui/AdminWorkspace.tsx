@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Workspace } from '@pretzel-cloud/shared/domain'
+import { Tabs } from '@pretzel-graph/standard-ui/foundations'
 import { WorkspaceUsage } from '../../EntitlementSDK/ui/WorkspaceUsage'
 import { DatabaseStatistic } from '../../WorkspaceSDK/ui/WorkspacesGrid/DatabaseStatistic'
 import { MachineStatistic } from '../../WorkspaceSDK/ui/WorkspacesGrid/MachineStatistic'
@@ -13,13 +14,6 @@ const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
     <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{label}</p>
         <div className="text-sm break-all">{children}</div>
-    </div>
-)
-
-const Section = ({ title, children }: { title: string; children: ReactNode }) => (
-    <div className="space-y-3">
-        <h3 className="text-sm font-medium">{title}</h3>
-        {children}
     </div>
 )
 
@@ -60,52 +54,63 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                 <AdminWorkspaceActions summary={{ workspace, owner }} onDeleted={() => void navigate({ to: '/admin/workspaces' })} />
             </div>
 
-            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
-                <Fact label="Owner">
-                    <p>{owner.displayName}</p>
-                    <p className="text-xs text-muted-foreground">{owner.email}</p>
-                </Fact>
-                <Fact label="Plan">{workspace.plan.displayName}</Fact>
-                <Fact label="Subscription">
-                    {workspace.subscriptionStatus ?? 'none'}
-                    {workspace.currentPeriodEnd && <p className="text-xs text-muted-foreground">renews {workspace.currentPeriodEnd.toLocaleDateString()}</p>}
-                </Fact>
-                <Fact label="Region">{workspace.region ?? '—'}</Fact>
-                <Fact label="Release">{workspace.releaseName ?? '—'}</Fact>
-                <Fact label="Created">{workspace.createdAt.toLocaleDateString()}</Fact>
-                <Fact label="Subdomain">{workspace.subdomain ?? '—'}</Fact>
-                <Fact label="App">
-                    <a href={workspace.appUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{workspace.appUrl}</a>
-                </Fact>
-            </div>
+            <Tabs.Root defaultValue="general" className="gap-4">
+                <Tabs.List size="sm" className="w-fit mr-auto justify-start overflow-x-auto">
+                    <Tabs.Trigger value="general">General</Tabs.Trigger>
+                    <Tabs.Trigger value="usage">Execution usage</Tabs.Trigger>
+                    <Tabs.Trigger value="hardware">Hardware</Tabs.Trigger>
+                    <Tabs.Trigger value="members">Members ({members.length})</Tabs.Trigger>
+                </Tabs.List>
 
-            <Section title="Execution usage">
-                <WorkspaceUsage workspace={workspace} actions={AdminSDK.actions.usage} initialReport={usage} showWorkspaceName={false} />
-            </Section>
-
-            <Section title="Hardware">
-                {hardwareStatistics ? (
-                    <div className="space-y-3">
-                        {hardwareStatistics.databaseSizeBytes !== null && <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes} />}
-                        {machines.map(([machineId, statistics]) => <MachineStatistic key={machineId} machineStatistics={statistics} />)}
-                        <p className="text-xs text-muted-foreground">Captured {hardwareStatistics.capturedAt.toLocaleString()}</p>
+                <Tabs.Content value="general">
+                    <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+                        <Fact label="Owner">
+                            <p>{owner.displayName}</p>
+                            <p className="text-xs text-muted-foreground">{owner.email}</p>
+                        </Fact>
+                        <Fact label="Plan">{workspace.plan.displayName}</Fact>
+                        <Fact label="Subscription">
+                            {workspace.subscriptionStatus ?? 'none'}
+                            {workspace.currentPeriodEnd && <p className="text-xs text-muted-foreground">renews {workspace.currentPeriodEnd.toLocaleDateString()}</p>}
+                        </Fact>
+                        <Fact label="Region">{workspace.region ?? '—'}</Fact>
+                        <Fact label="Release">{workspace.releaseName ?? '—'}</Fact>
+                        <Fact label="Created">{workspace.createdAt.toLocaleDateString()}</Fact>
+                        <Fact label="Subdomain">{workspace.subdomain ?? '—'}</Fact>
+                        <Fact label="App">
+                            <a href={workspace.appUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{workspace.appUrl}</a>
+                        </Fact>
                     </div>
-                ) : (
-                    <p className="text-sm text-muted-foreground">No readings while the machines are down.</p>
-                )}
-            </Section>
+                </Tabs.Content>
 
-            <Section title={`Members (${members.length})`}>
-                <div className="space-y-2">
-                    {members.map((member) => (
-                        <div key={member.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-                            <span>{member.displayName}</span>
-                            <span className="text-xs text-muted-foreground break-all">{member.email}</span>
-                            {member.id === owner.id && <span className="text-xs text-muted-foreground">owner</span>}
+                <Tabs.Content value="usage">
+                    <WorkspaceUsage workspace={workspace} actions={AdminSDK.actions.usage} initialReport={usage} showWorkspaceName={false} />
+                </Tabs.Content>
+
+                <Tabs.Content value="hardware">
+                    {hardwareStatistics ? (
+                        <div className="space-y-3">
+                            {hardwareStatistics.databaseSizeBytes !== null && <DatabaseStatistic databaseSizeBytes={hardwareStatistics.databaseSizeBytes} />}
+                            {machines.map(([machineId, statistics]) => <MachineStatistic key={machineId} machineStatistics={statistics} />)}
+                            <p className="text-xs text-muted-foreground">Captured {hardwareStatistics.capturedAt.toLocaleString()}</p>
                         </div>
-                    ))}
-                </div>
-            </Section>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">No readings while the machines are down.</p>
+                    )}
+                </Tabs.Content>
+
+                <Tabs.Content value="members">
+                    <div className="space-y-2">
+                        {members.map((member) => (
+                            <div key={member.id} className="flex flex-wrap items-baseline gap-2 text-sm">
+                                <span>{member.displayName}</span>
+                                <span className="text-xs text-muted-foreground break-all">{member.email}</span>
+                                {member.id === owner.id && <span className="text-xs text-muted-foreground">owner</span>}
+                            </div>
+                        ))}
+                    </div>
+                </Tabs.Content>
+            </Tabs.Root>
         </section>
     )
 }
