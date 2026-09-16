@@ -573,18 +573,29 @@ export class WorkspaceService {
     public async destroy(principal: Principal.User | Principal.Service, workspace: Workspace): Promise<void> {
         const { id: workspaceId, subdomain } = workspace;
 
-        if (workspace.lifecycleState === 'creating')
-            throw new ConflictException('This workspace is still being created. Retry when provisioning finishes.');
+        this.emit(workspaceId, createEvent('destroy:started', {}));
 
-        await this.billing.cancelSubscription(workspaceId);
+        try {
+            if (workspace.lifecycleState === 'creating')
+                throw new ConflictException('This workspace is still being created. Retry when provisioning finishes.');
 
-        this.permission.invalidateCloudToken(workspaceId);
+            await this.billing.cancelSubscription(workspaceId);
 
-        await this.provisioning.deprovision(workspaceId);
+            this.permission.invalidateCloudToken(workspaceId);
 
-        await this.listing.deleteAllForWorkspace(workspaceId);
+            await this.provisioning.deprovision(workspaceId);
 
-        await this.repository.delete(principal, workspaceId);
+            await this.listing.deleteAllForWorkspace(workspaceId);
+
+            await this.repository.delete(principal, workspaceId);
+        }
+        catch (error) {
+            this.emit(workspaceId, createEvent('destroy:failed', {
+                reason: error instanceof Error ? error.message : String(error),
+            }));
+
+            throw error;
+        }
 
         // After the row goes, so the refill finds nothing.
         this.siloRouter.invalidate(workspaceId, [subdomain]);

@@ -76,7 +76,7 @@ function harness() {
         permission: { invalidateCloudToken: () => { calls.push('token'); } },
         listing: { deleteAllForWorkspace: step('listings') },
         siloRouter: { invalidate: () => { calls.push('router'); } },
-        realtime: { publish: () => { calls.push('event'); } },
+        realtime: { publish: (_channel: string, event: { type: string }) => { calls.push(event.type); } },
     }) as WorkspaceService;
     const adminService = Object.assign(Reflect.construct(WorkspaceAdminService, []), {
         logger: quietLogger,
@@ -114,7 +114,7 @@ test('admin workspace deletion and access', async (t) => {
     await t.test('an admin deletes another owner’s workspace through full cleanup', async () => {
         const h = harness();
         await h.adminService.destroy(adminUser, workspaceId, h.workspace.displayName);
-        assert.deepEqual(h.calls, ['billing', 'token', 'stop', 'hardware', 'hostnames', 'secrets', 'listings', 'admin-row', 'router', 'event']);
+        assert.deepEqual(h.calls, ['destroy:started', 'billing', 'token', 'stop', 'hardware', 'hostnames', 'secrets', 'listings', 'admin-row', 'router', 'destroyed']);
         assert.equal(h.exists(), false);
     });
 
@@ -153,7 +153,7 @@ test('admin workspace deletion and access', async (t) => {
             h.setFailure(failedStep);
             await assert.rejects(h.adminService.destroy(adminUser, workspaceId, h.workspace.displayName), new RegExp(`${failedStep} failed`));
             assert.equal(h.exists(), true);
-            assert.equal(h.calls.at(-1), failedStep);
+            assert.deepEqual(h.calls.slice(-2), [failedStep, 'destroy:failed']);
             h.setFailure();
             await h.adminService.destroy(adminUser, workspaceId, h.workspace.displayName);
             assert.equal(h.exists(), false);
@@ -163,7 +163,7 @@ test('admin workspace deletion and access', async (t) => {
     await t.test('owners delete through the same teardown', async () => {
         const h = harness();
         await h.service.destroy(owner, h.workspace);
-        assert.deepEqual(h.calls, ['billing', 'token', 'stop', 'hardware', 'hostnames', 'secrets', 'listings', 'user-row', 'router', 'event']);
+        assert.deepEqual(h.calls, ['destroy:started', 'billing', 'token', 'stop', 'hardware', 'hostnames', 'secrets', 'listings', 'user-row', 'router', 'destroyed']);
         assert.equal(h.exists(), false);
     });
 

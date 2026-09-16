@@ -187,11 +187,14 @@ export class WorkspaceController {
     @Delete(':workspaceId')
     @Scoped('workspace')
     @RequireOwner()
+    @RefuseIfBusy('workspace', 1)
+    @HttpCode(202)
     async destroy(
         @AuthenticatedUser() principal: Principal.User,
         @WorkspaceScope() workspace: Workspace,
     ): Promise<Workspace.API.Destroy.Response> {
-        await this.workspaceService.destroy(principal, workspace);
+        void this.workspaceService.destroy(principal, workspace)
+            .catch((error: unknown) => this.logger.error(`Destroying ${workspace.id} failed: ${error instanceof Error ? error.message : error}`));
 
         return {};
     }

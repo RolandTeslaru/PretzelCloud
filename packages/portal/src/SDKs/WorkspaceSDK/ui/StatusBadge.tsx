@@ -40,7 +40,11 @@ export const displayStatus = (
     workspace:   Workspace,
     transition?: Workspace.Lifecycle.Action,
     rebuilding?: boolean,
+    destroying?: boolean,
 ): Appearance => {
+    if (destroying)
+        return { label: 'Destroying', variant: 'destructive', icon: spinner }
+
     const settling = workspace.lifecycleState === 'creating' || workspace.lifecycleState === 'provisioning_failed'
 
     // Ahead of the transitions: a rebuild runs a stop and a start inside it, and
@@ -87,10 +91,12 @@ export const isReachable = (
     workspace:   Workspace,
     transition?: Workspace.Lifecycle.Action,
     rebuilding?: boolean,
+    destroying?: boolean,
 ) =>
     Workspace.Lifecycle.acceptsTraffic(workspace.lifecycleState)
     && !transition
     && !rebuilding
+    && !destroying
 
 /** Reads the transition itself, so only the badge re-renders when one starts. */
 export const StatusBadge = ({ workspace }: { workspace: Workspace }) => {
@@ -98,7 +104,9 @@ export const StatusBadge = ({ workspace }: { workspace: Workspace }) => {
 
     const rebuilding = WorkspaceSDK.useStore((s) => s.rebuilding[workspace.id])
 
-    const { label, variant, icon } = displayStatus(workspace, transition, rebuilding)
+    const destroying = WorkspaceSDK.useStore((s) => s.destroying[workspace.id])
+
+    const { label, variant, icon } = displayStatus(workspace, transition, rebuilding, destroying)
 
     return (
         <Badge variant={variant} size="sm">

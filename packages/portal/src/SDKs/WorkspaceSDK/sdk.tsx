@@ -30,6 +30,7 @@ export class WorkspaceSDKImpl extends BaseSDK<WorkspaceSDK.State> {
             plans: {},
             transitions: {},
             rebuilding: {},
+            destroying: {},
             updating: {},
             provisioning: {},
             hardwareStatistics: {},
@@ -100,6 +101,8 @@ export namespace WorkspaceSDK {
         plans: Record<Plan.Id, Plan>
         transitions: Partial<Record<Workspace.Id, Workspace.Lifecycle.Action>>
         rebuilding: Partial<Record<Workspace.Id, boolean>>
+        /** Held from `destroy:started` until the workspace is gone or the destroy fails. */
+        destroying: Partial<Record<Workspace.Id, boolean>>
         /** The release name a workspace is moving to, while it moves. */
         updating: Partial<Record<Workspace.Id, string>>
         provisioning: Partial<Record<Workspace.Id, Workspace.Provisioning.Step>>

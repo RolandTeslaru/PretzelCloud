@@ -288,6 +288,19 @@ export namespace Workspace {
 
         export const Destroyed = Base.extend({ type: z.literal('destroyed') })
 
+        export namespace Destroy {
+
+            export const Started = Base.extend({ type: z.literal('destroy:started') })
+
+            export const Failed = Base.extend({
+                type:   z.literal('destroy:failed'),
+                reason: z.string(),
+            })
+
+            export type  Started = z.infer<typeof Started>
+            export type  Failed = z.infer<typeof Failed>
+        }
+
         export namespace Rebuild {
 
             export const Started = Base.extend({ type: z.literal('rebuild:started') })
@@ -377,6 +390,8 @@ export namespace Workspace {
             LifecycleChanged,
             PlanChanged,
             Destroyed,
+            Destroy.Started,
+            Destroy.Failed,
             HardwareStatistics,
             Provisioning.Step,
             Provisioning.StepFailed,

@@ -15,14 +15,15 @@ import { ShinyText } from '@pretzel-graph/standard-ui/components/ShinyText'
 
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
-    const [transition, provision, rebuilding, hardwareStatistics] = WorkspaceSDK.useStore(s => [
+    const [transition, provision, rebuilding, destroying, hardwareStatistics] = WorkspaceSDK.useStore(s => [
         s.transitions[workspace.id],
         s.provisioning[workspace.id],
         s.rebuilding[workspace.id],
+        s.destroying[workspace.id],
         s.hardwareStatistics[workspace.id]
     ])
 
-    const reachable = isReachable(workspace, transition, rebuilding)
+    const reachable = isReachable(workspace, transition, rebuilding, destroying)
 
     const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
