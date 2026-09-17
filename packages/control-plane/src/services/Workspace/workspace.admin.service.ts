@@ -114,12 +114,7 @@ export class WorkspaceAdminService {
     public async lifecycle(adminUser: Principal.AdminUser, workspaceId: Workspace.Id, action: Workspace.Lifecycle.Action): Promise<void> {
         this.logger.log(`Admin ${adminUser.userId} requested ${action} for workspace ${workspaceId}`);
 
-        switch (action) {
-            case 'start':   return this.workspaceService.start(workspaceId);
-            case 'stop':    return this.workspaceService.stop(workspaceId);
-            case 'suspend': return this.workspaceService.suspend(workspaceId);
-            case 'restart': return this.workspaceService.restart(workspaceId);
-        }
+        await this.workspaceService.runTransition(workspaceId, action);
     }
 
     @Operation('workspace', 1)

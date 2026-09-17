@@ -132,15 +132,13 @@ export class WorkspaceService {
         id:             Workspace.Id,
         lifecycleState: Workspace.Lifecycle.State,
         { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
-    ): Promise<Workspace> {
-        const workspace = await this.repository.setLifecycleState(Principal.SELF, id, lifecycleState);
+    ): Promise<void> {
+        await this.repository.setLifecycleState(Principal.SELF, id, lifecycleState);
 
         this.siloRouter.invalidateLifecycle(id);
 
         if (!emitNoEvents)
             this.emit(id, createEvent('lifecycle:changed', { lifecycleState }));
-
-        return workspace;
     }
 
     /**
@@ -271,7 +269,7 @@ export class WorkspaceService {
         if (!Workspace.Lifecycle.isWakeable(lifecycleState))
             throw new ConflictException(`This workspace is ${lifecycleState}`);
 
-        await this.start(workspaceId);
+        await this.runTransition(workspaceId, 'start');
     }
 
 
@@ -310,21 +308,11 @@ export class WorkspaceService {
 
 
 
-    @Operation('workspace')
-    public async start(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        await this.ensureCompute(workspaceId);
-
-        return this.runTransition(workspaceId, 'start', options);
-    }
-
-
-
-
     /** Gives the machines back. Hardware row, database, hostnames and secrets stay, and traffic rebuilds it. */
     @Operation('workspace')
     public async reclaimCompute(workspaceId: Workspace.Id): Promise<void> {
         // Quiet: the state announced is `sleeping` below, not the `stopped` a stop lands on.
-        await this.stop(workspaceId, { emitNoEvents: true });
+        await this.runTransition(workspaceId, 'stop', { emitNoEvents: true });
 
         await this.hardware.destroyCompute(workspaceId);
 
@@ -332,6 +320,9 @@ export class WorkspaceService {
 
         this.siloRouter.invalidate(workspaceId);
     }
+
+
+
 
     /** Rebuilds reclaimed machines. Data was never on them, so this is a slow start. */
     private async ensureCompute(workspaceId: Workspace.Id): Promise<void> {
@@ -354,38 +345,16 @@ export class WorkspaceService {
 
 
 
-    /** Stopping means nothing is left running, worker included. */
-    @Operation('workspace')
-    public stop(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        return this.runTransition(workspaceId, 'stop', options);
-    }
-
-
-
-
-    @Operation('workspace')
-    public suspend(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        return this.runTransition(workspaceId, 'suspend', options);
-    }
-
-
-
-
-    /** Everything down, then answerable again. The worker returns on demand. */
-    @Operation('workspace')
-    public restart(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        return this.runTransition(workspaceId, 'restart', options);
-    }
-
-
-
-
     /** What every transition shares: machines move, route drops, subscribers hear. */
-    private async runTransition(
+    @Operation('workspace')
+    public async runTransition(
         workspaceId: Workspace.Id,
         action:      Workspace.Lifecycle.Action,
         { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
     ): Promise<void> {
+        if (action === 'start')
+            await this.ensureCompute(workspaceId);
+
         // Written nowhere: a transition is not a state a workspace can be in.
         if (!emitNoEvents)
             this.emit(workspaceId, createEvent('transition:started', { action }));
@@ -431,6 +400,7 @@ export class WorkspaceService {
 
 
 
+
     /**
      * Replaces the compute from the current spec. Data, hostnames and secrets
      * stay. The machines are destroyed rather than moved, so this announces
@@ -442,11 +412,11 @@ export class WorkspaceService {
 
         try {
             // Down for the rebuild: stopped first so executions end and pools close.
-            await this.stop(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'stop', { emitNoEvents: true });
 
             await this.provisioning.rebuild(workspaceId, ownerId, planId);
 
-            await this.start(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'start', { emitNoEvents: true });
         }
         catch (error) {
             this.emit(workspaceId, createEvent('rebuild:failed', {
@@ -483,16 +453,14 @@ export class WorkspaceService {
             await this.hardware.setRelease(workspaceId, target.id);
 
             // Down for the swap: stopped first so executions end and pools close.
-            await this.stop(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'stop', { emitNoEvents: true });
 
             // Its own state for the window: not stopped, coming back on its own.
-            await this.repository.setLifecycleState(Principal.SELF, workspaceId, 'updating');
-
-            this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'updating' }));
+            await this.setLifecycleState(workspaceId, 'updating');
 
             await this.provisioning.rebuild(workspaceId, ownerId, planId);
 
-            await this.start(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'start', { emitNoEvents: true });
         }
         catch (error) {
             this.emit(workspaceId, createEvent('update:failed', {
@@ -503,11 +471,8 @@ export class WorkspaceService {
             // An update that died in its window must not stay 'updating' forever.
             const { lifecycleState } = await this.get(workspaceId);
 
-            if (lifecycleState === 'updating') {
-                await this.repository.setLifecycleState(Principal.SELF, workspaceId, 'stopped');
-
-                this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'stopped' }));
-            }
+            if (lifecycleState === 'updating')
+                await this.setLifecycleState(workspaceId, 'stopped');
             else
                 this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState }));
 
@@ -535,7 +500,7 @@ export class WorkspaceService {
         this.entitlement.unlock(workspaceId);
 
         // Down for the rebuild, so executions end and pools close.
-        await this.stop(workspaceId);
+        await this.runTransition(workspaceId, 'stop');
 
         try {
             // Every machine is replaced from the new plan; the database stays.
@@ -548,7 +513,7 @@ export class WorkspaceService {
             throw error;
         }
 
-        await this.start(workspaceId);
+        await this.runTransition(workspaceId, 'start');
 
         this.siloRouter.invalidate(workspaceId);
     }
