@@ -401,7 +401,7 @@ export class WorkspaceService {
             // is not done when the machines are told, and a row saying `running`
             // in the meantime is one the siloRouter forwards into.
             if (action === 'start' || action === 'restart')
-                await this.hardware.lifecycle.awaitHealthy(workspaceId);
+                await this.hardware.lifecycle.awaitBackendHealthy(workspaceId);
 
             this.siloRouter.invalidate(workspaceId);
 

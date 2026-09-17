@@ -91,17 +91,19 @@ export class MachineRepository extends Repository(FleetDB) {
             .values({ ...values, last_boot_at: new Date(), last_seen_at: null });
 
         // Workers are many, so only a backend or combined machine has a row to land on.
-        if (values.role === 'worker')
-            return insert.execute();
+        const row = values.role === 'worker'
+            ? await insert.returningAll().executeTakeFirstOrThrow()
+            : await insert
+                // The partial unique index on (workspace_id, role) makes a re-run land here
+                // rather than creating a second machine.
+                .onConflict((oc) => oc
+                    .columns(['workspace_id', 'role'])
+                    .where('role', 'in', ['backend', 'combined'])
+                    .doUpdateSet({ external_id: values.external_id, state: values.state, hardware_id: values.hardware_id, driver: values.driver }))
+                .returningAll()
+                .executeTakeFirstOrThrow();
 
-        // The partial unique index on (workspace_id, role) makes a re-run land here
-        // rather than creating a second machine.
-        return insert
-            .onConflict((oc) => oc
-                .columns(['workspace_id', 'role'])
-                .where('role', 'in', ['backend', 'combined'])
-                .doUpdateSet({ external_id: values.external_id, state: values.state, hardware_id: values.hardware_id, driver: values.driver }))
-            .execute();
+        return FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(row));
     }
 
     @Transactional('service')

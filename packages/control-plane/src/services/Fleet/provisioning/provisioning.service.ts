@@ -62,7 +62,7 @@ export class ProvisioningService {
 
         // Serving on return, so a machine that never answers is never published below.
         await this.step(workspaceId, 'machines', () => 
-            this.hardware.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds)
+            this.hardware.buildCompute(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds)
         );
 
         // After the machines serve, which is what says the workspace has run its migrations.
@@ -99,7 +99,7 @@ export class ProvisioningService {
 
         const { baseEnvKeys, backendEnvKeys, workerIds } = await this.assembleMachineEnvKeys(workspaceId, ownerId, plan, secrets);
 
-        // No health wait: the caller stops the hardware around a rebuild and starts it after.
+        // Replacement compute completes its first boot before the caller publishes it as running.
         await this.step(workspaceId, 'rebuild', () => this.hardware.rebuild(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds));
     }
 

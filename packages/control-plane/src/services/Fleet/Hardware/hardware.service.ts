@@ -75,32 +75,11 @@ export class HardwareService {
 
         return hardware;
     }
-
-
-
-
-    /** The machines the plan calls for, created and serving; the caller never names roles. */
-    async assemble(
-        workspaceId:    Workspace.Id,
-        plan:           Plan,
-        baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
-        backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
-        workerIds:      Fleet.Machine.Id[],
-    ): Promise<void> {
-        await this.buildCompute(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds);
-
-        // Created is not serving: a first boot migrates its database before it answers.
-        await this.lifecycle.awaitHealthy(workspaceId);
-    }
-
-
-
-
     /**
      * Creates the plan's machines in bring-up order, so a worker is built from a backend address
      * that exists. Workers take the ids the backend's env already names.
      */
-    private async buildCompute(
+    async buildCompute(
         workspaceId:    Workspace.Id,
         plan:           Plan,
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
@@ -115,25 +94,38 @@ export class HardwareService {
 
         const frontlineRole: Fleet.Machine.Role = Plan.isCombined(plan) ? 'combined' : 'backend';
 
-        // One worker per id the backend's env names; the frontline machine's id is its own.
-        const machines = Fleet.Machine.inLifecycleOrder('start', [
-            { role: frontlineRole, id: Fleet.Machine.Id.parse(randomUUID()) },
-            ...workerIds.map((id) => ({ role: 'worker' as const, id })),
-        ]);
+        const frontlineSpec = Fleet.Machine.Spec.create(
+            Fleet.Machine.Id.parse(randomUUID()),
+            frontlineRole,
+            workspaceId,
+            plan,
+            release,
+            baseEnvKeys,
+            backendEnvKeys,
+            null,
+        );
 
-        let backendHost: string | null = null;
+        const frontline = await this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, frontlineSpec);
 
-        for (const { id, role } of machines) {
-            const spec = Fleet.Machine.Spec.create(id, role, workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost);
+        let workers: Fleet.Machine[] = [];
 
-            const handle = await this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, spec);
+        if (frontline.role === 'backend') {
+            const backendHost = await driver.getInternalHostForMachine(frontline.resourceId);
 
-            if (role === 'backend')
-                backendHost = await driver.getInternalHostForMachine(handle.resourceId);
+            workers = await Promise.all(workerIds.map((id) => {
+                const spec = Fleet.Machine.Spec.create(id, 'worker', workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost);
+
+                return this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, spec);
+            }));
         }
+
+        hardware.machines = [frontline, ...workers];
 
         // New machines carry new ids, so a reading from before this keys machines that are gone.
         this.statisticsService.invalidate(workspaceId);
+
+        // Created is not serving: every machine must complete its first boot.
+        await this.lifecycle.awaitHealthy(hardware);
     }
 
 
@@ -149,7 +141,7 @@ export class HardwareService {
     ): Promise<void> {
         await this.destroyCompute(workspaceId);
 
-        await this.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds);
+        await this.buildCompute(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds);
     }
 
 

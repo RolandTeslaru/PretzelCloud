@@ -4,7 +4,6 @@ import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { MachineService } from '../Machine/machine.service';
 import { MachineRepository } from '../Machine/machine.repository';
-import { HardwareStateService } from './state.service';
 
 // How long a woken machine is given to open its port, and how often it is asked.
 const WAKE_TIMEOUT_MS = 60_000;
@@ -49,23 +48,33 @@ export class HardwareLifecycleService {
     constructor(
         private readonly machineService:    MachineService,
         private readonly machineRepository: MachineRepository,
-        private readonly stateService:      HardwareStateService,
     ) {}
 
 
 
 
-    /** Blocks until every recorded machine reports serving. */
-    async awaitHealthy(workspaceId: Workspace.Id): Promise<void> {
-        const machines = await this.machineService.getAll(workspaceId);
+    /** Blocks until every machine in the hardware reports serving, then records its state. */
+    async awaitHealthy(hardware: Fleet.Hardware): Promise<void> {
+        if (hardware.machines.length === 0)
+            throw new Error(`No machines to await for ${hardware.workspaceId}`);
 
-        if (machines.length === 0)
-            throw new Error(`No machines to await for ${workspaceId}`);
+        await Promise.all(hardware.machines.map(async (machine) => {
+            await this.machineService.awaitHealthy(machine);
 
-        await Promise.all(machines.map((machine) => this.machineService.awaitHealthy(machine)));
+            machine.state = await this.machineService.refreshState(machine);
+        }));
+    }
 
-        // Nothing else runs after a first provision, and the idle sweep skips a machine reading `creating`.
-        await this.stateService.refreshAll(workspaceId);
+
+
+
+    /** Blocks until the machine serving workspace traffic is healthy, then records its state. */
+    async awaitBackendHealthy(workspaceId: Workspace.Id): Promise<void> {
+        const backend = await this.getBackend(workspaceId);
+
+        await this.machineService.awaitHealthy(backend);
+
+        await this.machineService.refreshState(backend);
     }
 
 

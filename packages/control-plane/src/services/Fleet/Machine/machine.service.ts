@@ -35,7 +35,7 @@ export class MachineService {
         workspaceId: Workspace.Id,
         region:      Fleet.Region.Schema,
         spec:        Fleet.Machine.Spec,
-    ): Promise<AbstractHardwareDriver.Handle> {
+    ): Promise<Fleet.Machine> {
         const driver = this.driverRegistry.getDriverForKind(driverKind);
 
         const handle = await driver.create({
@@ -48,7 +48,7 @@ export class MachineService {
             env:   spec.env,
         });
 
-        await this.machineRepository.insert(Principal.SELF, {
+        return this.machineRepository.insert(Principal.SELF, {
             id:           spec.id,
             workspace_id: workspaceId,
             hardware_id:  hardwareId,
@@ -58,8 +58,6 @@ export class MachineService {
             size:         spec.size,
             state:        handle.state,
         });
-
-        return handle;
     }
 
     getAll(workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {
