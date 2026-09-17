@@ -5,7 +5,6 @@ import { Principal } from '@/auth/identity/principal';
 import { MachineService } from '../Machine/machine.service';
 import { MachineRepository } from '../Machine/machine.repository';
 import { HardwareStateService } from './state.service';
-import { HardwareStatisticsSampler } from './statistics.sampler';
 
 // How long a woken machine is given to open its port, and how often it is asked.
 const WAKE_TIMEOUT_MS = 60_000;
@@ -51,7 +50,6 @@ export class HardwareLifecycleService {
         private readonly machineService:    MachineService,
         private readonly machineRepository: MachineRepository,
         private readonly stateService:      HardwareStateService,
-        private readonly statisticsSampler: HardwareStatisticsSampler,
     ) {}
 
 
@@ -75,17 +73,15 @@ export class HardwareLifecycleService {
 
     /** Starts the machine that answers HTTP and waits for its port; null when there is no backend to start. */
     async wakeBackend(workspaceId: Workspace.Id): Promise<URL | null> {
-        const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
+        // Absence is an answer here, not an error: the caller rebuilds a reclaimed workspace.
+        const backend = await this.machineRepository.getByRole(Principal.SELF, workspaceId, ['backend', 'combined']);
 
         if (!backend)
             return null;
 
         const startedAt = Date.now();
 
-        if (backend.state === 'suspended')
-            await this.machineService.resume(backend);
-        else if (backend.state === 'stopped')
-            await this.machineService.start(backend);
+        await this.machineService.wake(backend);
 
         const startReturnedAt = Date.now();
 
@@ -94,12 +90,6 @@ export class HardwareLifecycleService {
         const portOpenAt = Date.now();
 
         this.logger.log(`Woke ${workspaceId} from ${backend.state} in ${portOpenAt - startedAt}ms (start call ${startReturnedAt - startedAt}ms, port open ${portOpenAt - startReturnedAt}ms)`);
-
-        // The idle sweep reads this; a machine left reading `suspended` is never put back to sleep.
-        await this.machineRepository.setState(Principal.SELF, backend.id, 'running');
-
-        // The only transition that writes a state without going through `refreshAll`.
-        this.statisticsSampler.invalidate(workspaceId);
 
         return address;
     }
@@ -131,15 +121,22 @@ export class HardwareLifecycleService {
 
     /** Starts the machine that answers HTTP, without waiting for its port. */
     async startBackend(workspaceId: Workspace.Id): Promise<void> {
-        const backend = await this.machineService.getByRole(workspaceId, ['backend', 'combined']);
+        const backend = await this.getBackend(workspaceId);
 
-        // A suspended machine resumes, a stopped one starts.
-        if (backend?.state === 'suspended')
-            await this.machineService.resume(backend);
-        else if (backend?.state === 'stopped')
-            await this.machineService.start(backend);
+        await this.machineService.wake(backend);
+    }
 
-        await this.stateService.refreshAll(workspaceId);
+
+
+
+    /** The machine that answers HTTP, or a not-found — a workspace without one has been reclaimed. */
+    private async getBackend(workspaceId: Workspace.Id): Promise<Fleet.Machine> {
+        const backend = await this.machineRepository.getByRole(Principal.SELF, workspaceId, ['backend', 'combined']);
+
+        if (!backend)
+            throw new NotFoundException(`${workspaceId} has no backend`);
+
+        return backend;
     }
 
 
@@ -158,35 +155,25 @@ export class HardwareLifecycleService {
 
 
 
-    /** Starts one queue drainer before enqueueing — a sleeping worker is not watching Redis. */
-    async startWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
+    /** Starts one queue drainer — a sleeping worker is not watching Redis. */
+    async wakeWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id, options?: Fleet.Machine.CommandOptions): Promise<void> {
         const worker = await this.getWorker(workspaceId, workerId);
 
-        // The record can lag the machine, so the driver is asked before deciding.
-        const state = await this.machineService.refreshState(worker);
-
-        if (state === 'suspended')
-            await this.machineService.resume(worker);
-        else if (state === 'stopped')
-            await this.machineService.start(worker);
-
-        await this.stateService.refreshAll(workspaceId);
+        await this.machineService.wake(worker, options);
     }
 
 
 
 
     /** Stops one queue drainer, leaving the backend and the other workers as they are. */
-    async stopWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
+    async sleepWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id, options?: Fleet.Machine.CommandOptions): Promise<void> {
         const worker = await this.getWorker(workspaceId, workerId);
 
         // The record can lag the machine, so the driver is asked before deciding.
         const state = await this.machineService.refreshState(worker);
 
         if (Fleet.Machine.canApply('stop', { role: worker.role, state }))
-            await this.machineService.stop(worker);
-
-        await this.stateService.refreshAll(workspaceId);
+            await this.machineService.stop(worker, options);
     }
 
 
@@ -226,22 +213,13 @@ export class HardwareLifecycleService {
             if (!Fleet.Machine.canApply(action, machine))
                 continue;
 
-            await this.dispatch(machine, action);
-        }
-
-        await this.stateService.refreshAll(workspaceId);
-    }
-
-
-
-
-    private dispatch(machine: Fleet.Machine, action: Fleet.Machine.LifecycleAction): Promise<void> {
-        switch (action) {
-            case 'start':   return this.machineService.start(machine);
-            case 'stop':    return this.machineService.stop(machine);
-            case 'suspend': return this.machineService.suspend(machine);
-            case 'resume':  return this.machineService.resume(machine);
-            case 'restart': return this.machineService.restart(machine);
+            switch (action) {
+                case 'start':   await this.machineService.start(machine);   break;
+                case 'stop':    await this.machineService.stop(machine);    break;
+                case 'suspend': await this.machineService.suspend(machine); break;
+                case 'resume':  await this.machineService.resume(machine);  break;
+                case 'restart': await this.machineService.restart(machine); break;
+            }
         }
     }
 }

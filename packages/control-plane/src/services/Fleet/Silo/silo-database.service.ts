@@ -29,7 +29,7 @@ export class SiloDatabaseService {
     ): Promise<T> {
         const hardware = await this.hardwareService.getHardware(workspaceId);
 
-        const cluster = await this.clusterService.getClusterById(hardware.cluster_id);
+        const cluster = await this.clusterService.getClusterById(hardware.clusterId);
 
         return WorkspaceDB.withWorkspaceDatabase(
             reason,

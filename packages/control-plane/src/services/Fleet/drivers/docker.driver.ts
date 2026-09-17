@@ -210,24 +210,46 @@ export class DockerDriver extends AbstractHardwareDriver {
         return port ? new URL(`http://127.0.0.1:${port}`) : null;
     }
 
-    async start(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+    async start(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
         await this.docker(['start', resourceId]);
+
+        await effects?.onSettled?.();
     }
 
-    async stop(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+    async stop(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
         // Also passed here, not just at create: machines made before the
         // container-level setting existed still carry the daemon's default.
         await this.docker(['stop', '--timeout', String(Docker.STOP_TIMEOUT_SECONDS), resourceId]);
+
+        await effects?.onSettled?.();
     }
 
     // The cgroup freezer: processes stop being scheduled and stay resident, the
     // closest Docker comes to a VM snapshot.
-    async suspend(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+    async suspend(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
         await this.docker(['pause', resourceId]);
+
+        await effects?.onSettled?.();
     }
 
-    async resume(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+    async resume(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
         await this.docker(['unpause', resourceId]);
+
+        await effects?.onSettled?.();
+    }
+
+    // Docker starts and unpauses with different commands, so the container's state picks one.
+    async wake(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        const state = await this.status(resourceId);
+
+        if (state === 'suspended')
+            await this.resume(resourceId, options, effects);
+        else if (state === 'stopped' || state === 'creating')
+            await this.start(resourceId, options, effects);
+        else if (state === 'destroyed')
+            throw new Error(`Container ${resourceId} no longer exists`);
+        else
+            await effects?.onSettled?.();
     }
 
     async destroy(resourceId: Fleet.Machine.ResourceId): Promise<void> {

@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Fleet, Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
-import { FleetDB } from '@/db/fleet';
 import { Principal } from '@/auth/identity/principal';
 import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineService } from '../Machine/machine.service';
@@ -12,8 +11,8 @@ import { ClusterService } from '../cluster/cluster.service';
 import { ReleaseService } from '../Release/release.service';
 import { HardwareLifecycleService } from './lifecycle.service';
 import { HardwareStateService } from './state.service';
-import { HardwareStatisticsService } from './statistics.service';
 import { HardwareStatisticsSampler } from './statistics.sampler';
+import { HardwareStatisticsService } from './statistics.service';
 
 /**
  * A workspace's compute as one thing: what it is allocated and what shape it takes.
@@ -31,11 +30,11 @@ export class HardwareService {
         private readonly machineRepository: MachineRepository,
         private readonly clusterService:    ClusterService,
         private readonly releaseService:    ReleaseService,
-        private readonly statisticsSampler: HardwareStatisticsSampler,
+        private readonly statisticsService: HardwareStatisticsService,
 
         public readonly lifecycle:  HardwareLifecycleService,
         public readonly state:      HardwareStateService,
-        public readonly statistics: HardwareStatisticsService,
+        public readonly statistics: HardwareStatisticsSampler,
     ) {}
 
 
@@ -68,7 +67,7 @@ export class HardwareService {
 
 
     /** The row, or a throw — everything below needs hardware allocated first. */
-    async getHardware(workspaceId: Workspace.Id): Promise<FleetDB.Hardware.Row> {
+    async getHardware(workspaceId: Workspace.Id): Promise<Fleet.Hardware> {
         const hardware = await this.repository.getByWorkspace(Principal.SELF, workspaceId);
 
         if (!hardware)
@@ -112,7 +111,7 @@ export class HardwareService {
 
         const driver = this.driverRegistry.getDriverForKind(hardware.driver);
 
-        const release = await this.releaseService.getById(hardware.release_id);
+        const release = await this.releaseService.getById(hardware.releaseId);
 
         const frontlineRole: Fleet.Machine.Role = Plan.isCombined(plan) ? 'combined' : 'backend';
 
@@ -134,7 +133,7 @@ export class HardwareService {
         }
 
         // New machines carry new ids, so a reading from before this keys machines that are gone.
-        this.statisticsSampler.invalidate(workspaceId);
+        this.statisticsService.invalidate(workspaceId);
     }
 
 
@@ -184,7 +183,7 @@ export class HardwareService {
 
         await this.machineRepository.deleteFor(Principal.SELF, workspaceId);
 
-        this.statisticsSampler.invalidate(workspaceId);
+        this.statisticsService.invalidate(workspaceId);
 
         this.logger.log(`Destroyed the machines of ${workspaceId}`);
     }
@@ -223,7 +222,7 @@ export class HardwareService {
             return;
         }
 
-        const cluster = await this.clusterService.getClusterById(hardware.cluster_id);
+        const cluster = await this.clusterService.getClusterById(hardware.clusterId);
 
         await this.destroyCompute(workspaceId);
 

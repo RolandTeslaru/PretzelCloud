@@ -218,19 +218,19 @@ export class WorkspaceService {
 
     /**
      * Wakes one worker so it can drain the queue. Called by the workspace's own
-     * backend before it enqueues, which is the only moment anything knows work
-     * is coming.
+     * backend right after it enqueues, which is the only moment anything knows
+     * work is coming.
      */
-    public wakeWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
-        return this.hardware.lifecycle.startWorker(workspaceId, workerId);
+    public wakeWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id, options?: Fleet.Machine.CommandOptions): Promise<void> {
+        return this.hardware.lifecycle.wakeWorker(workspaceId, workerId, options);
     }
 
 
 
 
     /** Stops one worker once its backend reports it has gone quiet. */
-    public sleepWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id): Promise<void> {
-        return this.hardware.lifecycle.stopWorker(workspaceId, workerId);
+    public sleepWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id, options?: Fleet.Machine.CommandOptions): Promise<void> {
+        return this.hardware.lifecycle.sleepWorker(workspaceId, workerId, options);
     }
 
 

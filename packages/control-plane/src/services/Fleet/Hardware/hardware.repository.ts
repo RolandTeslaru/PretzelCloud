@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { FleetDB } from '@/db/fleet';
 import { Repository, Transactional } from '@/db/repository';
@@ -30,15 +31,29 @@ export class HardwareRepository extends Repository(FleetDB) {
         return FleetDB.Hardware.Row.parse(existing);
     }
 
+    /** The workspace's hardware with its machines, in one read. */
     @Transactional('service')
-    public async getByWorkspace(principal: Principal.Service, workspaceId: Workspace.Id) {
+    public async getByWorkspace(principal: Principal.Service, workspaceId: Workspace.Id): Promise<Fleet.Hardware | undefined> {
         const row = await this.trx
             .selectFrom('hardware')
-            .selectAll()
-            .where('workspace_id', '=', workspaceId)
+            .selectAll('hardware')
+            .select((eb) => jsonArrayFrom(
+                eb.selectFrom('machines')
+                    .selectAll('machines')
+                    .whereRef('machines.hardware_id', '=', 'hardware.id'),
+            ).as('machines'))
+            .where('hardware.workspace_id', '=', workspaceId)
             .executeTakeFirst();
 
-        return row ? FleetDB.Hardware.Row.parse(row) : undefined;
+        if (!row)
+            return undefined;
+
+        const { machines, ...hardware } = row;
+
+        return FleetDB.Hardware.toDomain(
+            FleetDB.Hardware.Row.parse(hardware),
+            machines.map((machine) => FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(machine))),
+        );
     }
 
     /** Where each workspace lives and what it runs, for the grid. */

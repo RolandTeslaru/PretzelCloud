@@ -4,6 +4,7 @@ import { Principal } from '@/auth/identity/principal';
 import { AbstractHardwareDriver } from '../drivers/driver';
 import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineRepository } from './machine.repository';
+import { HardwareStatisticsService } from '../Hardware/statistics.service';
 
 // Generous: the first boot of a workspace migrates its empty database.
 const HEALTH_TIMEOUT_MS = 120_000;
@@ -19,6 +20,7 @@ export class MachineService {
     constructor(
         private readonly machineRepository: MachineRepository,
         private readonly driverRegistry:    DriverRegistry,
+        private readonly statisticsService: HardwareStatisticsService,
     ) {}
 
     /** Every machine row names its own substrate; nobody has to be told. */
@@ -111,27 +113,80 @@ export class MachineService {
         return this.driverFor(machine).address(machine.resourceId);
     }
 
-    start(machine: Fleet.Machine): Promise<void> {
-        return this.driverFor(machine).start(machine.resourceId);
+    start(machine: Fleet.Machine, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        return this.driverFor(machine).start(machine.resourceId, options, {
+            // Recorded once the platform reports it, whether or not the caller waits.
+            onSettled: async () => {
+                await this.machineRepository.setState(Principal.SELF, machine.id, 'running');
+
+                // After the write, so a reading taken now sees the new state.
+                this.statisticsService.invalidate(machine.workspaceId);
+
+                await effects?.onSettled?.();
+            },
+        });
     }
 
-    stop(machine: Fleet.Machine): Promise<void> {
-        return this.driverFor(machine).stop(machine.resourceId);
+    stop(machine: Fleet.Machine, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        return this.driverFor(machine).stop(machine.resourceId, options, {
+            // Recorded once the platform reports it, whether or not the caller waits.
+            onSettled: async () => {
+                await this.machineRepository.setState(Principal.SELF, machine.id, 'stopped');
+
+                // After the write, so a reading taken now sees the new state.
+                this.statisticsService.invalidate(machine.workspaceId);
+
+                await effects?.onSettled?.();
+            },
+        });
     }
 
-    suspend(machine: Fleet.Machine): Promise<void> {
-        return this.driverFor(machine).suspend(machine.resourceId);
+    suspend(machine: Fleet.Machine, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        return this.driverFor(machine).suspend(machine.resourceId, options, {
+            // Recorded once the platform reports it, whether or not the caller waits.
+            onSettled: async () => {
+                await this.machineRepository.setState(Principal.SELF, machine.id, 'suspended');
+
+                // After the write, so a reading taken now sees the new state.
+                this.statisticsService.invalidate(machine.workspaceId);
+
+                await effects?.onSettled?.();
+            },
+        });
     }
 
-    resume(machine: Fleet.Machine): Promise<void> {
-        return this.driverFor(machine).resume(machine.resourceId);
+    resume(machine: Fleet.Machine, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        return this.driverFor(machine).resume(machine.resourceId, options, {
+            // Recorded once the platform reports it, whether or not the caller waits.
+            onSettled: async () => {
+                await this.machineRepository.setState(Principal.SELF, machine.id, 'running');
+
+                // After the write, so a reading taken now sees the new state.
+                this.statisticsService.invalidate(machine.workspaceId);
+
+                await effects?.onSettled?.();
+            },
+        });
+    }
+
+    wake(machine: Fleet.Machine, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        return this.driverFor(machine).wake(machine.resourceId, options, {
+            // Recorded once the platform reports it, whether or not the caller waits.
+            onSettled: async () => {
+                await this.machineRepository.setState(Principal.SELF, machine.id, 'running');
+
+                // After the write, so a reading taken now sees the new state.
+                this.statisticsService.invalidate(machine.workspaceId);
+
+                await effects?.onSettled?.();
+            },
+        });
     }
 
     async restart(machine: Fleet.Machine): Promise<void> {
-        const driver = this.driverFor(machine);
+        await this.stop(machine);
 
-        await driver.stop(machine.resourceId);
-        await driver.start(machine.resourceId);
+        await this.start(machine);
     }
 
     /**
@@ -157,6 +212,10 @@ export class MachineService {
         const state = await this.driverFor(machine).status(machine.resourceId);
 
         await this.machineRepository.setState(Principal.SELF, machine.id, state);
+
+        // A reading taken before the state moved describes the machine wrongly.
+        if (state !== machine.state)
+            this.statisticsService.invalidate(machine.workspaceId);
 
         return state;
     }

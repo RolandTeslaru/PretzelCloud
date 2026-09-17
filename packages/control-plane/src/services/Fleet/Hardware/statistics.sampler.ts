@@ -1,132 +1,61 @@
-import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { Workspace } from '@pretzel-cloud/shared/domain';
-import { LockService } from '@/services/Locking/lock.service';
-import { RealtimeGateway } from '@/services/Realtime/realtime.gateway';
-import { RealtimeService } from '@/services/Realtime/realtime.service';
-import { HardwareStatisticsService } from './statistics.service';
-import { SampleCache } from './sample.cache';
+import { Injectable } from '@nestjs/common';
+import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
+import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
+import { DriverRegistry } from '../drivers/driver.registry';
+import { ClusterService } from '../cluster/cluster.service';
 
-const SAMPLE_INTERVAL_MS = 15_000;
-
-/**
- * emites machine statistics onto the workspace channels somebody is
- * watching. Watching is the trigger for the periodic pass: an unwatched
- * workspace is never swept, and a parked one reads as nothing and emites
- * nothing. A single workspace can still be sampled on demand.
- */
+/** Readings off a workspace's machines and its database. */
 @Injectable()
-export class HardwareStatisticsSampler implements OnModuleInit, OnModuleDestroy {
-
-    private readonly logger = new Logger(HardwareStatisticsSampler.name);
-
-    private timer?: NodeJS.Timeout;
+export class HardwareStatisticsSampler {
 
     constructor(
-        private readonly realtimeGateway: RealtimeGateway,
-        private readonly realtimeService: RealtimeService,
-        private readonly hardwareStatisticsService: HardwareStatisticsService,
-        private readonly lockService:              LockService,
-        private readonly sampleCache:  SampleCache,
+        private readonly driverRegistry:    DriverRegistry,
+        private readonly clusterService:    ClusterService,
     ) {}
 
 
+    
 
+    /** One reading per machine of the hardware, plus its database. Null when it has no machines. */
+    public async sampleHardware(hardware: Fleet.Hardware): Promise<Workspace.HardwareStatistics | null> {
+        const readings = await Promise.all(hardware.machines.map(async (machine) => ({
+            machineId:  machine.id,
+            statistics: await this.sampleMachine(machine),
+        })));
 
-    public onModuleInit(): void {
-        this.timer = setInterval(() => void this.sampleAll(), SAMPLE_INTERVAL_MS);
-    }
+        const statisticsByMachineId: Record<Fleet.Machine.Id, Fleet.Machine.Statistics> = {};
 
+        for (const { machineId, statistics } of readings)
+            statisticsByMachineId[machineId] = statistics;
 
-
-
-    public onModuleDestroy(): void {
-        clearInterval(this.timer);
-    }
-
-
-
-
-    /** Cached when fresh; otherwise this one workspace is sampled now. */
-    public async get(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
-        const cached = this.sampleCache.get(workspaceId);
-
-        if (cached)
-            return cached;
-
-        return this.sample(workspaceId);
-    }
-
-
-
-
-
-    public async sample(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
-        const statistics = await this.hardwareStatisticsService.getStatistics(workspaceId);
-
-        if (!statistics)
+        if (Object.keys(statisticsByMachineId).length === 0)
             return null;
 
-        this.emit(workspaceId, statistics);
+        const cluster = await this.clusterService.getClusterById(hardware.clusterId);
 
-        this.sampleCache.set(workspaceId, statistics);
+        const databaseSizeBytes = await this.clusterService
+            .getDatabaseSizeBytes(cluster, Provisioning.getDatabaseName(hardware.workspaceId))
+            .catch(() => null);
 
-        return statistics;
+        return { machines: statisticsByMachineId, databaseSizeBytes, capturedAt: new Date() };
     }
 
 
 
 
-    /**
-     * Forgets what was read, without reading again. The next `get` samples
-     * afresh; a watcher is told on the sweep after this one.
-     */
-    public invalidate(workspaceId: Workspace.Id): void {
-        this.sampleCache.invalidate(workspaceId);
-    }
+    /** One machine's reading; its resource use is null when it is not running. */
+    public async sampleMachine(machine: Fleet.Machine): Promise<Fleet.Machine.Statistics> {
+        const driver = this.driverRegistry.getDriverForKind(machine.driver);
 
+        const statistics = await driver.statistics(machine.resourceId).catch(() => null);
 
-
-
-    private async sampleAll(): Promise<void> {
-        const readings: Array<[Workspace.Id, Workspace.HardwareStatistics]> = [];
-
-        for (const workspaceId of this.realtimeGateway.getSubscribedWorkspaceIds()) {
-            // The claim outlives the work, so each window samples a workspace
-            // once however many instances have watchers on it.
-            const claimed = await this.lockService.claimWindow('hardware-statistics', workspaceId, SAMPLE_INTERVAL_MS - 1_000);
-
-            if (!claimed)
-                continue;
-
-            try {
-                const statistics = await this.hardwareStatisticsService.getStatistics(workspaceId);
-
-                if (!statistics)
-                    continue;
-
-                readings.push([workspaceId, statistics]);
-
-                this.emit(workspaceId, statistics);
-            }
-            catch (error) {
-                this.logger.warn(`Sampling ${workspaceId} failed: ${(error as Error).message}`);
-            }
-        }
-
-        // One replication message for the whole sweep, not one per workspace.
-        this.sampleCache.setBatch(readings);
-    }
-
-
-
-
-    private emit(workspaceId: Workspace.Id, statistics: Workspace.HardwareStatistics): void {
-        const channel = Workspace.Event.getChannel(workspaceId);
-
-        this.realtimeService.publish(channel, {
-            ...Workspace.Event.create('hardware:statistics', { statistics }),
-            channel,
-            workspaceId,
-        });
+        return {
+            role:          machine.role,
+            // A reading proves it is running whatever the row last recorded.
+            state:         statistics ? 'running' : machine.state,
+            cpuPercent:    statistics?.cpuPercent    ?? null,
+            memUsedBytes:  statistics?.memUsedBytes  ?? null,
+            memTotalBytes: statistics?.memTotalBytes ?? null,
+        };
     }
 }

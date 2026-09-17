@@ -19,6 +19,19 @@ export namespace Machine {
     export const LifecycleAction = z.enum(["start", "stop", "suspend", "resume", "restart"])
     export type  LifecycleAction = z.infer<typeof LifecycleAction>
 
+    /** How a lifecycle command runs; omitting a field keeps the default. */
+    export const CommandOptions = z.object({
+        /** Wait until the platform reports the new state. Defaults to true. */
+        awaitSettled: z.boolean().optional(),
+    })
+    export type CommandOptions = z.infer<typeof CommandOptions>
+
+    /** Callbacks a lifecycle command runs as it progresses. */
+    export type CommandEffects = {
+        /** Called once the platform reports the new state, whether or not the command waited for it. */
+        onSettled?: () => Promise<void>
+    }
+
 
 
 

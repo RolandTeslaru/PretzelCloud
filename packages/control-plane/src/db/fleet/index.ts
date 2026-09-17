@@ -161,14 +161,15 @@ export namespace FleetDB {
         });
         export type Row = z.infer<typeof Row>;
 
-        // machineIds is the reverse FK — not a column, so the caller passes it.
-        export const toDomain = (row: Row, machineIds: Fleet.Machine.Id[]) => Fleet.Hardware.Schema.parse({
+        // Machines are the reverse foreign key — not a column, so the caller passes them.
+        export const toDomain = (row: Row, machines: Fleet.Machine[]) => Fleet.Hardware.Schema.parse({
             id:          row.id,
             workspaceId: row.workspace_id,
             driver:      row.driver,
             clusterId:   row.cluster_id,
             region:      row.region,
-            machineIds,
+            releaseId:   row.release_id,
+            machines,
             lastBootAt:  row.last_boot_at,
             lastSeenAt:  row.last_seen_at,
             createdAt:   row.created_at,

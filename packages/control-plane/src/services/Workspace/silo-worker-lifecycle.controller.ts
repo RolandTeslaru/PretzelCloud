@@ -27,7 +27,8 @@ export class SiloWorkerLifecycleController {
         @WorkspaceIdParam() workspaceId: Workspace.Id,
         @ZodParam('workerId', Fleet.Machine.Id) workerId: Fleet.Machine.Id,
     ): Promise<Record<string, never>> {
-        await this.workspaceService.wakeWorker(workspaceId, workerId);
+        // The job is already queued; the worker takes it once it has booted, so the platform is not waited on.
+        await this.workspaceService.wakeWorker(workspaceId, workerId, { awaitSettled: false });
 
         return {};
     }

@@ -6,7 +6,7 @@ import { LockService } from '@/services/Locking/lock.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
-import { HardwareStatisticsSampler } from '@/services/Fleet/Hardware/statistics.sampler';
+import { HardwareStatisticsService } from '@/services/Fleet/Hardware/statistics.service';
 import { UserAdminRepository } from '@/services/User/user.admin.repository';
 import { WorkspaceAdminRepository } from './workspace.admin.repository';
 import { WorkspaceService } from './workspace.service';
@@ -22,7 +22,7 @@ export class WorkspaceAdminService {
         private readonly workspaceAdminRepository: WorkspaceAdminRepository,
         private readonly userAdminRepository:      UserAdminRepository,
         private readonly hardware:                 HardwareService,
-        private readonly hardwareStatistics:       HardwareStatisticsSampler,
+        private readonly hardwareStatistics:       HardwareStatisticsService,
         private readonly entitlement:              EntitlementService,
         private readonly planRegistry:              PlanRegistry,
         // Read by `@Operation`, which serialises a workspace's operations across instances.

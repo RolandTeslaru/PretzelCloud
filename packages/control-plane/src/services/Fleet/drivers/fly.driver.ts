@@ -73,8 +73,18 @@ export class FlyDriver extends AbstractHardwareDriver {
     }
 
     // A lifecycle POST returns once the platform accepts it, not once it applies; the next one is rejected until it has.
-    private async awaitSettled(resourceId: Fleet.Machine.ResourceId, state: Fleet.Driver.Fly.SettledState): Promise<void> {
-        await this.callTolerating404('GET', `/machines/${resourceId}/wait?state=${state}&timeout=${Fly.WAIT_TIMEOUT_SECONDS}`);
+    private async awaitSettled(resourceId: Fleet.Machine.ResourceId, state: Fleet.Driver.Fly.SettledState, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        const settled = this.callTolerating404('GET', `/machines/${resourceId}/wait?state=${state}&timeout=${Fly.WAIT_TIMEOUT_SECONDS}`)
+            .then(() => effects?.onSettled?.());
+
+        if (options?.awaitSettled !== false) {
+            await settled;
+
+            return;
+        }
+
+        // Nobody is waiting, so a failure can only be logged.
+        void settled.catch((error: unknown) => this.logger.warn(`Waiting for ${resourceId} to reach ${state} failed: ${error instanceof Error ? error.message : error}`));
     }
 
     /** The first value an instant query returns, or null when the series is absent. */
@@ -196,31 +206,48 @@ export class FlyDriver extends AbstractHardwareDriver {
         return new URL(`http://${resourceId}.vm.${this.app}.internal:${Fly.SERVICE_PORT}`);
     }
 
-    public async start(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+    public async start(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
         await this.call('POST', `/machines/${resourceId}/start`);
 
-        await this.awaitSettled(resourceId, 'started');
+        await this.awaitSettled(resourceId, 'started', options, effects);
     }
 
-    public async stop(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+    public async stop(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
         await this.call('POST', `/machines/${resourceId}/stop`, {
             signal:  'SIGTERM',
             timeout: `${Fly.STOP_TIMEOUT_SECONDS}s`,
         });
 
-        await this.awaitSettled(resourceId, 'stopped');
+        await this.awaitSettled(resourceId, 'stopped', options, effects);
     }
 
     // Memory is snapshotted and the machine stays scheduled nowhere, so a resume skips the boot.
-    public async suspend(resourceId: Fleet.Machine.ResourceId): Promise<void> {
+    public async suspend(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
         await this.call('POST', `/machines/${resourceId}/suspend`);
 
-        await this.awaitSettled(resourceId, 'suspended');
+        await this.awaitSettled(resourceId, 'suspended', options, effects);
     }
 
     // The same call that starts a stopped one; the platform knows which it is.
-    public async resume(resourceId: Fleet.Machine.ResourceId): Promise<void> {
-        await this.start(resourceId);
+    public async resume(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        await this.start(resourceId, options, effects);
+    }
+
+    // One start call covers stopped and suspended alike.
+    public async wake(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void> {
+        try {
+            await this.start(resourceId, options, effects);
+        }
+        catch (error) {
+            // Refused because it is already running, which is what was asked for.
+            if (await this.status(resourceId) === 'running') {
+                await effects?.onSettled?.();
+
+                return;
+            }
+
+            throw error;
+        }
     }
 
     public async destroy(resourceId: Fleet.Machine.ResourceId): Promise<void> {
