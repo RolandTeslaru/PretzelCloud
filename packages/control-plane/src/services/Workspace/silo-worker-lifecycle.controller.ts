@@ -4,7 +4,7 @@ import { ZodParam } from '@pretzel-cloud/shared/server/pipes/zod.pipe';
 import { SiloAuthGuard } from '@/auth/guards/silo-auth.guard';
 import { WorkspaceIdParam } from '@/auth/guarded-params';
 import { Throttle } from '@nestjs/throttler';
-import { WorkspaceService } from './workspace.service';
+import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 
 /**
  * What a workspace's own backend may ask of the fleet — driving the machine it
@@ -20,7 +20,7 @@ import { WorkspaceService } from './workspace.service';
 @UseGuards(SiloAuthGuard)
 export class SiloWorkerLifecycleController {
 
-    constructor(private readonly workspaceService: WorkspaceService) {}
+    constructor(private readonly hardware: HardwareService) {}
 
     @Post(':workspaceId/workers/:workerId/wake')
     async wakeWorker(
@@ -28,7 +28,7 @@ export class SiloWorkerLifecycleController {
         @ZodParam('workerId', Fleet.Machine.Id) workerId: Fleet.Machine.Id,
     ): Promise<Record<string, never>> {
         // The job is already queued; the worker takes it once it has booted, so the platform is not waited on.
-        await this.workspaceService.wakeWorker(workspaceId, workerId, { awaitSettled: false });
+        await this.hardware.lifecycle.wakeWorker(workspaceId, workerId, { awaitSettled: false });
 
         return {};
     }
@@ -38,7 +38,7 @@ export class SiloWorkerLifecycleController {
         @WorkspaceIdParam() workspaceId: Workspace.Id,
         @ZodParam('workerId', Fleet.Machine.Id) workerId: Fleet.Machine.Id,
     ): Promise<Record<string, never>> {
-        await this.workspaceService.sleepWorker(workspaceId, workerId);
+        await this.hardware.lifecycle.sleepWorker(workspaceId, workerId);
 
         return {};
     }

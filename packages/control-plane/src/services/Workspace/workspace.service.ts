@@ -214,26 +214,6 @@ export class WorkspaceService {
 
 
 
-    /**
-     * Wakes one worker so it can drain the queue. Called by the workspace's own
-     * backend right after it enqueues, which is the only moment anything knows
-     * work is coming.
-     */
-    public wakeWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id, options?: Fleet.Machine.CommandOptions): Promise<void> {
-        return this.hardware.lifecycle.wakeWorker(workspaceId, workerId, options);
-    }
-
-
-
-
-    /** Stops one worker once its backend reports it has gone quiet. */
-    public sleepWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id, options?: Fleet.Machine.CommandOptions): Promise<void> {
-        return this.hardware.lifecycle.sleepWorker(workspaceId, workerId, options);
-    }
-
-
-
-
     /** The one place the wake rule lives, so every trigger path inherits it. */
     public ensureStarted(workspaceId: Workspace.Id): Promise<void> {
         const inFlight = this.starting.get(workspaceId);
