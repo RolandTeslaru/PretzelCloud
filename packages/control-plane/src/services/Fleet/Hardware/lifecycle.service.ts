@@ -174,15 +174,15 @@ export class HardwareLifecycleService {
 
 
 
-    /** Stops one queue drainer, leaving the backend and the other workers as they are. */
+    /** Suspends one queue drainer, leaving the backend and the other workers as they are. */
     async sleepWorker(workspaceId: Workspace.Id, workerId: Fleet.Machine.Id, options?: Fleet.Machine.CommandOptions): Promise<void> {
         const worker = await this.getWorker(workspaceId, workerId);
 
         // The record can lag the machine, so the driver is asked before deciding.
         const state = await this.machineService.refreshState(worker);
 
-        if (Fleet.Machine.canApply('stop', { role: worker.role, state }))
-            await this.machineService.stop(worker, options);
+        if (state === 'running')
+            await this.machineService.suspend(worker, options);
     }
 
 
