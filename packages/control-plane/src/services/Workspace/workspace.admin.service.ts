@@ -6,7 +6,7 @@ import { LockService } from '@/services/Locking/lock.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 import { PlanRegistry } from '@/services/Plan/plan.registry';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
-import { HardwareStatisticsSampler } from '@/services/Fleet/Hardware/statistics.sampler';
+import { HardwareStatisticsService } from '@/services/Fleet/Hardware/statistics.service';
 import { UserAdminRepository } from '@/services/User/user.admin.repository';
 import { WorkspaceAdminRepository } from './workspace.admin.repository';
 import { WorkspaceService } from './workspace.service';
@@ -22,7 +22,7 @@ export class WorkspaceAdminService {
         private readonly workspaceAdminRepository: WorkspaceAdminRepository,
         private readonly userAdminRepository:      UserAdminRepository,
         private readonly hardware:                 HardwareService,
-        private readonly hardwareStatistics:       HardwareStatisticsSampler,
+        private readonly hardwareStatistics:       HardwareStatisticsService,
         private readonly entitlement:              EntitlementService,
         private readonly planRegistry:              PlanRegistry,
         // Read by `@Operation`, which serialises a workspace's operations across instances.
@@ -59,20 +59,21 @@ export class WorkspaceAdminService {
         if (!owner)
             throw new NotFoundException('This workspace has no owner on record');
 
-        const [placements, usage, hardwareStatistics] = await Promise.all([
-            this.hardware.getPlacementForWorkspaces([workspaceId]),
+        const [hardwareFieldsByWorkspaceId, usage, hardwareStatistics] = await Promise.all([
+            this.hardware.getHardwareFieldsForWorkspaces([workspaceId]),
             this.entitlement.getPeriodUsageReport(workspaceId),
             this.hardwareStatistics.get(workspaceId),
         ]);
 
-        const placement = placements.get(workspaceId);
+        const hardwareFields = hardwareFieldsByWorkspaceId.get(workspaceId);
 
         return {
             workspace: {
                 ...workspace,
-                region:      placement?.region ?? null,
-                releaseId:   placement?.releaseId ?? null,
-                releaseName: placement?.releaseName ?? null,
+                region:      hardwareFields?.region ?? null,
+                releaseId:   hardwareFields?.releaseId ?? null,
+                releaseName: hardwareFields?.releaseName ?? null,
+                driver:      hardwareFields?.driver ?? null,
             },
             owner,
             members: users.filter((user) => memberIds.includes(user.id)),
@@ -114,12 +115,7 @@ export class WorkspaceAdminService {
     public async lifecycle(adminUser: Principal.AdminUser, workspaceId: Workspace.Id, action: Workspace.Lifecycle.Action): Promise<void> {
         this.logger.log(`Admin ${adminUser.userId} requested ${action} for workspace ${workspaceId}`);
 
-        switch (action) {
-            case 'start':   return this.workspaceService.start(workspaceId);
-            case 'stop':    return this.workspaceService.stop(workspaceId);
-            case 'suspend': return this.workspaceService.suspend(workspaceId);
-            case 'restart': return this.workspaceService.restart(workspaceId);
-        }
+        await this.workspaceService.runTransition(workspaceId, action);
     }
 
     @Operation('workspace', 1)

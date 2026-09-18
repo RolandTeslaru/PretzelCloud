@@ -1,64 +1,146 @@
-import { Injectable } from '@nestjs/common';
-import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
-import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
+import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
-import { DriverRegistry } from '../drivers/driver.registry';
-import { MachineRepository } from '../Machine/machine.repository';
-import { ClusterService } from '../cluster/cluster.service';
+import { LockService } from '@/services/Locking/lock.service';
+import { RealtimeGateway } from '@/services/Realtime/realtime.gateway';
+import { RealtimeService } from '@/services/Realtime/realtime.service';
+import { HardwareStatisticsSampler } from './statistics.sampler';
+import { SampleCache } from './sample.cache';
 import { HardwareRepository } from './hardware.repository';
 
-/** Readings off a workspace's machines and its database. */
+const SAMPLE_INTERVAL_MS = 15_000;
+
+/**
+ * emites machine statistics onto the workspace channels somebody is
+ * watching. Watching is the trigger for the periodic pass: an unwatched
+ * workspace is never swept, and a parked one reads as nothing and emites
+ * nothing. A single workspace can still be sampled on demand.
+ */
 @Injectable()
-export class HardwareStatisticsService {
+export class HardwareStatisticsService implements OnModuleInit, OnModuleDestroy {
+
+    private readonly logger = new Logger(HardwareStatisticsService.name);
+
+    private timer?: NodeJS.Timeout;
 
     constructor(
-        private readonly repository:        HardwareRepository,
-        private readonly driverRegistry:    DriverRegistry,
-        private readonly machineRepository: MachineRepository,
-        private readonly clusterService:    ClusterService,
+        private readonly realtimeGateway: RealtimeGateway,
+        private readonly realtimeService: RealtimeService,
+        private readonly lockService:     LockService,
+        private readonly sampleCache:     SampleCache,
+        
+        private readonly hardwareStatisticsSampler: HardwareStatisticsSampler,
+        private readonly hardwareRepository:        HardwareRepository,
     ) {}
 
 
 
 
-    /** One reading per running machine. Null when nothing is running to read. */
-    public async getStatistics(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
-        const hardware = await this.repository.getByWorkspace(Principal.SELF, workspaceId);
+    public onModuleInit(): void {
+        this.timer = setInterval(() => void this.sampleAll(), SAMPLE_INTERVAL_MS);
+    }
+
+
+
+
+    public onModuleDestroy(): void {
+        clearInterval(this.timer);
+    }
+
+
+
+
+    /** Cached when fresh; otherwise this one workspace is sampled now. */
+    public async get(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
+        const cached = this.sampleCache.get(workspaceId);
+
+        if (cached)
+            return cached;
+
+        return this.sample(workspaceId);
+    }
+
+
+
+
+
+    public async sample(workspaceId: Workspace.Id): Promise<Workspace.HardwareStatistics | null> {
+        const hardware = await this.hardwareRepository.getByWorkspace(Principal.SELF, workspaceId);
 
         if (!hardware)
             return null;
 
-        const machines = await this.machineRepository.getAll(Principal.SELF, workspaceId);
+        const statistics = await this.hardwareStatisticsSampler.sampleHardware(hardware);
 
-        const driver = this.driverRegistry.getDriverForKind(hardware.driver);
-
-        const readings = await Promise.all(machines.map(async (machine) => ({
-            machine,
-            statistics: await driver.statistics(machine.resourceId).catch(() => null),
-        })));
-
-        const statisticsByMachineId: Record<Fleet.Machine.Id, Fleet.Machine.Statistics> = {};
-
-        for (const { machine, statistics } of readings) {
-            statisticsByMachineId[machine.id] = {
-                role:          machine.role,
-                // A reading proves it is running whatever the row last recorded.
-                state:         statistics ? 'running' : machine.state,
-                cpuPercent:    statistics?.cpuPercent    ?? null,
-                memUsedBytes:  statistics?.memUsedBytes  ?? null,
-                memTotalBytes: statistics?.memTotalBytes ?? null,
-            };
-        }
-
-        if (Object.keys(statisticsByMachineId).length === 0)
+        if (!statistics)
             return null;
 
-        const cluster = await this.clusterService.getClusterById(hardware.cluster_id);
+        this.emit(workspaceId, statistics);
 
-        const databaseSizeBytes = await this.clusterService
-            .getDatabaseSizeBytes(cluster, Provisioning.getDatabaseName(workspaceId))
-            .catch(() => null);
+        this.sampleCache.set(workspaceId, statistics);
 
-        return { machines: statisticsByMachineId, databaseSizeBytes, capturedAt: new Date() };
+        return statistics;
+    }
+
+
+
+
+    /**
+     * Forgets what was read, without reading again. The next `get` samples
+     * afresh; a watcher is told on the sweep after this one.
+     */
+    public invalidate(workspaceId: Workspace.Id): void {
+        this.sampleCache.invalidate(workspaceId);
+    }
+
+
+
+
+    private async sampleAll(): Promise<void> {
+        const readings: Array<[Workspace.Id, Workspace.HardwareStatistics]> = [];
+
+        for (const workspaceId of this.realtimeGateway.getSubscribedWorkspaceIds()) {
+            // The claim outlives the work, so each window samples a workspace
+            // once however many instances have watchers on it.
+            const claimed = await this.lockService.claimWindow('hardware-statistics', workspaceId, SAMPLE_INTERVAL_MS - 1_000);
+
+            if (!claimed)
+                continue;
+
+            try {
+                const hardware = await this.hardwareRepository.getByWorkspace(Principal.SELF, workspaceId);
+
+                if (!hardware)
+                    continue;
+
+                const statistics = await this.hardwareStatisticsSampler.sampleHardware(hardware);
+
+                if (!statistics)
+                    continue;
+
+                readings.push([workspaceId, statistics]);
+
+                this.emit(workspaceId, statistics);
+            }
+            catch (error) {
+                this.logger.warn(`Sampling ${workspaceId} failed: ${(error as Error).message}`);
+            }
+        }
+
+        // One replication message for the whole sweep, not one per workspace.
+        this.sampleCache.setBatch(readings);
+    }
+
+
+
+
+    private emit(workspaceId: Workspace.Id, statistics: Workspace.HardwareStatistics): void {
+        const channel = Workspace.Event.getChannel(workspaceId);
+
+        this.realtimeService.publish(channel, {
+            ...Workspace.Event.create('hardware:statistics', { statistics }),
+            channel,
+            workspaceId,
+        });
     }
 }

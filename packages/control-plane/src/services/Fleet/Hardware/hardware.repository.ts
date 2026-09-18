@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { Fleet, Workspace } from '@pretzel-cloud/shared/domain';
 import { FleetDB } from '@/db/fleet';
 import { Repository, Transactional } from '@/db/repository';
@@ -30,20 +31,34 @@ export class HardwareRepository extends Repository(FleetDB) {
         return FleetDB.Hardware.Row.parse(existing);
     }
 
+    /** The workspace's hardware with its machines, in one read. */
     @Transactional('service')
-    public async getByWorkspace(principal: Principal.Service, workspaceId: Workspace.Id) {
+    public async getByWorkspace(principal: Principal.Service, workspaceId: Workspace.Id): Promise<Fleet.Hardware | undefined> {
         const row = await this.trx
             .selectFrom('hardware')
-            .selectAll()
-            .where('workspace_id', '=', workspaceId)
+            .selectAll('hardware')
+            .select((eb) => jsonArrayFrom(
+                eb.selectFrom('machines')
+                    .selectAll('machines')
+                    .whereRef('machines.hardware_id', '=', 'hardware.id'),
+            ).as('machines'))
+            .where('hardware.workspace_id', '=', workspaceId)
             .executeTakeFirst();
 
-        return row ? FleetDB.Hardware.Row.parse(row) : undefined;
+        if (!row)
+            return undefined;
+
+        const { machines, ...hardware } = row;
+
+        return FleetDB.Hardware.toDomain(
+            FleetDB.Hardware.Row.parse(hardware),
+            machines.map((machine) => FleetDB.Machine.toDomain(FleetDB.Machine.Row.parse(machine))),
+        );
     }
 
     /** Where each workspace lives and what it runs, for the grid. */
     @Transactional('service')
-    public async getPlacementByWorkspaceIds(principal: Principal.Service, workspaceIds: Workspace.Id[]) {
+    public async getHardwareFieldsForWorkspaces(principal: Principal.Service, workspaceIds: Workspace.Id[]) {
         if (workspaceIds.length === 0)
             return [];
 
@@ -54,6 +69,7 @@ export class HardwareRepository extends Repository(FleetDB) {
             .select([
                 'hardware.workspace_id as workspace_id',
                 'hardware.region as region',
+                'hardware.driver as driver',
                 'releases.id as release_id',
                 'releases.name as release_name',
             ])
@@ -62,6 +78,7 @@ export class HardwareRepository extends Repository(FleetDB) {
         return rows.map((row) => ({
             workspaceId: row.workspace_id as Workspace.Id,
             region:      row.region as Fleet.Region.Schema,
+            driver:      row.driver as Fleet.Hardware.Driver,
             releaseId:   row.release_id as Fleet.Release.Id,
             releaseName: row.release_name as Fleet.Release.Name,
         }));

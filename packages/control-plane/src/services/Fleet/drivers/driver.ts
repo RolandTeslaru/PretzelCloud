@@ -8,14 +8,17 @@ export abstract class AbstractHardwareDriver {
     /** Idempotent: returns the existing machine if `name` already exists. */
     abstract create(options: AbstractHardwareDriver.CreateOptions): Promise<AbstractHardwareDriver.Handle>;
 
-    abstract start(resourceId: Fleet.Machine.ResourceId): Promise<void>;
+    abstract start(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void>;
 
-    abstract stop(resourceId: Fleet.Machine.ResourceId): Promise<void>;
+    abstract stop(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void>;
 
     /** Freezes the machine with memory kept; `resume` continues it without a boot. */
-    abstract suspend(resourceId: Fleet.Machine.ResourceId): Promise<void>;
+    abstract suspend(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void>;
 
-    abstract resume(resourceId: Fleet.Machine.ResourceId): Promise<void>;
+    abstract resume(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void>;
+
+    /** Running on return, whether it was stopped, suspended or already running. */
+    abstract wake(resourceId: Fleet.Machine.ResourceId, options?: Fleet.Machine.CommandOptions, effects?: Fleet.Machine.CommandEffects): Promise<void>;
 
     /** Idempotent: succeeds when the machine is already gone. */
     abstract destroy(resourceId: Fleet.Machine.ResourceId): Promise<void>;

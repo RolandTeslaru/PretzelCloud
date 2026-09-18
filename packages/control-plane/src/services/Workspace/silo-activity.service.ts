@@ -151,7 +151,7 @@ export class SiloActivityService implements OnModuleInit, OnModuleDestroy {
             if (await this.hardwareService.state.hasRunningWorker(workspaceId))
                 return;
 
-            await this.workspaceService.suspend(workspaceId);
+            await this.workspaceService.runTransition(workspaceId, 'suspend');
 
             this.logger.log(`Slept ${workspaceId} after an idle period`);
         }

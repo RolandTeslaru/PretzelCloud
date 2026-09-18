@@ -14,8 +14,8 @@ import { HardwareRepository } from './Hardware/hardware.repository';
 import { HardwareService } from './Hardware/hardware.service';
 import { HardwareLifecycleService } from './Hardware/lifecycle.service';
 import { HardwareStateService } from './Hardware/state.service';
-import { HardwareStatisticsService } from './Hardware/statistics.service';
 import { HardwareStatisticsSampler } from './Hardware/statistics.sampler';
+import { HardwareStatisticsService } from './Hardware/statistics.service';
 import { SampleCache } from './Hardware/sample.cache';
 import { HostnameRepository } from './Hostname/hostname.repository';
 import { HostnameService } from './Hostname/hostname.service';
@@ -33,8 +33,8 @@ import { ReleaseController } from './Release/release.controller';
         ClusterRepository, ClusterService,
         SiloSecretsRepository, SiloSecretsService,
         MachineRepository, MachineService,
-        HardwareRepository, HardwareService, HardwareStatisticsSampler, SampleCache,
-        HardwareLifecycleService, HardwareStateService, HardwareStatisticsService,
+        HardwareRepository, HardwareService, HardwareStatisticsService, SampleCache,
+        HardwareLifecycleService, HardwareStateService, HardwareStatisticsSampler,
         HostnameRepository, HostnameService,
         SiloDatabase, SiloDatabaseService,
         ProvisioningService,
@@ -42,6 +42,6 @@ import { ReleaseController } from './Release/release.controller';
     ],
     controllers: [ReleaseController],
     // Hardware is the fleet's façade; everything above it goes through one of these.
-    exports: [HardwareService, ReleaseService, HardwareStatisticsSampler, SampleCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
+    exports: [DriverRegistry, HardwareService, ReleaseService, HardwareStatisticsService, SampleCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
 })
 export class FleetModule { }

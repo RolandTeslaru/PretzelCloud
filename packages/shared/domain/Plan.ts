@@ -17,10 +17,6 @@ export namespace Plan {
     /** What a workspace starts on. The row decides everything after. */
     export const DEFAULT_PLAN_ID = "free" as Id
 
-    /** One machine doing everything, or a backend with its own worker beside it. */
-    export const Topology = z.enum(["combined", "separate"])
-    export type  Topology = z.infer<typeof Topology>
-
     /** What becomes of a backend nobody has used for a while. */
     export const IdleBackendPolicy = z.enum(["suspend", "stop", "none"])
     export type  IdleBackendPolicy = z.infer<typeof IdleBackendPolicy>
@@ -35,11 +31,15 @@ export namespace Plan {
         stripePriceId:                 z.string().nullable(),
         stripeProductId:               z.string().nullable(),
 
-        topology:                      Topology,
         backendSize:                   z.string(),
-        workerSize:                    z.string().nullable(),
         idleBackendPolicy:             IdleBackendPolicy,
-        executionConcurrencyLimit:     z.number().int(),
+        /** Worker machines beside the backend. None means the backend runs executions itself. */
+        workerCount:                   z.number().int().min(0),
+        workerSize:                    z.string().nullable(),
+        /** Executions one worker runs at once. */
+        workerConcurrency:             z.number().int().min(1),
+        /** How long a worker may sit idle before it is suspended. */
+        workerIdleSeconds:             z.number().int().min(1),
 
         // Null is unlimited.
         maxWorkflows:                  z.number().int().nullable(),
@@ -55,12 +55,16 @@ export namespace Plan {
         updatedAt:                     z.coerce.date(),
     })
 
-    export const getMachineRoles = (plan: Plan): Machine.Role[] =>
-        plan.topology === "separate" ? ["backend", "worker"] : ["combined"]
+    /** No worker machines: one machine does everything. */
+    export const isCombined = (plan: Plan): boolean => plan.workerCount === 0
 
     /** A worker with no size of its own runs at the backend's. */
     export const getSizeForRole = (plan: Plan, role: Machine.Role): string =>
         role === "worker" ? (plan.workerSize ?? plan.backendSize) : plan.backendSize
+
+    /** Executions the whole workspace runs at once. */
+    export const getExecutionConcurrency = (plan: Plan): number =>
+        Math.max(plan.workerCount, 1) * plan.workerConcurrency
 
     export const isPaid = (plan: Plan): boolean => plan.priceCents > 0
 

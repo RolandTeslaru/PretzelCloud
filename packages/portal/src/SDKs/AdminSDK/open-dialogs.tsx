@@ -1,6 +1,7 @@
-import { Admin, User, Workspace } from '@pretzel-cloud/shared/domain'
+import { Admin, Plan, User, Workspace } from '@pretzel-cloud/shared/domain'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
+import { AlertDialog } from '@pretzel-graph/standard-ui/foundations'
 import { getMessageFromError } from '../api'
 import { DeleteWorkspaceDialog } from './ui/DeleteWorkspaceDialog'
 import { DeleteUserDialog } from './ui/DeleteUserDialog'
@@ -10,6 +11,8 @@ import type { AdminSDKImpl } from './sdk'
 const deleteWorkspaceDialogId = (workspaceId: Workspace.Id) => `admin-delete-workspace-${workspaceId}`
 
 const disableWorkspaceDialogId = (workspaceId: Workspace.Id) => `admin-disable-workspace-${workspaceId}`
+
+const setPlanDialogId = (workspaceId: Workspace.Id) => `admin-set-plan-${workspaceId}`
 
 const deleteUserDialogId = (userId: User.Id) => `admin-delete-user-${userId}`
 
@@ -56,6 +59,44 @@ export const openDisableWorkspaceDialog = (sdk: AdminSDKImpl, summary: Admin.Wor
                 void sdk.actions.workspaces.disable(summary.workspace.id, reason)
             }}
         />
+    ))
+}
+
+export const openSetPlanDialog = (sdk: AdminSDKImpl, workspace: Workspace, plan: Plan) => {
+    const id = setPlanDialogId(workspace.id)
+
+    DialogSDK.actions.push(id, (props) => (
+        <DialogSDK.AlertTemplate
+            {...props}
+            type='warning'
+            approveLabel='Change plan'
+            onCancel={() => DialogSDK.actions.pop(id)}
+            onApprove={() => {
+                DialogSDK.actions.pop(id)
+
+                void sdk.actions.workspaces.setPlan(workspace.id, plan)
+            }}
+        >
+            <AlertDialog.Title>Change {workspace.displayName} to {plan.displayName}?</AlertDialog.Title>
+
+            <AlertDialog.Description>
+                The new plan and limits take effect immediately. The workspace will stop, replace its service machines for the new plan, and then start again.
+            </AlertDialog.Description>
+
+            <ul className='mt-4 list-disc space-y-1 pl-5 text-sm text-muted-foreground'>
+                <li>Running executions will stop during the change.</li>
+                <li>The workspace will be temporarily unavailable.</li>
+                <li>The database and workspace data will remain.</li>
+                <li>Stripe will not be changed and the owner will not be charged.</li>
+            </ul>
+
+            <div className='mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm'>
+                <span className='text-muted-foreground'>Current</span>
+                <span>{workspace.plan.displayName} · {Plan.getPriceLabel(workspace.plan)}/month</span>
+                <span className='text-muted-foreground'>New</span>
+                <span>{plan.displayName} · {Plan.getPriceLabel(plan)}/month</span>
+            </div>
+        </DialogSDK.AlertTemplate>
     ))
 }
 

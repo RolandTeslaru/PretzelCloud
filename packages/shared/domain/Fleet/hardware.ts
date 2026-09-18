@@ -4,6 +4,7 @@ import { Machine } from "./machine";
 import { Driver as DriverMod } from "./driver";
 import { Cluster as ClusterSchema } from "./cluster";
 import { Region } from "./region";
+import { Release } from "./release";
 
 /**
  * A workspace's compute, agnostic to how many machines back it. One workspace
@@ -11,9 +12,8 @@ import { Region } from "./region";
  * machine on free, a backend + worker split on paid, N workers when scaled).
  *
  * Operations a workspace names — restart, suspend — are hardware operations; the
- * hardware fans them out to its machines by role. State is NOT stored here: a
- * machine's state is volatile and would go stale the moment it were copied up,
- * so it is read from the machines when asked.
+ * hardware fans them out to its machines by role. Its machines carry the state
+ * they last recorded; what they are doing right now is the driver's to say.
  */
 export namespace Hardware {
     export const Id = z.uuid().brand("Fleet.Hardware.Id")
@@ -31,9 +31,10 @@ export namespace Hardware {
         clusterId:   ClusterSchema.Id,
         /** Where it lives: the cluster's region, and where its machines are placed. */
         region:      Region.Schema,
-        // The machines backing it, by id. Ids are stable; their volatile state
-        // is read fresh, never carried here.
-        machineIds:  z.array(Machine.Id),
+        /** The release its machines are built from. */
+        releaseId:   Release.Id,
+        /** The machines backing it, with the state each last recorded. */
+        machines:    z.array(Machine.Schema),
         lastBootAt:  z.coerce.date().nullable(),
         lastSeenAt:  z.coerce.date().nullable(),
         createdAt:   z.coerce.date(),

@@ -8,11 +8,12 @@ import { ListingService } from '@/services/Listing/listing.service';
 import { WorkspaceRepository } from './workspace.repository';
 import { UserRepository } from '@/services/User/user.repository';
 import { ProvisioningService } from '@/services/Fleet/provisioning/provisioning.service';
-import { HardwareService, TopologyNotRestored } from '@/services/Fleet/Hardware/hardware.service';
+import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { ReleaseService } from '@/services/Fleet/Release/release.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/identity/principal';
 import { Router } from '@/services/SiloRouter/router.service';
+import { DriverRegistry } from '@/services/Fleet/drivers/driver.registry';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 
@@ -37,14 +38,6 @@ function maxWorkspacesPerOwner(): number {
     return value;
 }
 
-/** Unwraps the provisioner's wrapper to ask what actually went wrong underneath. */
-function isTopologyNotRestored(error: unknown): boolean {
-    if (error instanceof TopologyNotRestored)
-        return true;
-
-    return error instanceof Error && error.cause instanceof TopologyNotRestored;
-}
-
 @Injectable()
 export class WorkspaceService {
 
@@ -64,6 +57,7 @@ export class WorkspaceService {
         @Inject(forwardRef(() => BillingService))
         private readonly billing:             BillingService,
         private readonly planRegistry:        PlanRegistry,
+        private readonly driverRegistry:      DriverRegistry,
         private readonly release:             ReleaseService,
         // Read by `@Operation`, which serialises a workspace's operations across instances.
         private readonly lockService:         LockService,
@@ -140,15 +134,13 @@ export class WorkspaceService {
         id:             Workspace.Id,
         lifecycleState: Workspace.Lifecycle.State,
         { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
-    ): Promise<Workspace> {
-        const workspace = await this.repository.setLifecycleState(Principal.SELF, id, lifecycleState);
+    ): Promise<void> {
+        await this.repository.setLifecycleState(Principal.SELF, id, lifecycleState);
 
         this.siloRouter.invalidateLifecycle(id);
 
         if (!emitNoEvents)
             this.emit(id, createEvent('lifecycle:changed', { lifecycleState }));
-
-        return workspace;
     }
 
     /**
@@ -175,18 +167,24 @@ export class WorkspaceService {
         const workspaces = await this.permission.getWorkspacesForMember(principal);
 
         // Filled here rather than mapped: where it lives and what it runs are the fleet's facts, on its own credential.
-        const placementByWorkspaceId = await this.hardware.getPlacementForWorkspaces(workspaces.map((workspace) => workspace.id));
+        const hardwareFieldsByWorkspaceId = await this.hardware.getHardwareFieldsForWorkspaces(workspaces.map((workspace) => workspace.id));
 
-        return workspaces.map((workspace) => {
-            const placement = placementByWorkspaceId.get(workspace.id);
+        const currentDriver = this.driverRegistry.getKindForNewWorkspaces();
 
-            return {
-                ...workspace,
-                region:      placement?.region ?? null,
-                releaseId:   placement?.releaseId ?? null,
-                releaseName: placement?.releaseName ?? null,
-            };
-        });
+        return workspaces
+            .map((workspace) => {
+                const hardwareFields = hardwareFieldsByWorkspaceId.get(workspace.id);
+
+                return {
+                    ...workspace,
+                    region:      hardwareFields?.region ?? null,
+                    releaseId:   hardwareFields?.releaseId ?? null,
+                    releaseName: hardwareFields?.releaseName ?? null,
+                    driver:      hardwareFields?.driver ?? null,
+                };
+            })
+            // Only workspaces this process drives; one without hardware yet is still being made here.
+            .filter((workspace) => workspace.driver === currentDriver || workspace.driver === null);
     }
 
     public async get(workspaceId: Workspace.Id): Promise<Workspace> {
@@ -219,26 +217,6 @@ export class WorkspaceService {
         await this.hostname.setCustom(workspace.id, subdomain);
 
         this.siloRouter.invalidate(workspace.id, [workspace.subdomain, subdomain]);
-    }
-
-
-
-
-    /**
-     * Wakes the worker so it can drain the queue. Called by the workspace's own
-     * backend before it enqueues, which is the only moment anything knows work
-     * is coming.
-     */
-    public wakeWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardware.lifecycle.startWorker(workspaceId);
-    }
-
-
-
-
-    /** Stops the worker once its backend reports the queue has been quiet. */
-    public sleepWorker(workspaceId: Workspace.Id): Promise<void> {
-        return this.hardware.lifecycle.stopWorker(workspaceId);
     }
 
 
@@ -279,7 +257,7 @@ export class WorkspaceService {
         if (!Workspace.Lifecycle.isWakeable(lifecycleState))
             throw new ConflictException(`This workspace is ${lifecycleState}`);
 
-        await this.start(workspaceId);
+        await this.runTransition(workspaceId, 'start');
     }
 
 
@@ -318,21 +296,11 @@ export class WorkspaceService {
 
 
 
-    @Operation('workspace')
-    public async start(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        await this.ensureCompute(workspaceId);
-
-        return this.runTransition(workspaceId, 'start', options);
-    }
-
-
-
-
     /** Gives the machines back. Hardware row, database, hostnames and secrets stay, and traffic rebuilds it. */
     @Operation('workspace')
     public async reclaimCompute(workspaceId: Workspace.Id): Promise<void> {
         // Quiet: the state announced is `sleeping` below, not the `stopped` a stop lands on.
-        await this.stop(workspaceId, { emitNoEvents: true });
+        await this.runTransition(workspaceId, 'stop', { emitNoEvents: true });
 
         await this.hardware.destroyCompute(workspaceId);
 
@@ -340,6 +308,9 @@ export class WorkspaceService {
 
         this.siloRouter.invalidate(workspaceId);
     }
+
+
+
 
     /** Rebuilds reclaimed machines. Data was never on them, so this is a slow start. */
     private async ensureCompute(workspaceId: Workspace.Id): Promise<void> {
@@ -362,38 +333,16 @@ export class WorkspaceService {
 
 
 
-    /** Stopping means nothing is left running, worker included. */
-    @Operation('workspace')
-    public stop(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        return this.runTransition(workspaceId, 'stop', options);
-    }
-
-
-
-
-    @Operation('workspace')
-    public suspend(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        return this.runTransition(workspaceId, 'suspend', options);
-    }
-
-
-
-
-    /** Everything down, then answerable again. The worker returns on demand. */
-    @Operation('workspace')
-    public restart(workspaceId: Workspace.Id, options: Workspace.Lifecycle.TransitionOptions = {}): Promise<void> {
-        return this.runTransition(workspaceId, 'restart', options);
-    }
-
-
-
-
     /** What every transition shares: machines move, route drops, subscribers hear. */
-    private async runTransition(
+    @Operation('workspace')
+    public async runTransition(
         workspaceId: Workspace.Id,
         action:      Workspace.Lifecycle.Action,
         { emitNoEvents }: Workspace.Lifecycle.TransitionOptions = {},
     ): Promise<void> {
+        if (action === 'start')
+            await this.ensureCompute(workspaceId);
+
         // Written nowhere: a transition is not a state a workspace can be in.
         if (!emitNoEvents)
             this.emit(workspaceId, createEvent('transition:started', { action }));
@@ -409,7 +358,7 @@ export class WorkspaceService {
             // is not done when the machines are told, and a row saying `running`
             // in the meantime is one the siloRouter forwards into.
             if (action === 'start' || action === 'restart')
-                await this.hardware.lifecycle.awaitHealthy(workspaceId);
+                await this.hardware.lifecycle.awaitBackendHealthy(workspaceId);
 
             this.siloRouter.invalidate(workspaceId);
 
@@ -439,6 +388,7 @@ export class WorkspaceService {
 
 
 
+
     /**
      * Replaces the compute from the current spec. Data, hostnames and secrets
      * stay. The machines are destroyed rather than moved, so this announces
@@ -450,11 +400,11 @@ export class WorkspaceService {
 
         try {
             // Down for the rebuild: stopped first so executions end and pools close.
-            await this.stop(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'stop', { emitNoEvents: true });
 
             await this.provisioning.rebuild(workspaceId, ownerId, planId);
 
-            await this.start(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'start', { emitNoEvents: true });
         }
         catch (error) {
             this.emit(workspaceId, createEvent('rebuild:failed', {
@@ -491,16 +441,14 @@ export class WorkspaceService {
             await this.hardware.setRelease(workspaceId, target.id);
 
             // Down for the swap: stopped first so executions end and pools close.
-            await this.stop(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'stop', { emitNoEvents: true });
 
             // Its own state for the window: not stopped, coming back on its own.
-            await this.repository.setLifecycleState(Principal.SELF, workspaceId, 'updating');
-
-            this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'updating' }));
+            await this.setLifecycleState(workspaceId, 'updating');
 
             await this.provisioning.rebuild(workspaceId, ownerId, planId);
 
-            await this.start(workspaceId, { emitNoEvents: true });
+            await this.runTransition(workspaceId, 'start', { emitNoEvents: true });
         }
         catch (error) {
             this.emit(workspaceId, createEvent('update:failed', {
@@ -511,11 +459,8 @@ export class WorkspaceService {
             // An update that died in its window must not stay 'updating' forever.
             const { lifecycleState } = await this.get(workspaceId);
 
-            if (lifecycleState === 'updating') {
-                await this.repository.setLifecycleState(Principal.SELF, workspaceId, 'stopped');
-
-                this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState: 'stopped' }));
-            }
+            if (lifecycleState === 'updating')
+                await this.setLifecycleState(workspaceId, 'stopped');
             else
                 this.emit(workspaceId, createEvent('lifecycle:changed', { lifecycleState }));
 
@@ -542,25 +487,21 @@ export class WorkspaceService {
         // A bigger plan takes effect now, not at the next re-check.
         this.entitlement.unlock(workspaceId);
 
-        // Down for the conversion, so executions end and pools close.
-        await this.stop(workspaceId);
+        // Down for the rebuild, so executions end and pools close.
+        await this.runTransition(workspaceId, 'stop');
 
         try {
-            await this.provisioning.convert(workspaceId, ownerId, planId);
+            // Every machine is replaced from the new plan; the database stays.
+            await this.provisioning.rebuild(workspaceId, ownerId, planId);
         }
         catch (error) {
-            // Only when its machines could not be put back. A conversion that
-            // failed and rolled back leaves a working workspace, and freezing it
-            // for that would take away what the owner already had.
-            if (isTopologyNotRestored(error))
-                await this.disable(workspaceId, 'Its machines could not be rebuilt after a failed plan change.');
-
+            // Left wherever the rebuild stopped; the owner can rebuild again.
             this.siloRouter.invalidate(workspaceId);
 
             throw error;
         }
 
-        await this.start(workspaceId);
+        await this.runTransition(workspaceId, 'start');
 
         this.siloRouter.invalidate(workspaceId);
     }

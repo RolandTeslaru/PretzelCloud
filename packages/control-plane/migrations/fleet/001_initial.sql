@@ -149,10 +149,11 @@ alter table only hardware          add constraint hardware_pkey          primary
 alter table only machines          add constraint machines_pkey          primary key (id);
 alter table only hostnames         add constraint hostnames_pkey         primary key (host);
 
--- A workspace has one machine per role. A re-run collides here instead of
--- creating a second machine nobody is tracking.
+-- A workspace has one backend or one combined machine. A re-run collides here instead of
+-- creating a second one nobody is tracking. Workers are many; the plan counts them.
+-- That a combined machine never sits beside the others is machines_check_shape's.
 create unique index hardware_workspace_key on hardware using btree (workspace_id);
-create unique index machines_workspace_role_key on machines using btree (workspace_id, role);
+create unique index machines_workspace_role_key on machines using btree (workspace_id, role) where role in ('backend', 'combined');
 alter table only machines add constraint machines_hardware_driver_fkey foreign key (hardware_id, driver) references hardware(id, driver) on delete cascade;
 
 -- Restrict, not cascade: a cluster with workspaces on it cannot be removed
@@ -216,6 +217,29 @@ $$;
 
 create trigger silo_secrets_set_updated_at before update on silo_secrets for each row execute function set_updated_at();
 create trigger machines_set_updated_at          before update on machines          for each row execute function set_updated_at();
+
+-- A combined machine stands alone: it never shares a workspace with a backend or a worker.
+-- Same-role rows are the unique index's, so an upsert landing on its own row passes.
+create function machines_check_shape() returns trigger
+    language plpgsql
+    as $$
+begin
+    -- Serialises machine writes per workspace, so two inserts cannot both pass the check.
+    perform 1 from hardware where id = new.hardware_id for update;
+
+    if new.role = 'combined' then
+        if exists (select 1 from machines where workspace_id = new.workspace_id and role in ('backend', 'worker')) then
+            raise exception 'workspace % has a backend or workers; a combined machine stands alone', new.workspace_id;
+        end if;
+    elsif exists (select 1 from machines where workspace_id = new.workspace_id and role = 'combined') then
+        raise exception 'workspace % has a combined machine; it cannot also have a %', new.workspace_id, new.role;
+    end if;
+
+    return new;
+end;
+$$;
+
+create trigger machines_check_shape before insert or update of role, workspace_id on machines for each row execute function machines_check_shape();
 
 
 -- ── Releases ─────────────────────────────────────────────────────────────────

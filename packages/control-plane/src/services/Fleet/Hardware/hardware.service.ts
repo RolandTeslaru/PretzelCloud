@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Fleet, Plan, Workspace } from '@pretzel-cloud/shared/domain';
 import { Provisioning } from '@pretzel-cloud/shared/domain/Workspace/provisioning';
-import { FleetDB } from '@/db/fleet';
 import { Principal } from '@/auth/identity/principal';
 import { DriverRegistry } from '../drivers/driver.registry';
 import { MachineService } from '../Machine/machine.service';
@@ -11,25 +11,8 @@ import { ClusterService } from '../cluster/cluster.service';
 import { ReleaseService } from '../Release/release.service';
 import { HardwareLifecycleService } from './lifecycle.service';
 import { HardwareStateService } from './state.service';
-import { HardwareStatisticsService } from './statistics.service';
 import { HardwareStatisticsSampler } from './statistics.sampler';
-
-const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
-
-/** A conversion failed and could not rebuild what it took apart, leaving the workspace with no machines. */
-export class TopologyNotRestored extends Error {
-
-    constructor(
-        public readonly workspaceId:     Workspace.Id,
-        public readonly conversionError: unknown,
-        public readonly restoreError:    unknown,
-    ) {
-        super(
-            `${workspaceId} has no machines: converting failed (${describe(conversionError)}) `
-            + `and rebuilding what it had failed too (${describe(restoreError)})`,
-        );
-    }
-}
+import { HardwareStatisticsService } from './statistics.service';
 
 /**
  * A workspace's compute as one thing: what it is allocated and what shape it takes.
@@ -47,11 +30,11 @@ export class HardwareService {
         private readonly machineRepository: MachineRepository,
         private readonly clusterService:    ClusterService,
         private readonly releaseService:    ReleaseService,
-        private readonly statisticsSampler: HardwareStatisticsSampler,
+        private readonly statisticsService: HardwareStatisticsService,
 
         public readonly lifecycle:  HardwareLifecycleService,
         public readonly state:      HardwareStateService,
-        public readonly statistics: HardwareStatisticsService,
+        public readonly statistics: HardwareStatisticsSampler,
     ) {}
 
 
@@ -84,7 +67,7 @@ export class HardwareService {
 
 
     /** The row, or a throw — everything below needs hardware allocated first. */
-    async getHardware(workspaceId: Workspace.Id): Promise<FleetDB.Hardware.Row> {
+    async getHardware(workspaceId: Workspace.Id): Promise<Fleet.Hardware> {
         const hardware = await this.repository.getByWorkspace(Principal.SELF, workspaceId);
 
         if (!hardware)
@@ -96,54 +79,57 @@ export class HardwareService {
 
 
 
-    /** The machines the plan calls for, created and serving; the caller never names roles. */
-    async assemble(
-        workspaceId:    Workspace.Id,
-        plan:           Plan,
-        baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
-        backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
-    ): Promise<void> {
-        const machineRoles = Plan.getMachineRoles(plan);
-
-        await this.buildCompute(workspaceId, plan, machineRoles, baseEnvKeys, backendEnvKeys, null);
-
-        // Created is not serving: a first boot migrates its database before it answers.
-        await this.lifecycle.awaitHealthy(workspaceId);
-    }
-
-
-
-
     /**
-     * Creates roles in bring-up order, so a worker is built from a backend address that exists.
-     * Plan and roles are given separately: the plan decides sizes, the roles decide shape.
+     * Creates the plan's machines in bring-up order, so a worker is built from a backend address
+     * that exists. Workers take the ids the backend's env already names.
      */
-    private async buildCompute(
+    async buildCompute(
         workspaceId:    Workspace.Id,
         plan:           Plan,
-        machineRoles:   Fleet.Machine.Role[],
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
-        backendHost:    string | null,
+        workerIds:      Fleet.Machine.Id[],
     ): Promise<void> {
         const hardware = await this.getHardware(workspaceId);
 
         const driver = this.driverRegistry.getDriverForKind(hardware.driver);
 
-        const release = await this.releaseService.getById(hardware.release_id);
+        const release = await this.releaseService.getById(hardware.releaseId);
 
-        const ordered = Fleet.Machine.inLifecycleOrder('start', machineRoles.map((role) => ({ role })));
+        const frontlineRole: Fleet.Machine.Role = Plan.isCombined(plan) ? 'combined' : 'backend';
 
-        for (const { role } of ordered) {
-            const spec = Fleet.Machine.Spec.create(role, workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost)
-            const handle = await this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, spec);
+        const frontlineSpec = Fleet.Machine.Spec.create(
+            Fleet.Machine.Id.parse(randomUUID()),
+            frontlineRole,
+            workspaceId,
+            plan,
+            release,
+            baseEnvKeys,
+            backendEnvKeys,
+            null,
+        );
 
-            if (role === 'backend')
-                backendHost = await driver.getInternalHostForMachine(handle.resourceId);
+        const frontline = await this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, frontlineSpec);
+
+        let workers: Fleet.Machine[] = [];
+
+        if (frontline.role === 'backend') {
+            const backendHost = await driver.getInternalHostForMachine(frontline.resourceId);
+
+            workers = await Promise.all(workerIds.map((id) => {
+                const spec = Fleet.Machine.Spec.create(id, 'worker', workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost);
+
+                return this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, spec);
+            }));
         }
 
+        hardware.machines = [frontline, ...workers];
+
         // New machines carry new ids, so a reading from before this keys machines that are gone.
-        this.statisticsSampler.invalidate(workspaceId);
+        this.statisticsService.invalidate(workspaceId);
+
+        // Created is not serving: every machine must complete its first boot.
+        await this.lifecycle.awaitHealthy(hardware);
     }
 
 
@@ -155,91 +141,12 @@ export class HardwareService {
         plan:        Plan,
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
+        workerIds:      Fleet.Machine.Id[],
     ): Promise<void> {
         await this.destroyCompute(workspaceId);
 
-        await this.assemble(workspaceId, plan, baseEnvKeys, backendEnvKeys);
+        await this.buildCompute(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds);
     }
-
-
-
-
-    /** Reconciles the machines to a new plan's topology; the database survives. */
-    async convertTo(
-        workspaceId: Workspace.Id,
-        plan:        Plan,
-        baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
-        backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
-    ): Promise<void> {
-        const hardware = await this.repository.getByWorkspace(Principal.SELF, workspaceId);
-
-        if (!hardware)
-            throw new Error(`No hardware to convert for ${workspaceId}`);
-
-        const driver  = this.driverRegistry.getDriverForKind(hardware.driver);
-        const current = await this.machineService.getAll(workspaceId);
-        const desired = new Set(Plan.getMachineRoles(plan));
-        const have    = new Set(current.map((machine) => machine.role));
-
-        // Outgoing first, so the two topologies never exist at once.
-        for (const machine of current)
-            if (!desired.has(machine.role))
-                await this.machineService.destroy(machine);
-
-        const backend = current.find((machine) => machine.role === 'backend');
-
-        try {
-            await this.buildCompute(
-                workspaceId,
-                plan,
-                [...desired].filter((role) => !have.has(role)),
-                baseEnvKeys,
-                backendEnvKeys,
-                backend ? await driver.getInternalHostForMachine(backend.resourceId) : null,
-            );
-        }
-        catch (conversionError) {
-            // The old topology's machines are already gone, so put them back before reporting.
-            try {
-                await this.rollbackTopology(workspaceId, plan, [...have], baseEnvKeys, backendEnvKeys);
-            }
-            catch (restoreError) {
-                throw new TopologyNotRestored(workspaceId, conversionError, restoreError);
-            }
-
-            // Back as it was, but still an error: the caller asked for a topology it has not got.
-            throw conversionError;
-        }
-    }
-
-
-
-
-    /** Rebuilds a topology a failed conversion took apart. */
-    private async rollbackTopology(
-        workspaceId:    Workspace.Id,
-        // The plan converted to; the old one is recorded nowhere. Sizes only — the roles say the shape.
-        plan:           Plan,
-        machineRoles:   Fleet.Machine.Role[],
-        baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
-        backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
-    ): Promise<void> {
-        const wanted = new Set(machineRoles);
-
-        const hardware = await this.getHardware(workspaceId);
-
-        const driver = this.driverRegistry.getDriverForKind(hardware.driver);
-
-        // Whatever the failed attempt made goes first, so only the wanted roles are left.
-        for (const machine of await this.machineService.getAll(workspaceId))
-            if (!wanted.has(machine.role))
-                await this.machineService.destroy(machine);
-
-        await this.buildCompute(workspaceId, plan, machineRoles, baseEnvKeys, backendEnvKeys, null);
-
-        this.logger.log(`Restored the previous topology of ${workspaceId} after a failed conversion`);
-    }
-
 
 
 
@@ -272,7 +179,7 @@ export class HardwareService {
 
         await this.machineRepository.deleteFor(Principal.SELF, workspaceId);
 
-        this.statisticsSampler.invalidate(workspaceId);
+        this.statisticsService.invalidate(workspaceId);
 
         this.logger.log(`Destroyed the machines of ${workspaceId}`);
     }
@@ -281,10 +188,10 @@ export class HardwareService {
 
 
     /** Where each workspace lives and what it runs, keyed by workspace. */
-    async getPlacementForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, { region: Fleet.Region.Schema; releaseId: Fleet.Release.Id; releaseName: Fleet.Release.Name }>> {
-        const rows = await this.repository.getPlacementByWorkspaceIds(Principal.SELF, workspaceIds);
+    async getHardwareFieldsForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, { region: Fleet.Region.Schema; driver: Fleet.Hardware.Driver; releaseId: Fleet.Release.Id; releaseName: Fleet.Release.Name }>> {
+        const rows = await this.repository.getHardwareFieldsForWorkspaces(Principal.SELF, workspaceIds);
 
-        return new Map(rows.map((row) => [row.workspaceId, { region: row.region, releaseId: row.releaseId, releaseName: row.releaseName }]));
+        return new Map(rows.map((row) => [row.workspaceId, { region: row.region, driver: row.driver, releaseId: row.releaseId, releaseName: row.releaseName }]));
     }
 
 
@@ -311,7 +218,7 @@ export class HardwareService {
             return;
         }
 
-        const cluster = await this.clusterService.getClusterById(hardware.cluster_id);
+        const cluster = await this.clusterService.getClusterById(hardware.clusterId);
 
         await this.destroyCompute(workspaceId);
 

@@ -102,6 +102,7 @@ export namespace Workspace {
         region:             Fleet.Region.Schema.nullable(),
         releaseId:          Fleet.Release.Id.nullable(),
         releaseName:        z.string().nullable(),
+        driver:             Fleet.Hardware.Driver.nullable(),
         // Derived where the fleet domain is known; a browser cannot build it.
         appUrl:             z.url(),
         createdAt:          z.coerce.date(),

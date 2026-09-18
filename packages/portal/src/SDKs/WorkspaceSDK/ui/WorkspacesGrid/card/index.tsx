@@ -11,6 +11,33 @@ import { DatabaseStatistic } from '../DatabaseStatistic'
 import { CardDropdown } from './dropdown'
 import { ReleaseSDK } from '@/SDKs/ReleaseSDK'
 import { ShinyText } from '@pretzel-graph/standard-ui/components/ShinyText'
+import dockerLogo from '@/assets/docker-logo.png'
+import flyLogo from '@/assets/fly-logo.svg'
+
+
+const DRIVER_LOGOS: Record<NonNullable<Workspace['driver']>, { src: string; label: string }> = {
+    docker: { src: dockerLogo, label: 'Docker' },
+    fly:    { src: flyLogo,    label: 'Fly' },
+}
+
+// Which substrate the workspace runs on, shown only in development.
+const DriverLogo = ({ driver }: { driver: Workspace['driver'] }) => {
+    if (!import.meta.env.DEV || !driver)
+        return null
+
+    const { src, label } = DRIVER_LOGOS[driver]
+
+    return (
+        <Tooltip.Root>
+            <Tooltip.Trigger>
+                <img src={src} alt={label} className='h-4 w-auto object-contain' />
+            </Tooltip.Trigger>
+            <Tooltip.Content>
+                {`Runs on ${label}`}
+            </Tooltip.Content>
+        </Tooltip.Root>
+    )
+}
 
 
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
@@ -44,6 +71,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
                     <div className={cn('flex flex-row gap-2', !reachable && 'opacity-60')}>
                         <ServerIllustration className='h-6' />
                         <Card.Title className='text-sm'>{workspace.displayName}</Card.Title>
+                        <DriverLogo driver={workspace.driver} />
                     </div>
 
                     <Card.Action onClick={(event) => event.stopPropagation()}>
