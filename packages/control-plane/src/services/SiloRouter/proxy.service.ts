@@ -448,7 +448,27 @@ export class ProxyService implements OnModuleDestroy {
     }
 
     // This process, on its Nest port.
+    // The primary region when this machine runs elsewhere; API work belongs next to the database.
+    private static getReplayRegion(req: IncomingMessage): string | null {
+        const region  = process.env.FLY_REGION;
+        const primary = process.env.PRIMARY_REGION;
+
+        // The platform's own check must be answered by the machine it is checking.
+        if (req.url === '/health')
+            return null;
+
+        return region && primary && region !== primary ? primary : null;
+    }
+
     private serveControlPlane(req: IncomingMessage, res: ServerResponse): void {
+        const replayRegion = ProxyService.getReplayRegion(req);
+
+        if (replayRegion) {
+            res.writeHead(204, { 'fly-replay': `region=${replayRegion}` }).end();
+
+            return;
+        }
+
         const origin = `http://127.0.0.1:${process.env.PORT ?? 4000}`;
 
         this.proxy.web(req, res, { target: origin }, (error) => {
@@ -504,6 +524,15 @@ export class ProxyService implements OnModuleDestroy {
     // Anything but a clean forward closes the socket.
     public async handleWebSocketUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
         if (Router.isControlPlaneHost(req)) {
+            const replayRegion = ProxyService.getReplayRegion(req);
+
+            // Answered before the upgrade, so the platform replays the handshake in the primary region.
+            if (replayRegion) {
+                socket.end(`HTTP/1.1 204 No Content\r\nfly-replay: region=${replayRegion}\r\nContent-Length: 0\r\n\r\n`);
+
+                return;
+            }
+
             this.proxy.ws(req, socket, head, { target: `http://127.0.0.1:${process.env.PORT ?? 4000}` }, (error: Error) => {
                 this.logger.warn(`Control plane upgrade failed: ${error.message}`);
 

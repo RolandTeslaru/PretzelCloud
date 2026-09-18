@@ -3,8 +3,8 @@ import { Workspace } from '@pretzel-cloud/shared/domain';
 import { HardwareService } from '@/services/Fleet/Hardware/hardware.service';
 import { GlobalCaching, GlobalCachingService } from '@/services/Caching/caching.service';
 
-// Short: the driver changes this without telling anyone. A stale hit is caught by the forward failing.
-const TTL_MS = 30_000;
+// Every rebuild and wake sets or drops the entry, and a stale hit is caught by the forward failing.
+const TTL_MS = 10 * 60_000;
 const MAX    = 10_000;
 
 const CHANNEL = GlobalCaching.Channel.parse('cache:targets');
