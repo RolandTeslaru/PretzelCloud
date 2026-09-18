@@ -59,20 +59,21 @@ export class WorkspaceAdminService {
         if (!owner)
             throw new NotFoundException('This workspace has no owner on record');
 
-        const [placements, usage, hardwareStatistics] = await Promise.all([
-            this.hardware.getPlacementForWorkspaces([workspaceId]),
+        const [hardwareFieldsByWorkspaceId, usage, hardwareStatistics] = await Promise.all([
+            this.hardware.getHardwareFieldsForWorkspaces([workspaceId]),
             this.entitlement.getPeriodUsageReport(workspaceId),
             this.hardwareStatistics.get(workspaceId),
         ]);
 
-        const placement = placements.get(workspaceId);
+        const hardwareFields = hardwareFieldsByWorkspaceId.get(workspaceId);
 
         return {
             workspace: {
                 ...workspace,
-                region:      placement?.region ?? null,
-                releaseId:   placement?.releaseId ?? null,
-                releaseName: placement?.releaseName ?? null,
+                region:      hardwareFields?.region ?? null,
+                releaseId:   hardwareFields?.releaseId ?? null,
+                releaseName: hardwareFields?.releaseName ?? null,
+                driver:      hardwareFields?.driver ?? null,
             },
             owner,
             members: users.filter((user) => memberIds.includes(user.id)),

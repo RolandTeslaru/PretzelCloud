@@ -165,16 +165,17 @@ export class WorkspaceService {
         const workspaces = await this.permission.getWorkspacesForMember(principal);
 
         // Filled here rather than mapped: where it lives and what it runs are the fleet's facts, on its own credential.
-        const placementByWorkspaceId = await this.hardware.getPlacementForWorkspaces(workspaces.map((workspace) => workspace.id));
+        const hardwareFieldsByWorkspaceId = await this.hardware.getHardwareFieldsForWorkspaces(workspaces.map((workspace) => workspace.id));
 
         return workspaces.map((workspace) => {
-            const placement = placementByWorkspaceId.get(workspace.id);
+            const hardwareFields = hardwareFieldsByWorkspaceId.get(workspace.id);
 
             return {
                 ...workspace,
-                region:      placement?.region ?? null,
-                releaseId:   placement?.releaseId ?? null,
-                releaseName: placement?.releaseName ?? null,
+                region:      hardwareFields?.region ?? null,
+                releaseId:   hardwareFields?.releaseId ?? null,
+                releaseName: hardwareFields?.releaseName ?? null,
+                driver:      hardwareFields?.driver ?? null,
             };
         });
     }

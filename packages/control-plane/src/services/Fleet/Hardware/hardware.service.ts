@@ -188,10 +188,10 @@ export class HardwareService {
 
 
     /** Where each workspace lives and what it runs, keyed by workspace. */
-    async getPlacementForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, { region: Fleet.Region.Schema; releaseId: Fleet.Release.Id; releaseName: Fleet.Release.Name }>> {
-        const rows = await this.repository.getPlacementByWorkspaceIds(Principal.SELF, workspaceIds);
+    async getHardwareFieldsForWorkspaces(workspaceIds: Workspace.Id[]): Promise<Map<Workspace.Id, { region: Fleet.Region.Schema; driver: Fleet.Hardware.Driver; releaseId: Fleet.Release.Id; releaseName: Fleet.Release.Name }>> {
+        const rows = await this.repository.getHardwareFieldsForWorkspaces(Principal.SELF, workspaceIds);
 
-        return new Map(rows.map((row) => [row.workspaceId, { region: row.region, releaseId: row.releaseId, releaseName: row.releaseName }]));
+        return new Map(rows.map((row) => [row.workspaceId, { region: row.region, driver: row.driver, releaseId: row.releaseId, releaseName: row.releaseName }]));
     }
 
 

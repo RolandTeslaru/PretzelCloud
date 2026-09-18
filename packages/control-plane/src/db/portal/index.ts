@@ -83,6 +83,7 @@ export namespace PortalDB {
             region:             null,
             releaseId:          null,
             releaseName:        null,
+            driver:             null,
             subscriptionStatus: row.subscription_status,
             currentPeriodStart: row.current_period_start,
             currentPeriodEnd:   row.current_period_end,
