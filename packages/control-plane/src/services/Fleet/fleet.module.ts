@@ -42,6 +42,6 @@ import { ReleaseController } from './Release/release.controller';
     ],
     controllers: [ReleaseController],
     // Hardware is the fleet's façade; everything above it goes through one of these.
-    exports: [HardwareService, ReleaseService, HardwareStatisticsService, SampleCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
+    exports: [DriverRegistry, HardwareService, ReleaseService, HardwareStatisticsService, SampleCache, HostnameService, ProvisioningService, SiloDatabaseService, SiloDatabase],
 })
 export class FleetModule { }

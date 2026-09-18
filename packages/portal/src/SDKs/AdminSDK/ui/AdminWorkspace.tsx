@@ -121,7 +121,7 @@ export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) =
                                             <DropdownMenu.Item
                                                 key={plan.id}
                                                 disabled={plan.id === workspace.plan.id}
-                                                onSelect={() => void AdminSDK.actions.workspaces.setPlan(workspace.id, plan)}
+                                                onSelect={() => AdminSDK.dialogs.openSetPlan(workspace, plan)}
                                             >
                                                 <span className="flex-1">{plan.displayName}</span>
                                                 <span className="text-xs text-muted-foreground">{Plan.getPriceLabel(plan)}</span>

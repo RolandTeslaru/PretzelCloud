@@ -123,7 +123,8 @@ export class ClusterService implements OnModuleDestroy {
         return Cluster.Database.createConnectionURL({
             roleName,
             password,
-            host: Cluster.getAddress(cluster),
+            // A development fleet on another substrate reaches the local cluster at another address.
+            host: process.env.CLUSTER_CLIENT_HOST ?? Cluster.getAddress(cluster),
             databaseName,
             ssl:  cluster.ssl,
         });

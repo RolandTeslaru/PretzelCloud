@@ -114,7 +114,10 @@ export class ProvisioningService {
         const hardening = { BLOCK_OUTBOUND_SMTP: '1', REFUSE_PRIVATE_NETWORK: '1' };
 
         // What the plan row bounds, delivered as the machine's own configuration.
-        const limits = { EXECUTION_CONCURRENCY: String(plan.workerConcurrency) };
+        const limits = {
+            EXECUTION_CONCURRENCY: String(plan.workerConcurrency),
+            WORKER_IDLE_SECONDS:   String(plan.workerIdleSeconds),
+        };
 
         // Chosen before any machine exists, so the backend is built knowing its workers.
         const workerIds = Array.from({ length: plan.workerCount }, () => Fleet.Machine.Id.parse(randomUUID()));

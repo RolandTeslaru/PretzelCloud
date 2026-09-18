@@ -38,6 +38,8 @@ export namespace Plan {
         workerSize:                    z.string().nullable(),
         /** Executions one worker runs at once. */
         workerConcurrency:             z.number().int().min(1),
+        /** How long a worker may sit idle before it is suspended. */
+        workerIdleSeconds:             z.number().int().min(1),
 
         // Null is unlimited.
         maxWorkflows:                  z.number().int().nullable(),

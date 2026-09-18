@@ -49,6 +49,7 @@ export namespace Machine {
             BLOCK_OUTBOUND_SMTP:     z.string(),
             REFUSE_PRIVATE_NETWORK:  z.string(),
             EXECUTION_CONCURRENCY:   z.string(),
+            WORKER_IDLE_SECONDS:     z.string(),
         })
         export type Base = z.infer<typeof Base>
 

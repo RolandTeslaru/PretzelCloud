@@ -13,6 +13,7 @@ import { ReleaseService } from '@/services/Fleet/Release/release.service';
 import { HostnameService } from '@/services/Fleet/Hostname/hostname.service';
 import { Principal } from '@/auth/identity/principal';
 import { Router } from '@/services/SiloRouter/router.service';
+import { DriverRegistry } from '@/services/Fleet/drivers/driver.registry';
 import { RealtimeService } from '@/services/Realtime/realtime.service';
 import { EntitlementService } from '@/services/Entitlement/entitlement.service';
 
@@ -56,6 +57,7 @@ export class WorkspaceService {
         @Inject(forwardRef(() => BillingService))
         private readonly billing:             BillingService,
         private readonly planRegistry:        PlanRegistry,
+        private readonly driverRegistry:      DriverRegistry,
         private readonly release:             ReleaseService,
         // Read by `@Operation`, which serialises a workspace's operations across instances.
         private readonly lockService:         LockService,
@@ -167,17 +169,22 @@ export class WorkspaceService {
         // Filled here rather than mapped: where it lives and what it runs are the fleet's facts, on its own credential.
         const hardwareFieldsByWorkspaceId = await this.hardware.getHardwareFieldsForWorkspaces(workspaces.map((workspace) => workspace.id));
 
-        return workspaces.map((workspace) => {
-            const hardwareFields = hardwareFieldsByWorkspaceId.get(workspace.id);
+        const currentDriver = this.driverRegistry.getKindForNewWorkspaces();
 
-            return {
-                ...workspace,
-                region:      hardwareFields?.region ?? null,
-                releaseId:   hardwareFields?.releaseId ?? null,
-                releaseName: hardwareFields?.releaseName ?? null,
-                driver:      hardwareFields?.driver ?? null,
-            };
-        });
+        return workspaces
+            .map((workspace) => {
+                const hardwareFields = hardwareFieldsByWorkspaceId.get(workspace.id);
+
+                return {
+                    ...workspace,
+                    region:      hardwareFields?.region ?? null,
+                    releaseId:   hardwareFields?.releaseId ?? null,
+                    releaseName: hardwareFields?.releaseName ?? null,
+                    driver:      hardwareFields?.driver ?? null,
+                };
+            })
+            // Only workspaces this process drives; one without hardware yet is still being made here.
+            .filter((workspace) => workspace.driver === currentDriver || workspace.driver === null);
     }
 
     public async get(workspaceId: Workspace.Id): Promise<Workspace> {
