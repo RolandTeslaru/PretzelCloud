@@ -5,29 +5,39 @@
 # the control plane, which mints the row. The manual fallback for the pipeline;
 # a release is this one invocation.
 #
-#   npm run release
+#   npm run release:production   the fleet's app, announced to production
+#   npm run release:dev          the dev app, announced to the control plane on this machine
 #
-# Env: FLY_API_TOKEN, AUTH_JWT_SECRET, OPERATOR_USER_ID — read from .env.production
-# when not already set. CONTROL_PLANE_URL defaults to production; RELEASE_BRANCH
-# to `latest`.
+# Env: FLY_APP, FLY_API_TOKEN, AUTH_JWT_SECRET, OPERATOR_USER_ID — read from the
+# files in ENV_FILES when not already set. CONTROL_PLANE_URL defaults to
+# production; RELEASE_BRANCH to `latest`. ALLOW_DIRTY=1 names the build after the
+# working tree rather than the commit alone.
 
 set -euo pipefail
 
 CLOUD="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GRAPH="$(cd "$CLOUD/../PretzelGraph" && pwd)"
 
-env_from_production() {
-    grep "^$1=" "$CLOUD/.env.production" | cut -d= -f2- || true
+# The first file that names a key wins, so a dev release reads the dev app from
+# .env.fly and falls back to .env for what only the local fleet has.
+ENV_FILES="${ENV_FILES:-.env.production}"
+
+env_from_files() {
+    for file in $ENV_FILES; do
+        value=$(grep "^$1=" "$CLOUD/$file" 2>/dev/null | cut -d= -f2- || true)
+
+        [ -n "$value" ] && { echo "$value"; return; }
+    done
 }
 
-FLY_API_TOKEN="${FLY_API_TOKEN:-$(env_from_production FLY_API_TOKEN)}"
-AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-$(env_from_production AUTH_JWT_SECRET)}"
-OPERATOR_USER_ID="${OPERATOR_USER_ID:-$(env_from_production OPERATOR_USER_IDS | cut -d, -f1)}"
+FLY_API_TOKEN="${FLY_API_TOKEN:-$(env_from_files FLY_API_TOKEN)}"
+AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-$(env_from_files AUTH_JWT_SECRET)}"
+OPERATOR_USER_ID="${OPERATOR_USER_ID:-$(env_from_files OPERATOR_USER_IDS | cut -d, -f1)}"
 CONTROL_PLANE_URL="${CONTROL_PLANE_URL:-https://api.pretzelgraph.ai}"
 RELEASE_BRANCH="${RELEASE_BRANCH:-latest}"
-FLY_APP="${FLY_APP:-pretzel-workspaces}"
+FLY_APP="${FLY_APP:-$(env_from_files FLY_APP)}"
 
-for name in FLY_API_TOKEN AUTH_JWT_SECRET OPERATOR_USER_ID; do
+for name in FLY_APP FLY_API_TOKEN AUTH_JWT_SECRET OPERATOR_USER_ID; do
     [ -n "${!name:-}" ] || { echo "$name is not set" >&2; exit 1; }
 done
 
@@ -38,14 +48,22 @@ BRANCH=$(git -C "$GRAPH" rev-parse --abbrev-ref HEAD)
 
 [ "$BRANCH" = "$RELEASE_BRANCH" ] || { echo "Pretzel-Graph is on '$BRANCH', not '$RELEASE_BRANCH' — check out the release branch first" >&2; exit 1; }
 
-git -C "$GRAPH" diff --quiet || { echo "Pretzel-Graph has uncommitted changes — a release names a commit" >&2; exit 1; }
-
 SHA=$(git -C "$GRAPH" rev-parse --short HEAD)
+
+if ! git -C "$GRAPH" diff --quiet; then
+    [ "${ALLOW_DIRTY:-}" = "1" ] || { echo "Pretzel-Graph has uncommitted changes — a release names a commit" >&2; exit 1; }
+
+    # A repeated name is dropped rather than becoming the latest, so each build gets its own.
+    SHA="$SHA-dirty-$(date +%H%M%S)"
+fi
 
 # The version the manifest declares; bumped in the pull request that ships it.
 NAME=$(node -p "require('$GRAPH/package.json').version")
 
 [ -n "$NAME" ] && [ "$NAME" != "undefined" ] || { echo "$GRAPH/package.json declares no version" >&2; exit 1; }
+
+# The commit rides along: one version is released many times over against a dev fleet.
+[ "${ALLOW_DIRTY:-}" = "1" ] && NAME="$NAME+$SHA"
 
 CONFIG=$(mktemp -t release-fly-config).toml
 
