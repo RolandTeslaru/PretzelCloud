@@ -5,11 +5,6 @@ import { AbstractHardwareDriver } from './driver';
 
 const Fly = Fleet.Driver.Fly;
 
-// A worker listens on nothing, and a machine with no check reports `unknown`, which is read as ready.
-function getChecksForRole(role: Fleet.Machine.Role): Record<string, unknown> {
-    return role === 'worker' ? {} : Fly.SERVING_CHECK;
-}
-
 type FlyMachine = {
     id:     string;
     name:   string;
@@ -176,7 +171,7 @@ export class FlyDriver extends AbstractHardwareDriver {
                 image:    options.image,
                 env:      options.env,
                 guest:    this.toGuest(options.size),
-                checks:   getChecksForRole(options.role),
+                checks:   Fly.SERVING_CHECK,
                 restart:  { policy: 'on-failure' },
                 metadata: {
                     [Fly.WORKSPACE_METADATA]: options.workspaceId,

@@ -53,21 +53,6 @@ export class HardwareLifecycleService {
 
 
 
-    /** Blocks until every machine in the hardware reports serving, then records its state. */
-    async awaitHealthy(hardware: Fleet.Hardware): Promise<void> {
-        if (hardware.machines.length === 0)
-            throw new Error(`No machines to await for ${hardware.workspaceId}`);
-
-        await Promise.all(hardware.machines.map(async (machine) => {
-            await this.machineService.awaitHealthy(machine);
-
-            machine.state = await this.machineService.refreshState(machine);
-        }));
-    }
-
-
-
-
     /** Blocks until the machine serving workspace traffic is healthy, then records its state. */
     async awaitBackendHealthy(workspaceId: Workspace.Id): Promise<void> {
         const backend = await this.getBackend(workspaceId);

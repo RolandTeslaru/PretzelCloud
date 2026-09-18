@@ -48,7 +48,7 @@ export class MachineService {
             env:   spec.env,
         });
 
-        return this.machineRepository.insert(Principal.SELF, {
+        const machine = await this.machineRepository.insert(Principal.SELF, {
             id:           spec.id,
             workspace_id: workspaceId,
             hardware_id:  hardwareId,
@@ -58,6 +58,16 @@ export class MachineService {
             size:         spec.size,
             state:        handle.state,
         });
+
+        // Created is not serving; the row records what the machine became, even when it never gets there.
+        try {
+            await this.awaitHealthy(machine);
+        }
+        finally {
+            machine.state = await this.refreshState(machine);
+        }
+
+        return machine;
     }
 
     getAll(workspaceId: Workspace.Id): Promise<Fleet.Machine[]> {

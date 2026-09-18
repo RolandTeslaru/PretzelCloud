@@ -111,25 +111,18 @@ export class HardwareService {
 
         const frontline = await this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, frontlineSpec);
 
-        let workers: Fleet.Machine[] = [];
-
         if (frontline.role === 'backend') {
             const backendHost = await driver.getInternalHostForMachine(frontline.resourceId);
 
-            workers = await Promise.all(workerIds.map((id) => {
+            await Promise.all(workerIds.map((id) => {
                 const spec = Fleet.Machine.Spec.create(id, 'worker', workspaceId, plan, release, baseEnvKeys, backendEnvKeys, backendHost);
 
                 return this.machineService.create(hardware.driver, hardware.id, workspaceId, hardware.region, spec);
             }));
         }
 
-        hardware.machines = [frontline, ...workers];
-
         // New machines carry new ids, so a reading from before this keys machines that are gone.
         this.statisticsService.invalidate(workspaceId);
-
-        // Created is not serving: every machine must complete its first boot.
-        await this.lifecycle.awaitHealthy(hardware);
     }
 
 
