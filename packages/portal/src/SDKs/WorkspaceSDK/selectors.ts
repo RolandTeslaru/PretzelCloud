@@ -1,4 +1,5 @@
-import type { User, Workspace } from '@pretzel-cloud/shared/domain'
+import { Workspace } from '@pretzel-cloud/shared/domain'
+import type { User } from '@pretzel-cloud/shared/domain'
 import type { WorkspaceSDK } from './sdk'
 
 export interface WorkspaceSDKSelectors {
@@ -10,6 +11,10 @@ export interface WorkspaceSDKSelectors {
      */
     matching: (state: WorkspaceSDK.State, query: string, sort?: WorkspaceSDK.Sort) => Workspace[]
     count: (state: WorkspaceSDK.State) => number
+    /** One status for the badge: the lifecycle, or whatever is moving it right now. */
+    displayStatus: (state: WorkspaceSDK.State, workspace: Workspace) => WorkspaceSDK.DisplayStatus
+    /** Whether the workspace can be opened: it accepts traffic and nothing is moving it. */
+    isReachable: (state: WorkspaceSDK.State, workspace: Workspace) => boolean
 }
 
 /** What the control plane itself lists them by. */
@@ -43,4 +48,29 @@ export const workspaceSelectors: WorkspaceSDKSelectors = {
     },
 
     count: (s) => Object.keys(s.workspaces).length,
+
+    displayStatus: (s, workspace) => {
+        if (s.destroying[workspace.id])
+            return 'destroying'
+
+        // Being built or having failed to build wins over anything in flight.
+        if (workspace.lifecycleState === 'creating' || workspace.lifecycleState === 'provisioning_failed')
+            return workspace.lifecycleState
+
+        // A rebuild runs a stop and a start inside it, so it wins over the transition.
+        if (s.rebuilding[workspace.id])
+            return 'rebuilding'
+
+        if (s.updating[workspace.id] !== undefined)
+            return 'updating'
+
+        return s.transitions[workspace.id] ?? workspace.lifecycleState
+    },
+
+    isReachable: (s, workspace) =>
+        Workspace.Lifecycle.acceptsTraffic(workspace.lifecycleState)
+        && !s.transitions[workspace.id]
+        && !s.rebuilding[workspace.id]
+        && s.updating[workspace.id] === undefined
+        && !s.destroying[workspace.id],
 }

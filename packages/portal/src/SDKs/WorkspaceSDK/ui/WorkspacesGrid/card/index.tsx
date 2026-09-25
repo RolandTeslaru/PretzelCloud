@@ -5,7 +5,7 @@ import { ServerIllustration } from '@pretzel-graph/standard-ui/icons/illustratio
 import { cn } from '@pretzel-graph/standard-ui/utils/cn'
 import type { Workspace } from '@pretzel-cloud/shared/domain'
 import { WorkspaceSDK } from '../../../sdk'
-import { StatusBadge, PlanBadge, isReachable, PROVISIONING_STEP } from '../../StatusBadge'
+import { StatusBadge, PlanBadge, PROVISIONING_STEP } from '../../StatusBadge'
 import { MachineStatistic } from '../MachineStatistic'
 import { DatabaseStatistic } from '../DatabaseStatistic'
 import { CardDropdown } from './dropdown'
@@ -42,22 +42,19 @@ const DriverLogo = ({ driver }: { driver: Workspace['driver'] }) => {
 
 export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
-    const [transition, provision, rebuilding, destroying, hardwareStatistics] = WorkspaceSDK.useStore(s => [
-        s.transitions[workspace.id],
+    const [reachable, provision, updating, hardwareStatistics] = WorkspaceSDK.useStore(s => [
+        s.selectors.isReachable(s, workspace),
         s.provisioning[workspace.id],
-        s.rebuilding[workspace.id],
-        s.destroying[workspace.id],
+        s.updating[workspace.id] !== undefined,
         s.hardwareStatistics[workspace.id]
     ])
-
-    const reachable = isReachable(workspace, transition, rebuilding, destroying)
 
     const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
         [ReleaseSDK.query.latest],
     )
 
-    const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id && workspace.lifecycleState !== "updating"
+    const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id && !updating
 
 
     return (

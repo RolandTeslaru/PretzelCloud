@@ -128,6 +128,9 @@ export namespace WorkspaceSDK {
     export type SortDirection = 'asc' | 'desc'
     export type Sort          = { field: SortField; direction: SortDirection }
 
+    /** A lifecycle state, a transition in flight, or a flag that overrides both. */
+    export type DisplayStatus = Workspace.Lifecycle.State | Workspace.Lifecycle.Action | 'destroying' | 'rebuilding' | 'updating'
+
     export type Selectors = WorkspaceSDKSelectors
     export type Actions = _WorkspaceSDKActions_
     export type Dialogs = _WorkspaceSDKDialogs
