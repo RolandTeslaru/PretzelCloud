@@ -39,8 +39,8 @@ export namespace WorkspaceDB {
         export type Row = z.infer<typeof Row>;
     }
 
-    /** One row, holding whether this deployment already has an owner. */
-    export namespace Deployment {
+    /** One row, holding whether this workspace already has an owner. */
+    export namespace Workspace {
         export const Row = z.object({
             id:         z.boolean(),
             claimed_by: UserD.Id.nullable(),
@@ -73,7 +73,7 @@ export namespace WorkspaceDB {
     export interface Tables {
         users:      Table<typeof User.Row, Stamps>;
         members:    Table<typeof Member.Row, Stamps>;
-        deployment: Table<typeof Deployment.Row, 'id'>;
+        workspace:  Table<typeof Workspace.Row, 'id'>;
         workflows:  Table<typeof Workflow.Row, Stamps>;
     }
 

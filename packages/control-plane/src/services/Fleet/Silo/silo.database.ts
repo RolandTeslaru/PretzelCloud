@@ -40,13 +40,13 @@ export class SiloDatabase {
     /** Idempotent. Refuses a second owner rather than adding one. */
     public async seedOwner(trx: Trx, owner: User): Promise<void> {
         // Locked, so a concurrent seed waits rather than writing a second owner.
-        const deployment = await trx
-            .selectFrom('deployment')
+        const claim = await trx
+            .selectFrom('workspace')
             .select('claimed_by')
             .forUpdate()
             .executeTakeFirst();
 
-        const holder = deployment?.claimed_by ?? null;
+        const holder = claim?.claimed_by ?? null;
 
         if (holder && holder !== owner.id)
             throw new Error(`This workspace is already owned by ${holder}`);
@@ -77,7 +77,7 @@ export class SiloDatabase {
 
         // Leaves the original timestamp alone on a re-run.
         await trx
-            .updateTable('deployment')
+            .updateTable('workspace')
             .set({ claimed_by: owner.id, claimed_at: new Date() })
             .where('claimed_at', 'is', null)
             .execute();
