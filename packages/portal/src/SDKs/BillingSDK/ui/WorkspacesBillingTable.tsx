@@ -77,7 +77,7 @@ const columns: ColumnDef<typeof features, Workspace, any>[] = [
         enableSorting: false,
         enableColumnFilter: false,
         cell: ({ getValue }) => (
-            <span className='text-xs font-mono text-muted-foreground'>{getValue()}/mo</span>
+            <span className='text-xs font-mono text-success-foreground'>{getValue()}/mo</span>
         ),
     }),
 
