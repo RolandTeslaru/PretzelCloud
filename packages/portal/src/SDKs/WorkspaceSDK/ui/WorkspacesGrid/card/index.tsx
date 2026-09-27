@@ -51,7 +51,7 @@ export const WorkspaceCard = ({ workspace }: { workspace: Workspace }) => {
 
     const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
-        [ReleaseSDK.query.latest],
+        (q) => [q.latest],
     )
 
     const updateAvailable = latestRelease !== null && workspace.releaseId !== null && workspace.releaseId !== latestRelease.id && !updating

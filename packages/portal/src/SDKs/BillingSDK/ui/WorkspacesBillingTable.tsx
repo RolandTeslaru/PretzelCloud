@@ -137,7 +137,7 @@ const EMPTY_FACETS = new Map<unknown, number>()
 export function WorkspacesBillingTable() {
     const [workspacesById, [request]] = WorkspaceSDK.useWith(
         (s) => s.workspaces,
-        [WorkspaceSDK.query.workspacesList],
+        (q) => [q.workspacesList],
     )
 
     const workspaces = useMemo(() => Object.values(workspacesById), [workspacesById])

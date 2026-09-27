@@ -49,7 +49,7 @@ const WorkspaceConfiguration = ({ workspaceId, dialogId, currentPanel, ...templa
 const UpdateFooter = ({workspace}: {workspace: Workspace | undefined}) => {
     const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
-        [ReleaseSDK.query.latest],
+        (q) => [q.latest],
     )
 
     if (!workspace || !latestRelease)

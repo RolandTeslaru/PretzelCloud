@@ -72,7 +72,7 @@ export namespace Machine {
             WORKER_IDS:                   z.string(),
             /** Browser-facing values, injected into the served page. */
             PUBLIC_AUTH_URL:              z.string(),
-            PUBLIC_CLOUD_URL:             z.string(),
+            PUBLIC_CLOUD_PORTAL_URL:      z.string(),
             PUBLIC_SESSION_COOKIE_DOMAIN: z.string(),
         })
         export type Backend = z.infer<typeof Backend>
