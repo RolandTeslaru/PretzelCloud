@@ -13,7 +13,7 @@ const PAGE_SIZE = 20
 export const AdminWorkspaces = () => {
     const [workspacesById, [query]] = AdminSDK.useWith(
         (s) => s.workspaces,
-        [AdminSDK.query.workspacesList],
+        (q) => [q.workspacesList],
     )
 
     const { error, isPending, isFetching, refetch } = query

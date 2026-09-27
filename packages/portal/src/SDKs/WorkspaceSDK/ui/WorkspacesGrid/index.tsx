@@ -91,7 +91,7 @@ export const WorkspacesGrid = () => {
 
     const [filteredWorkspaces, [request]] = WorkspaceSDK.useWith(
         (s) => s.selectors.matching(s, query, sort),
-        [WorkspaceSDK.query.workspacesList],
+        (q) => [q.workspacesList],
     )
 
     const { isPending } = request

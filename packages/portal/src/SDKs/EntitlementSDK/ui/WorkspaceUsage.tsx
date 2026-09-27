@@ -121,10 +121,10 @@ export function WorkspaceUsage({ workspace, actions = EntitlementSDK.actions, in
                 storedRecords: usesEntitlementActions ? s.records[workspace.id]?.[window] : undefined,
             }
         },
-        [
-            EntitlementSDK.query.report(workspace.id, actions, initialReport),
-            EntitlementSDK.query.series(workspace.id, actions),
-            EntitlementSDK.query.records(workspace.id, actions),
+        (q) => [
+            q.report(workspace.id, actions, initialReport),
+            q.series(workspace.id, actions),
+            q.records(workspace.id, actions),
         ],
     )
 

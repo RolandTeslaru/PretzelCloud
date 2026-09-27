@@ -26,7 +26,7 @@ const STRIPE_TERMINAL_STATUSES = ['canceled', 'incomplete_expired']
 export const AdminWorkspace = ({ workspaceId }: { workspaceId: Workspace.Id }) => {
     const [{ detail, plansById }, [query]] = AdminSDK.useWith(
         (s) => ({ detail: s.details[workspaceId], plansById: s.plans }),
-        [AdminSDK.query.workspace(workspaceId), AdminSDK.query.plansList],
+        (q) => [q.workspace(workspaceId), q.plansList],
     )
 
     const { error, isPending } = query

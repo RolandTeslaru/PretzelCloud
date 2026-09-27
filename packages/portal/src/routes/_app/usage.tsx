@@ -16,7 +16,7 @@ export const Route = createFileRoute('/_app/usage')({
 function UsagePage() {
     const [workspacesById, [request]] = WorkspaceSDK.useWith(
         (s) => s.workspaces,
-        [WorkspaceSDK.query.workspacesList],
+        (q) => [q.workspacesList],
     )
 
     const { isPending } = request

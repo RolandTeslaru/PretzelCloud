@@ -13,7 +13,7 @@ const PAGE_SIZE = 20
 export const AdminUsers = () => {
     const [usersById, [query]] = AdminSDK.useWith(
         (s) => s.users,
-        [AdminSDK.query.usersList],
+        (q) => [q.usersList],
     )
 
     const { error, isPending, isFetching, refetch } = query

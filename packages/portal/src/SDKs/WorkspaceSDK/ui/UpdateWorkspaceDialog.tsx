@@ -20,7 +20,7 @@ export function UpdateWorkspaceDialog({ dialogId, workspaceId }: Props) {
 
     const [latestRelease] = ReleaseSDK.useWith(
         (s) => s.latest,
-        [ReleaseSDK.query.latest],
+        (q) => [q.latest],
     )
 
     const [busy, setBusy] = useState(false)

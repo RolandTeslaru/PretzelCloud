@@ -11,7 +11,10 @@ export const PlanSettings = ({ workspaceId }: { workspaceId: Workspace.Id; dialo
 
     const busy = BillingSDK.useStore((s) => s.pending)
 
-    const [plansById, [plansRequest]] = WorkspaceSDK.useWith((s) => s.plans, [WorkspaceSDK.query.plansList])
+    const [plansById, [plansRequest]] = WorkspaceSDK.useWith(
+        (s) => s.plans,
+        (q) => [q.plansList],
+    )
 
     const isLoadingPlans = plansRequest.isPending && Object.keys(plansById).length === 0
 
