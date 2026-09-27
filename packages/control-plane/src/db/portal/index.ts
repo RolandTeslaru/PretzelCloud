@@ -168,30 +168,55 @@ export namespace PortalDB {
         export type Row = z.infer<typeof Row>;
     }
 
+    /** A listed workflow: the identity consumers embed. */
     export namespace Listing {
         export const Row = z.object({
-            id:               ListingD.Id,
-            workspace_id:     WorkspaceD.Id,
-            workflow_id:      ListingD.WorkflowId,
-            publication_meta: ListingD.Data,
-            workflow_data:    ListingD.Data,
-            blueprint_id:     z.string().nullable(),
-            created_at:       z.coerce.date(),
-            updated_at:       z.coerce.date(),
+            id:           ListingD.Id,
+            workspace_id: WorkspaceD.Id,
+            workflow_id:  ListingD.WorkflowId,
+            created_at:   z.coerce.date(),
+            withdrawn_at: z.coerce.date().nullable(),
         });
         export type Row = z.infer<typeof Row>;
-
-        export const toDomain = (row: Row) => ListingD.Schema.parse({
-            id:              row.id,
-            workspaceId:     row.workspace_id,
-            workflowId:      row.workflow_id,
-            publicationMeta: row.publication_meta,
-            workflowData:    row.workflow_data,
-            blueprintId:     row.blueprint_id,
-            createdAt:       row.created_at,
-            updatedAt:       row.updated_at,
-        });
     }
+
+    /** One of a listing's graphs; at most one per release. */
+    export namespace ListingVersion {
+        export const Row = z.object({
+            listing_id:       ListingD.Id,
+            version:          z.number().int(),
+            publication_id:   z.uuid(),
+            publication_meta: ListingD.Data,
+            workflow_data:    ListingD.Data,
+            release:          ListingD.Release,
+            release_order:    z.array(z.number().int()),
+            published_at:     z.coerce.date(),
+        });
+        export type Row = z.infer<typeof Row>;
+    }
+
+    /** Operator-set: the blueprint id a listing appears under on the extended shelf. */
+    export namespace ExtendedShelf {
+        export const Row = z.object({
+            listing_id:   ListingD.Id,
+            blueprint_id: z.string(),
+        });
+        export type Row = z.infer<typeof Row>;
+    }
+
+    /** A listing joined with the version served to a caller, as consumers receive it. */
+    export const toListing = (listing: Listing.Row, version: ListingVersion.Row, blueprintId: string | null) => ListingD.Schema.parse({
+        id:              listing.id,
+        workspaceId:     listing.workspace_id,
+        workflowId:      listing.workflow_id,
+        publicationMeta: version.publication_meta,
+        workflowData:    version.workflow_data,
+        blueprintId,
+        version:         version.version,
+        release:         version.release,
+        publishedAt:     version.published_at,
+        createdAt:       listing.created_at,
+    });
 
     export interface Tables {
         users:             Table<typeof User.Row, Stamps | 'is_admin'>;
@@ -199,7 +224,9 @@ export namespace PortalDB {
         workspace_members: Table<typeof Member.Row, 'created_at'>;
         stripe_events:     Table<typeof StripeEvent.Row, 'received_at'>;
         plans:             Table<typeof Plan.Row, Stamps>;
-        listings:          Table<typeof Listing.Row, 'blueprint_id' | 'created_at' | 'updated_at'>;
+        listings:          Table<typeof Listing.Row, 'created_at' | 'withdrawn_at'>;
+        listing_versions:  Table<typeof ListingVersion.Row, 'release_order' | 'published_at'>;
+        extended_shelf:    Table<typeof ExtendedShelf.Row>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {

@@ -3,15 +3,15 @@ import { Listing, Workspace } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { ListingRepository } from './listing.repository';
 
-// One row per listing — the owner's current active publication.
+// A listed workflow and its versions: one per PretzelGraph release step, resolved for each caller's release.
 @Injectable()
 export class ListingService {
 
     constructor(private readonly listingRepository: ListingRepository) {}
 
 
-    public async get(id: Listing.Id): Promise<Listing> {
-        const workflow = await this.listingRepository.find(Principal.SELF, id);
+    public async get(id: Listing.Id, release: Listing.Release): Promise<Listing> {
+        const workflow = await this.listingRepository.find(Principal.SELF, id, release);
 
         if (!workflow)
             throw new NotFoundException('No such listing');
@@ -19,29 +19,27 @@ export class ListingService {
         return workflow;
     }
 
-    // Missing ids are simply absent.
-    public async getUpdates(ids: Listing.Id[]): Promise<Record<Listing.Id, Listing.Data>> {
-        if (ids.length === 0)
-            return {};
-
-        return this.listingRepository.getUpdates(Principal.SELF, ids);
+    // Missing ids, and ids with no version the release can run, are simply absent.
+    public async getUpdates(ids: Listing.Id[], release: Listing.Release): Promise<Record<Listing.Id, Listing.Data>> {
+        return this.listingRepository.getUpdates(Principal.SELF, ids, release);
     }
 
     public async getOwnedIds(principal: Principal.Silo): Promise<Record<Listing.WorkflowId, Listing.Id>> {
         return this.listingRepository.getOwnedIds(principal);
     }
 
-    public async upsert(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id> {
+    // Lists the workflow, or lists it again under the same id, with this publication as a version.
+    public async share(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id> {
         this.assertSize(request);
 
-        return this.listingRepository.upsert(principal, workflowId, request);
+        return this.listingRepository.share(principal, workflowId, request);
     }
 
-    // Replaces the copy of a workflow that is already listed; otherwise not found.
-    public async update(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id> {
+    // Writes a version of a workflow that is already listed; otherwise not found.
+    public async writeVersion(principal: Principal.Silo, workflowId: Listing.WorkflowId, request: Listing.API.Put.Request): Promise<Listing.Id> {
         this.assertSize(request);
 
-        const id = await this.listingRepository.update(principal, workflowId, request);
+        const id = await this.listingRepository.writeVersion(principal, workflowId, request);
 
         if (!id)
             throw new NotFoundException('Workflow is not listed');
@@ -54,8 +52,8 @@ export class ListingService {
     }
 
     // Idempotent: withdrawing an unlisted workflow is a no-op.
-    public async deleteByWorkflow(principal: Principal.Silo, workflowId: Listing.WorkflowId): Promise<void> {
-        await this.listingRepository.deleteByWorkflow(principal, workflowId);
+    public async withdraw(principal: Principal.Silo, workflowId: Listing.WorkflowId): Promise<void> {
+        await this.listingRepository.withdraw(principal, workflowId);
     }
 
     private assertSize(request: Listing.API.Put.Request): void {

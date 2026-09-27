@@ -61,7 +61,7 @@ export class ProvisioningService {
         const { baseEnvKeys, backendEnvKeys, workerIds } = await this.assembleMachineEnvKeys(workspaceId, owner.id, plan, secrets);
 
         // Serving on return, so a machine that never answers is never published below.
-        await this.step(workspaceId, 'machines', () => 
+        const release = await this.step(workspaceId, 'machines', () =>
             this.hardware.buildCompute(workspaceId, plan, baseEnvKeys, backendEnvKeys, workerIds)
         );
 
@@ -72,9 +72,9 @@ export class ProvisioningService {
             )
         );
 
-        // Whatever of the starter set is published right now; a missing one is skipped, not invented.
+        // Whatever of the starter set its release can run right now; a missing one is skipped, not invented.
         const starters = await this.step(workspaceId, 'starters', () =>
-            this.listingRepository.getByBlueprintIds(Principal.SELF, Listing.Starter.BLUEPRINT_IDS)
+            this.listingRepository.getByBlueprintIds(Principal.SELF, Listing.Starter.BLUEPRINT_IDS, Listing.Release.parse(release.name))
         );
 
         await this.step(workspaceId, 'starters', () =>
@@ -140,7 +140,7 @@ export class ProvisioningService {
                 CORS_ORIGIN:                Fleet.Hostname.Host.getOrigin(Workspace.Subdomain.canonical(workspaceId), 'app'),
                 PRETZEL_CLOUD_URL:          requireEnv('PRETZEL_CLOUD_URL'),
                 PUBLIC_AUTH_URL:            requireEnv('GOTRUE_EXTERNAL_URL'),
-                PUBLIC_CLOUD_URL:           requireEnv('PORTAL_URL'),
+                PUBLIC_CLOUD_PORTAL_URL:    requireEnv('PORTAL_URL'),
                 PUBLIC_SESSION_COOKIE_DOMAIN: Fleet.Hostname.Host.getCookieDomain(),
             }),
         };

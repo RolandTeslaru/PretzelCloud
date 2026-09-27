@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
 import { ExtendedShelf, Listing } from '@pretzel-cloud/shared/domain';
 import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
 import { AdminGuard } from '@/auth/guards/admin.guard';
@@ -18,8 +18,10 @@ export class ExtendedShelfController {
 
 
     @Get('extended-shelf')
-    public async getAll(): Promise<ExtendedShelf.API.List.Response> {
-        return { workflows: await this.extendedShelfService.getAll() };
+    public async getAll(@Query() query: unknown): Promise<ExtendedShelf.API.List.Response> {
+        const { release } = Listing.API.ReleaseQuery.parse(query);
+
+        return { workflows: await this.extendedShelfService.getAll(release) };
     }
 
     @Put('admin/extended-shelf/:id')

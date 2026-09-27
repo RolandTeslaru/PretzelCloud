@@ -1,8 +1,8 @@
 import { z } from "zod"
 import { Workspace } from "./Workspace"
 
-// A workflow a workspace shares with every other workspace: one copy per
-// listing, the owner's current active publication, stored verbatim.
+// A workflow a workspace shares with every other workspace: one version per
+// PretzelGraph release step, each a deployed publication stored verbatim.
 export namespace Listing {
 
     // The fixed first group makes a listing id recognisable from the value alone.
@@ -33,6 +33,10 @@ export namespace Listing {
     // Largest workflowData accepted, in bytes of JSON.
     export const MAX_DATA_BYTES = 1_000_000
 
+    // A PretzelGraph version, e.g. 0.0.732; build metadata after + is ignored when comparing.
+    export const Release = z.string().regex(/^\d+(\.\d+)*(\+[\w.-]+)?$/)
+    export type  Release = z.infer<typeof Release>
+
     export const Schema = z.object({
         id:              Id,
         workspaceId:     Workspace.Id,
@@ -40,11 +44,16 @@ export namespace Listing {
         publicationMeta: Data,
         workflowData:    Data,
         blueprintId:     z.string().nullable(),
+        version:         z.number().int(),
+        release:         Release,
+        publishedAt:     z.coerce.date(),
         createdAt:       z.coerce.date(),
-        updatedAt:       z.coerce.date(),
     })
 
     export namespace API {
+
+        // Every read that serves a graph resolves for the caller's release.
+        export const ReleaseQuery = z.object({ release: Release })
 
         export namespace Get {
             export const Response = z.object({ workflow: Schema })
@@ -54,7 +63,8 @@ export namespace Listing {
         export namespace Updates {
             // `ids` is one comma-separated query parameter.
             export const Request = z.object({
-                ids: z.string().transform((raw) => raw.split(",").filter(Boolean)).pipe(z.array(Id).max(100)),
+                ids:     z.string().transform((raw) => raw.split(",").filter(Boolean)).pipe(z.array(Id).max(100)),
+                release: Release,
             })
             export type Request = z.infer<typeof Request>
 
@@ -73,6 +83,8 @@ export namespace Listing {
             export const Request = z.object({
                 publicationMeta: Data,
                 workflowData:    Data,
+                // The release the publication was built on.
+                release:         Release,
             })
             export type Request = z.infer<typeof Request>
 

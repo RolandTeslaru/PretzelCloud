@@ -20,10 +20,10 @@ export class ExtendedShelfService {
     constructor(private readonly listingRepository: ListingRepository) {}
 
 
-    public async getAll(): Promise<Listing[]> {
+    public async getAll(release: Listing.Release): Promise<Listing[]> {
         if (!process.env.EXTENDED_SHELF_WORKSPACE_ID)
             return [];
 
-        return this.listingRepository.getAllForWorkspace(Principal.SELF, shelfWorkspace().workspaceId);
+        return this.listingRepository.getAllForWorkspace(Principal.SELF, shelfWorkspace().workspaceId, release);
     }
 }

@@ -81,7 +81,8 @@ export class HardwareService {
 
     /**
      * Creates the plan's machines in bring-up order, so a worker is built from a backend address
-     * that exists. Workers take the ids the backend's env already names.
+     * that exists. Workers take the ids the backend's env already names. Returns the release they
+     * were built from.
      */
     async buildCompute(
         workspaceId:    Workspace.Id,
@@ -89,7 +90,7 @@ export class HardwareService {
         baseEnvKeys:    Fleet.Machine.EnvKeys.Base,
         backendEnvKeys: Fleet.Machine.EnvKeys.Backend,
         workerIds:      Fleet.Machine.Id[],
-    ): Promise<void> {
+    ): Promise<Fleet.Release> {
         const hardware = await this.getHardware(workspaceId);
 
         const driver = this.driverRegistry.getDriverForKind(hardware.driver);
@@ -123,6 +124,8 @@ export class HardwareService {
 
         // New machines carry new ids, so a reading from before this keys machines that are gone.
         this.statisticsService.invalidate(workspaceId);
+
+        return release;
     }
 
 

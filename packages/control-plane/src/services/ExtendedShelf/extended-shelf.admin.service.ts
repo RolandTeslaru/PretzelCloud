@@ -1,14 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Listing } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
-import { ListingRepository } from '@/services/Listing/listing.repository';
+import { ExtendedShelfRepository } from './extended-shelf.repository';
 import { shelfWorkspace } from './extended-shelf.service';
 
-// Tagging runs as the pinned workspace, so RLS scopes it to that workspace's listings.
+// Tags the pinned workspace's listings with the blueprint ids they appear under.
 @Injectable()
 export class ExtendedShelfAdminService {
 
-    constructor(private readonly listingRepository: ListingRepository) {}
+    constructor(private readonly extendedShelfRepository: ExtendedShelfRepository) {}
 
     public async add(adminUser: Principal.AdminUser, listingId: Listing.Id, blueprintId: string): Promise<void> {
         await this.setBlueprintId(listingId, blueprintId);
@@ -19,9 +19,9 @@ export class ExtendedShelfAdminService {
     }
 
     private async setBlueprintId(listingId: Listing.Id, blueprintId: string | null): Promise<void> {
-        const updated = await this.listingRepository.setBlueprintId(shelfWorkspace(), listingId, blueprintId);
+        const found = await this.extendedShelfRepository.setBlueprintId(Principal.SELF, shelfWorkspace().workspaceId, listingId, blueprintId);
 
-        if (updated === 0)
+        if (!found)
             throw new NotFoundException('No such listing');
     }
 }
