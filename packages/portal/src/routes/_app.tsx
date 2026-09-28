@@ -78,6 +78,7 @@ const NAV_TOP: NavEntry[] = [
 const NAV_ADMIN: NavEntry[] = [
     { id: 'admin-workspaces', label: 'All workspaces', to: '/admin/workspaces', icon: SystemIcons.Server },
     { id: 'admin-users', label: 'All users', to: '/admin/users', icon: SystemIcons.Users },
+    { id: 'admin-listings', label: 'All listings', to: '/admin/listings', icon: SystemIcons.Globe },
 ]
 
 const Sidebar = () => {

@@ -13,6 +13,9 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const standardUi        = path.resolve(here, '../../../PretzelGraph/packages/standard-ui')
 const standardUiModules = path.resolve(here, '../../../PretzelGraph/node_modules')
 
+// Constants shared with PretzelGraph, read from the same checkout; the files import nothing.
+const graphConstants    = path.resolve(here, '../../../PretzelGraph/packages/shared/constants')
+
 // Overridable so a second control plane can be developed against without
 // moving the one this normally talks to.
 const CONTROL_PLANE_PORT = process.env.CONTROL_PLANE_PORT ?? '4000';
@@ -27,12 +30,13 @@ export default defineConfig({
             '/socket': { target: `ws://localhost:${CONTROL_PLANE_PORT}`, ws: true },
         },
         fs: {
-            allow: [here, standardUi, standardUiModules],
+            allow: [here, standardUi, standardUiModules, graphConstants],
         },
     },
     resolve: {
         alias: {
             '@': path.resolve(here, 'src'),
+            '@pretzel-graph/shared/constants': graphConstants,
         },
         // A linked package resolves its own copy otherwise. Two Reacts break
         // hooks, two react-hook-forms break form-to-field context, and two

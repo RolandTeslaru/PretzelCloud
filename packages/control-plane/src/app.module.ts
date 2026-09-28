@@ -17,12 +17,13 @@ import { WorkspaceModule } from './services/Workspace/workspace.module';
 import { RealtimeModule } from './services/Realtime/realtime.module';
 import { ListingModule } from './services/Listing/listing.module';
 import { ExtendedShelfModule } from './services/ExtendedShelf/extended-shelf.module';
+import { TemplateModule } from './services/Template/template.module';
 import { ZodExceptionFilter } from './filters/zod-exception.filter';
 
 // A ceiling for every route, raised or lowered where a route earns it. The
 // silos carry their own; this is the control plane's own surface.
 @Module({
-    imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 600 }] }), PermissionModule, AdminModule, EntitlementModule, PlanModule, CachingModule, LockModule, BillingModule, AuthModule, FleetModule, RouterModule, SiloSessionModule, UserModule, WorkspaceModule, RealtimeModule, ListingModule, ExtendedShelfModule],
+    imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 600 }] }), PermissionModule, AdminModule, EntitlementModule, PlanModule, CachingModule, LockModule, BillingModule, AuthModule, FleetModule, RouterModule, SiloSessionModule, UserModule, WorkspaceModule, RealtimeModule, ListingModule, ExtendedShelfModule, TemplateModule],
     providers: [
         { provide: APP_FILTER, useClass: ZodExceptionFilter },
         { provide: APP_GUARD,  useClass: ThrottlerGuard },

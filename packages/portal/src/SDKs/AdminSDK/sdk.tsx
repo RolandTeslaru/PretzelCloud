@@ -1,7 +1,7 @@
 import { immer } from 'zustand/middleware/immer'
 import { createWithEqualityFn } from 'zustand/traditional'
 import { shallow } from 'zustand/shallow'
-import { Admin, Plan, User, Workspace } from '@pretzel-cloud/shared/domain'
+import { Admin, Listing, Plan, User, Workspace } from '@pretzel-cloud/shared/domain'
 import { BaseSDK } from '@pretzel-graph/standard-ui/SDKs/Base'
 import { SDK } from '@pretzel-graph/standard-ui/SDKs/SDKManager'
 import { createAdminSDKActions, type _AdminSDKActions_ } from './actions'
@@ -24,6 +24,7 @@ export class AdminSDKImpl extends BaseSDK<AdminSDK.State> {
             users: {},
             details: {},
             plans: {},
+            listings: {},
         })),
         shallow
     )
@@ -34,6 +35,7 @@ export class AdminSDKImpl extends BaseSDK<AdminSDK.State> {
             s.users = {}
             s.details = {}
             s.plans = {}
+            s.listings = {}
         })
     }
 
@@ -58,6 +60,11 @@ export class AdminSDKImpl extends BaseSDK<AdminSDK.State> {
             queryKey: ['admin', 'plans'] as const,
             queryFn:  () => this.actions.plans.list(),
         },
+        listingsList: {
+            ...QUERY_OPTIONS,
+            queryKey: ['admin', 'listings'] as const,
+            queryFn:  () => this.actions.listings.list(),
+        },
     }
 
     public readonly actions: AdminSDK.Actions = createAdminSDKActions(this)
@@ -73,6 +80,7 @@ export namespace AdminSDK {
         /** Whatever workspace pages have been opened, by id. */
         details: Partial<Record<Workspace.Id, Admin.WorkspaceDetail>>
         plans: Record<Plan.Id, Plan>
+        listings: Record<Listing.Id, Admin.ListingSummary>
     }
 
     export type Actions = _AdminSDKActions_

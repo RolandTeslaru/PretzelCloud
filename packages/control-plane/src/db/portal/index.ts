@@ -5,6 +5,7 @@ import {
     Fleet,
     Plan      as PlanD,
     Listing   as ListingD,
+    Template  as TemplateD,
     User      as UserD,
     Workspace as WorkspaceD,
 } from '@pretzel-cloud/shared/domain';
@@ -204,6 +205,29 @@ export namespace PortalDB {
         export type Row = z.infer<typeof Row>;
     }
 
+    /** Admin-set: a listing offered as a template, its place among them, and its category ids. */
+    export namespace Template {
+        export const Row = z.object({
+            listing_id:   ListingD.Id,
+            sort_order:   z.number().int(),
+            category_ids: z.array(TemplateD.CategoryId),
+        });
+        export type Row = z.infer<typeof Row>;
+    }
+
+    /** A listing joined with the version served to a caller, without its graph. */
+    export const toListingMeta = (listing: Listing.Row, version: Omit<ListingVersion.Row, 'workflow_data'>, blueprintId: string | null) => ListingD.Meta.Schema.parse({
+        id:              listing.id,
+        workspaceId:     listing.workspace_id,
+        workflowId:      listing.workflow_id,
+        publicationMeta: version.publication_meta,
+        blueprintId,
+        version:         version.version,
+        release:         version.release,
+        publishedAt:     version.published_at,
+        createdAt:       listing.created_at,
+    });
+
     /** A listing joined with the version served to a caller, as consumers receive it. */
     export const toListing = (listing: Listing.Row, version: ListingVersion.Row, blueprintId: string | null) => ListingD.Schema.parse({
         id:              listing.id,
@@ -227,6 +251,7 @@ export namespace PortalDB {
         listings:          Table<typeof Listing.Row, 'created_at' | 'withdrawn_at'>;
         listing_versions:  Table<typeof ListingVersion.Row, 'release_order' | 'published_at'>;
         extended_shelf:    Table<typeof ExtendedShelf.Row>;
+        templates:         Table<typeof Template.Row, 'sort_order' | 'category_ids'>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {
