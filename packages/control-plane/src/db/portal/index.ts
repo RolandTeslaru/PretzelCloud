@@ -242,6 +242,16 @@ export namespace PortalDB {
         createdAt:       listing.created_at,
     });
 
+    /** An address asking to hear when cloud hosting opens. */
+    export namespace Waitlist {
+        export const Row = z.object({
+            email:             z.string(),
+            created_at:        z.coerce.date(),
+            thank_you_sent_at: z.coerce.date().nullable(),
+        });
+        export type Row = z.infer<typeof Row>;
+    }
+
     export interface Tables {
         users:             Table<typeof User.Row, Stamps | 'is_admin'>;
         workspaces:        Table<typeof Workspace.Row, Stamps | 'lifecycle_state' | 'disabled_at' | 'disabled_reason' | 'abandoned_at'>;
@@ -252,6 +262,7 @@ export namespace PortalDB {
         listing_versions:  Table<typeof ListingVersion.Row, 'release_order' | 'published_at'>;
         extended_shelf:    Table<typeof ExtendedShelf.Row>;
         templates:         Table<typeof Template.Row, 'sort_order' | 'category_ids'>;
+        waitlist:          Table<typeof Waitlist.Row, 'created_at' | 'thank_you_sent_at'>;
     }
 
     function connect(urlEnvVar: string): Kysely<Tables> {
