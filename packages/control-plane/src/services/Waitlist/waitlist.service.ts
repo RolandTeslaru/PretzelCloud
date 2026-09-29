@@ -4,7 +4,6 @@ import { Waitlist } from '@pretzel-cloud/shared/domain';
 import { Principal } from '@/auth/identity/principal';
 import { LockService } from '@/services/Locking/lock.service';
 import { WaitlistRepository } from './waitlist.repository';
-import { WAITLIST_THANK_YOU } from './waitlist-thank-you.email';
 
 const SENDER = 'PretzelCloud <hello@pretzelgraph.ai>';
 
@@ -29,6 +28,9 @@ export class WaitlistService implements OnModuleInit, OnModuleDestroy {
     // Made at init, once the environment is loaded; null means emails are off.
     private resend: Resend | null = null;
 
+    // The thank-you's subject and body are edited in Resend, not here.
+    private templateId: string | null = null;
+
     constructor(
         private readonly waitlistRepository: WaitlistRepository,
         private readonly lockService:        LockService,
@@ -38,13 +40,17 @@ export class WaitlistService implements OnModuleInit, OnModuleDestroy {
     public onModuleInit(): void {
         const apiKey = process.env.RESEND_API_KEY;
 
-        if (!apiKey) {
-            this.logger.warn('RESEND_API_KEY is unset; waitlist thank-you emails are off');
+        const templateId = process.env.RESEND_WAITLIST_TEMPLATE_ID;
+
+        if (!apiKey || !templateId) {
+            this.logger.warn('RESEND_API_KEY or RESEND_WAITLIST_TEMPLATE_ID is unset; waitlist thank-you emails are off');
 
             return;
         }
 
         this.resend = new Resend(apiKey);
+
+        this.templateId = templateId;
 
         this.sweepTimer = setInterval(() => void this.sweep(), SWEEP_MS);
 
@@ -99,18 +105,16 @@ export class WaitlistService implements OnModuleInit, OnModuleDestroy {
 
     /** Never throws: an address that was not sent to stays for the sweep. */
     private async sendThankYou(email: Waitlist.Email): Promise<boolean> {
-        if (!this.resend)
+        if (!this.resend || !this.templateId)
             return false;
 
         try {
             const { error } = await this.resend.emails.send(
                 {
-                    from:    SENDER,
-                    to:      [email],
-                    replyTo: REPLY_TO,
-                    subject: WAITLIST_THANK_YOU.subject,
-                    text:    WAITLIST_THANK_YOU.text,
-                    html:    WAITLIST_THANK_YOU.html,
+                    from:     SENDER,
+                    to:       [email],
+                    replyTo:  REPLY_TO,
+                    template: { id: this.templateId },
                 },
                 // A retry within a day cannot send the same address a second email.
                 { idempotencyKey: `waitlist-thank-you/${email}` },
