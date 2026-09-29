@@ -16,6 +16,7 @@ import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppUsageRouteImport } from './routes/_app/usage'
 import { Route as AuthIndexRouteImport } from './routes/auth/index'
 import { Route as AppAdminIndexRouteImport } from './routes/_app/admin/index'
+import { Route as AppAdminListingsRouteImport } from './routes/_app/admin/listings'
 import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppAdminWorkspacesIndexRouteImport } from './routes/_app/admin/workspaces/index'
 import { Route as AppAdminWorkspacesWorkspaceIdRouteImport } from './routes/_app/admin/workspaces/$workspaceId'
@@ -56,6 +57,11 @@ const AppAdminIndexRoute = AppAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppAdminRoute,
 } as any)
+const AppAdminListingsRoute = AppAdminListingsRouteImport.update({
+  id: '/listings',
+  path: '/listings',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/billing': typeof AppBillingRoute
   '/usage': typeof AppUsageRoute
   '/auth/': typeof AuthIndexRoute
+  '/admin/listings': typeof AppAdminListingsRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/admin/': typeof AppAdminIndexRoute
   '/admin/workspaces/$workspaceId': typeof AppAdminWorkspacesWorkspaceIdRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/usage': typeof AppUsageRoute
   '/': typeof AppIndexRoute
   '/auth': typeof AuthIndexRoute
+  '/admin/listings': typeof AppAdminListingsRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/admin': typeof AppAdminIndexRoute
   '/admin/workspaces/$workspaceId': typeof AppAdminWorkspacesWorkspaceIdRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/_app/usage': typeof AppUsageRoute
   '/_app/': typeof AppIndexRoute
   '/auth/': typeof AuthIndexRoute
+  '/_app/admin/listings': typeof AppAdminListingsRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/admin/': typeof AppAdminIndexRoute
   '/_app/admin/workspaces/$workspaceId': typeof AppAdminWorkspacesWorkspaceIdRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/usage'
     | '/auth/'
+    | '/admin/listings'
     | '/admin/users'
     | '/admin/'
     | '/admin/workspaces/$workspaceId'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
     | '/usage'
     | '/'
     | '/auth'
+    | '/admin/listings'
     | '/admin/users'
     | '/admin'
     | '/admin/workspaces/$workspaceId'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '/_app/usage'
     | '/_app/'
     | '/auth/'
+    | '/_app/admin/listings'
     | '/_app/admin/users'
     | '/_app/admin/'
     | '/_app/admin/workspaces/$workspaceId'
@@ -223,6 +235,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminIndexRouteImport
       parentRoute: typeof AppAdminRoute
     }
+    '/_app/admin/listings': {
+      id: '/_app/admin/listings'
+      path: '/listings'
+      fullPath: '/admin/listings'
+      preLoaderRoute: typeof AppAdminListingsRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
     '/_app/admin/users': {
       id: '/_app/admin/users'
       path: '/users'
@@ -262,6 +281,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppAdminRouteChildren {
+  AppAdminListingsRoute: typeof AppAdminListingsRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppAdminIndexRoute: typeof AppAdminIndexRoute
   AppAdminWorkspacesWorkspaceIdRoute: typeof AppAdminWorkspacesWorkspaceIdRoute
@@ -269,6 +289,7 @@ interface AppAdminRouteChildren {
 }
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
+  AppAdminListingsRoute: AppAdminListingsRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppAdminIndexRoute: AppAdminIndexRoute,
   AppAdminWorkspacesWorkspaceIdRoute: AppAdminWorkspacesWorkspaceIdRoute,

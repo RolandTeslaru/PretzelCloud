@@ -3,6 +3,9 @@ import type { AxiosInstance } from 'axios'
 import { Plan } from './Plan'
 import { Workspace } from './Workspace'
 import { User } from './User'
+import { Listing } from './Listing'
+import { Template } from './Template'
+import { ExtendedShelf } from './ExtendedShelf'
 
 export namespace Admin {
     export const WorkspaceSummary = z.object({
@@ -24,6 +27,22 @@ export namespace Admin {
     })
     export type WorkspaceDetail = z.infer<typeof WorkspaceDetail>
 
+    /** A listed workflow at its latest version, with how an admin has tagged it. */
+    export const ListingSummary = z.object({
+        id:          Listing.Id,
+        workspace:   z.object({ id: Workspace.Id, displayName: z.string() }),
+        workflowId:  Listing.WorkflowId,
+        name:        z.string(),
+        description: z.string().nullable(),
+        version:     z.number().int(),
+        release:     Listing.Release,
+        publishedAt: z.coerce.date(),
+        createdAt:   z.coerce.date(),
+        blueprintId: z.string().nullable(),
+        template:    Template.API.Set.Request.nullable(),
+    })
+    export type ListingSummary = z.infer<typeof ListingSummary>
+
     export namespace API {
         export namespace Users {
             export namespace List {
@@ -43,6 +62,38 @@ export namespace Admin {
 
             export async function remove(api: AxiosInstance, userId: User.Id, body: Delete.Request): Promise<void> {
                 await api.delete(`/api/admin/users/${userId}`, { data: body })
+            }
+        }
+
+        export namespace Listings {
+            export namespace List {
+                export const Response = z.object({ listings: z.array(ListingSummary) })
+                export type Response = z.infer<typeof Response>
+            }
+
+            export async function list(api: AxiosInstance): Promise<List.Response> {
+                const { data } = await api.get('/api/admin/listings')
+                return List.Response.parse(data)
+            }
+        }
+
+        export namespace Templates {
+            export async function set(api: AxiosInstance, listingId: Listing.Id, body: Template.API.Set.Request): Promise<void> {
+                await api.put(`/api/admin/templates/${listingId}`, body)
+            }
+
+            export async function remove(api: AxiosInstance, listingId: Listing.Id): Promise<void> {
+                await api.delete(`/api/admin/templates/${listingId}`)
+            }
+        }
+
+        export namespace Shelf {
+            export async function add(api: AxiosInstance, listingId: Listing.Id, body: ExtendedShelf.API.Add.Request): Promise<void> {
+                await api.put(`/api/admin/extended-shelf/${listingId}`, body)
+            }
+
+            export async function remove(api: AxiosInstance, listingId: Listing.Id): Promise<void> {
+                await api.delete(`/api/admin/extended-shelf/${listingId}`)
             }
         }
 

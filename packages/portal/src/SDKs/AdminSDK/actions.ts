@@ -1,4 +1,4 @@
-import { Admin, type Plan, User, Workspace } from '@pretzel-cloud/shared/domain'
+import { Admin, type Listing, type Plan, type Template, User, Workspace } from '@pretzel-cloud/shared/domain'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { api, getMessageFromError } from '../api'
 import type { AdminSDKImpl } from './sdk'
@@ -24,6 +24,13 @@ export type _AdminSDKActions_ = {
     users: {
         list:   () => Promise<Record<User.Id, Admin.UserSummary>>
         delete: (userId: User.Id, confirmation: string) => Promise<void>
+    }
+    listings: {
+        list:              () => Promise<Record<Listing.Id, Admin.ListingSummary>>
+        setTemplate:       (listingId: Listing.Id, template: Template.API.Set.Request) => Promise<void>
+        removeTemplate:    (listingId: Listing.Id) => Promise<void>
+        setShelfBlueprint: (listingId: Listing.Id, blueprintId: string) => Promise<void>
+        removeFromShelf:   (listingId: Listing.Id) => Promise<void>
     }
 }
 
@@ -219,6 +226,100 @@ export function createAdminSDKActions(sdk: AdminSDKImpl): _AdminSDKActions_ {
                         delete s.workspaces[summary.workspace.id]
                     }
                 })
+            },
+        },
+
+        listings: {
+            list: async () => {
+                const { listings } = await Admin.API.Listings.list(api)
+
+                const listingsById = Object.fromEntries(listings.map((listing) => [listing.id, listing])) as Record<Listing.Id, Admin.ListingSummary>
+
+                setState((s) => {
+                    s.listings = listingsById
+                })
+
+                return listingsById
+            },
+
+            setTemplate: async (listingId, template) => {
+                const name = sdk.state.listings[listingId]?.name ?? listingId
+
+                try {
+                    await Admin.API.Templates.set(api, listingId, template)
+
+                    setState((s) => {
+                        const listing = s.listings[listingId]
+
+                        if (listing)
+                            listing.template = template
+                    })
+
+                    NotificationSDK.toast.success(`${name} is a template`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, 'Could not mark the listing as a template'))
+                }
+            },
+
+            removeTemplate: async (listingId) => {
+                const name = sdk.state.listings[listingId]?.name ?? listingId
+
+                try {
+                    await Admin.API.Templates.remove(api, listingId)
+
+                    setState((s) => {
+                        const listing = s.listings[listingId]
+
+                        if (listing)
+                            listing.template = null
+                    })
+
+                    NotificationSDK.toast.success(`${name} is no longer a template`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, 'Could not remove the template'))
+                }
+            },
+
+            setShelfBlueprint: async (listingId, blueprintId) => {
+                const name = sdk.state.listings[listingId]?.name ?? listingId
+
+                try {
+                    await Admin.API.Shelf.add(api, listingId, { blueprintId })
+
+                    setState((s) => {
+                        const listing = s.listings[listingId]
+
+                        if (listing)
+                            listing.blueprintId = blueprintId
+                    })
+
+                    NotificationSDK.toast.success(`${name} is on the extended shelf`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, 'Could not add the listing to the extended shelf'))
+                }
+            },
+
+            removeFromShelf: async (listingId) => {
+                const name = sdk.state.listings[listingId]?.name ?? listingId
+
+                try {
+                    await Admin.API.Shelf.remove(api, listingId)
+
+                    setState((s) => {
+                        const listing = s.listings[listingId]
+
+                        if (listing)
+                            listing.blueprintId = null
+                    })
+
+                    NotificationSDK.toast.success(`${name} is off the extended shelf`)
+                }
+                catch (error) {
+                    NotificationSDK.toast.error(getMessageFromError(error, 'Could not remove the listing from the extended shelf'))
+                }
             },
         },
     }

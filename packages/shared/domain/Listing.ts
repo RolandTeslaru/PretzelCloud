@@ -37,17 +37,24 @@ export namespace Listing {
     export const Release = z.string().regex(/^\d+(\.\d+)*(\+[\w.-]+)?$/)
     export type  Release = z.infer<typeof Release>
 
-    export const Schema = z.object({
-        id:              Id,
-        workspaceId:     Workspace.Id,
-        workflowId:      WorkflowId,
-        publicationMeta: Data,
-        workflowData:    Data,
-        blueprintId:     z.string().nullable(),
-        version:         z.number().int(),
-        release:         Release,
-        publishedAt:     z.coerce.date(),
-        createdAt:       z.coerce.date(),
+    // A listing without its graph.
+    export namespace Meta {
+        export const Schema = z.object({
+            id:              Id,
+            workspaceId:     Workspace.Id,
+            workflowId:      WorkflowId,
+            publicationMeta: Data,
+            blueprintId:     z.string().nullable(),
+            version:         z.number().int(),
+            release:         Release,
+            publishedAt:     z.coerce.date(),
+            createdAt:       z.coerce.date(),
+        })
+    }
+    export type Meta = z.infer<typeof Meta.Schema>
+
+    export const Schema = Meta.Schema.extend({
+        workflowData: Data,
     })
 
     export namespace API {

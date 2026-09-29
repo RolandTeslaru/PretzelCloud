@@ -1,4 +1,4 @@
-import { Admin, Plan, User, Workspace } from '@pretzel-cloud/shared/domain'
+import { Admin, Plan, User, Workspace, type Listing } from '@pretzel-cloud/shared/domain'
 import { DialogSDK } from '@pretzel-graph/standard-ui/SDKs/DialogSDK'
 import { NotificationSDK } from '@pretzel-graph/standard-ui/SDKs/NotificationSDK'
 import { AlertDialog } from '@pretzel-graph/standard-ui/foundations'
@@ -6,6 +6,8 @@ import { getMessageFromError } from '../api'
 import { DeleteWorkspaceDialog } from './ui/DeleteWorkspaceDialog'
 import { DeleteUserDialog } from './ui/DeleteUserDialog'
 import { DisableWorkspaceDialog } from './ui/DisableWorkspaceDialog'
+import { SetTemplateDialog } from './ui/SetTemplateDialog'
+import { SetShelfBlueprintDialog } from './ui/SetShelfBlueprintDialog'
 import type { AdminSDKImpl } from './sdk'
 
 const deleteWorkspaceDialogId = (workspaceId: Workspace.Id) => `admin-delete-workspace-${workspaceId}`
@@ -15,6 +17,10 @@ const disableWorkspaceDialogId = (workspaceId: Workspace.Id) => `admin-disable-w
 const setPlanDialogId = (workspaceId: Workspace.Id) => `admin-set-plan-${workspaceId}`
 
 const deleteUserDialogId = (userId: User.Id) => `admin-delete-user-${userId}`
+
+const setTemplateDialogId = (listingId: Listing.Id) => `admin-set-template-${listingId}`
+
+const setShelfBlueprintDialogId = (listingId: Listing.Id) => `admin-set-shelf-blueprint-${listingId}`
 
 // Confirms by name, closes at once, and reports the outcome as a toast.
 export const openDeleteWorkspaceDialog = (sdk: AdminSDKImpl, summary: Admin.WorkspaceSummary, onDeleted?: () => void) => {
@@ -120,6 +126,40 @@ export const openDeleteUserDialog = (sdk: AdminSDKImpl, user: Admin.UserSummary)
                 catch (error) {
                     NotificationSDK.toast.error(`Could not delete ${user.email}`, { description: getMessageFromError(error) })
                 }
+            }}
+        />
+    ))
+}
+
+export const openSetTemplateDialog = (sdk: AdminSDKImpl, listing: Admin.ListingSummary) => {
+    const id = setTemplateDialogId(listing.id)
+
+    DialogSDK.actions.push(id, (props) => (
+        <SetTemplateDialog
+            {...props}
+            listing={listing}
+            onCancel={() => DialogSDK.actions.pop(id)}
+            onConfirm={(template) => {
+                DialogSDK.actions.pop(id)
+
+                void sdk.actions.listings.setTemplate(listing.id, template)
+            }}
+        />
+    ))
+}
+
+export const openSetShelfBlueprintDialog = (sdk: AdminSDKImpl, listing: Admin.ListingSummary) => {
+    const id = setShelfBlueprintDialogId(listing.id)
+
+    DialogSDK.actions.push(id, (props) => (
+        <SetShelfBlueprintDialog
+            {...props}
+            listing={listing}
+            onCancel={() => DialogSDK.actions.pop(id)}
+            onConfirm={(blueprintId) => {
+                DialogSDK.actions.pop(id)
+
+                void sdk.actions.listings.setShelfBlueprint(listing.id, blueprintId)
             }}
         />
     ))

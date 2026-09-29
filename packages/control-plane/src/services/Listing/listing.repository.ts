@@ -4,10 +4,7 @@ import { Listing, Workspace } from '@pretzel-cloud/shared/domain';
 import { PortalDB } from '@/db/portal';
 import { Repository, Transactional } from '@/db/repository';
 import { Principal } from '@/auth/identity/principal';
-
-// A release as the integer array `listing_versions.release_order` stores.
-const releaseOrder = (release: Listing.Release) =>
-    sql<number[]>`string_to_array(split_part(${release}, '+', 1), '.')::integer[]`;
+import { releaseOrder, selectResolvedListings } from './listing.resolve';
 
 type ResolveFilter = {
     ids?:          Listing.Id[]
@@ -167,17 +164,16 @@ export class ListingRepository extends Repository(PortalDB) {
 
     // Each matching listed workflow with the version the release resolves to: the highest release at or below it.
     private async _resolve(release: Listing.Release, filter: ResolveFilter): Promise<Listing[]> {
-        let query = this.trx
-            .selectFrom('listings')
-            .innerJoin('listing_versions', 'listing_versions.listing_id', 'listings.id')
+        const rows = await this._resolveRows(release, filter);
+
+        return rows.map((row) => this._toListing(row));
+    }
+
+    private async _resolveRows(release: Listing.Release, filter: ResolveFilter) {
+        let query = selectResolvedListings(this.trx, release)
             .leftJoin('extended_shelf', 'extended_shelf.listing_id', 'listings.id')
             .selectAll('listing_versions')
-            .select(['listings.workspace_id', 'listings.workflow_id', 'listings.created_at', 'listings.withdrawn_at', 'extended_shelf.blueprint_id'])
-            .distinctOn('listing_versions.listing_id')
-            .where('listings.withdrawn_at', 'is', null)
-            .where(sql<boolean>`listing_versions.release_order <= ${releaseOrder(release)}`)
-            .orderBy('listing_versions.listing_id')
-            .orderBy('listing_versions.release_order', 'desc');
+            .select('extended_shelf.blueprint_id');
 
         if (filter.ids)
             query = query.where('listings.id', 'in', filter.ids);
@@ -188,12 +184,14 @@ export class ListingRepository extends Repository(PortalDB) {
         if (filter.blueprintIds)
             query = query.where('extended_shelf.blueprint_id', 'in', [...filter.blueprintIds]);
 
-        const rows = await query.execute();
+        return query.execute();
+    }
 
-        return rows.map((row) => PortalDB.toListing(
+    private _toListing(row: Awaited<ReturnType<ListingRepository['_resolveRows']>>[number]): Listing {
+        return PortalDB.toListing(
             PortalDB.Listing.Row.parse({ ...row, id: row.listing_id }),
             PortalDB.ListingVersion.Row.parse(row),
             row.blueprint_id,
-        ));
+        );
     }
 }

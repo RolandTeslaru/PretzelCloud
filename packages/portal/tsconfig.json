@@ -20,6 +20,7 @@
             "@/*": ["./src/*"],
             "@pretzel-cloud/shared/*": ["../shared/*"],
             "@pretzel-graph/standard-ui/*": ["../../../PretzelGraph/packages/standard-ui/src/*"],
+            "@pretzel-graph/shared/constants/*": ["../../../PretzelGraph/packages/shared/constants/*"],
             "react": ["../../node_modules/@types/react"],
             "react/*": ["../../node_modules/@types/react/*"],
             "react-dom": ["../../node_modules/@types/react-dom"],
