@@ -1,17 +1,16 @@
-import { Controller, Get, NotFoundException, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException } from '@nestjs/common';
 import { Fleet } from '@pretzel-cloud/shared/domain';
-import { UserAuthGuard } from '@/auth/guards/user-auth.guard';
 import { ReleaseService } from './release.service';
 
+// Open to anyone: self-hosted installations ask it whether a newer version exists.
 @Controller('releases')
-@UseGuards(UserAuthGuard)
 export class ReleaseController {
 
     constructor(private readonly releaseService: ReleaseService) {}
 
-    /** What the portal compares every workspace against. */
+    /** What the portal compares every workspace against, and self-hosted installations compare themselves against. */
     @Get('latest')
-    async latest(): Promise<Fleet.Release.API.Latest.Response> {
+    public async latest(): Promise<Fleet.Release.API.Latest.Response> {
         const release = await this.releaseService.getLatest();
 
         if (!release)
